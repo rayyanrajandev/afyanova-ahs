@@ -1,0 +1,53 @@
+/**
+ * Vitest setup — global test configuration (Volume 3.4)
+ * ======================================================
+ * - Configures vue-i18n for component tests
+ * - Sets up @testing-library/jest-dom matchers
+ * - Provides axe-core for a11y testing
+ */
+
+import '@testing-library/jest-dom/vitest';
+import { config } from '@vue/test-utils';
+import { createI18n } from 'vue-i18n';
+import en from '../i18n/locales/en/common.json';
+import sw from '../i18n/locales/sw/common.json';
+
+// Global i18n instance for component tests
+const i18n = createI18n({
+    legacy: false,
+    locale: 'en',
+    fallbackLocale: 'en',
+    messages: { en, sw },
+});
+
+// Make i18n available to all mounted components
+config.global.plugins = [i18n];
+
+// jsdom doesn't implement matchMedia — polyfill for components that use it
+if (typeof window !== 'undefined' && !window.matchMedia) {
+    window.matchMedia = (query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+    });
+}
+
+// jsdom doesn't implement ResizeObserver — polyfill for virtualizer
+if (typeof window !== 'undefined' && !window.ResizeObserver) {
+    class ResizeObserverMock {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    }
+    window.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+}
+
+// jsdom doesn't implement scrollIntoView
+if (typeof window !== 'undefined' && !Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+}

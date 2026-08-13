@@ -1,0 +1,158 @@
+/**
+ * CommandPalette — composite component (Volume 1.1 §4.2, §6)
+ * ============================================================
+ * The keyboard front door to the entire system (P5). Shell-owned;
+ * workspaces register commands via useCommandPalette().
+ *
+ * §6.1 Trigger: Cmd/Ctrl+K opens globally. z-index 1600.
+ * §6.5 Accessibility:
+ *   - The palette is a dialog (role="dialog") with focus trap.
+ *   - Results are a listbox (role="listbox"); items are role="option" with aria-selected.
+ *   - Arrow keys navigate; Enter selects; Esc closes.
+ *   - The search input has aria-label and announces result count.
+ */
+
+<script setup lang="ts">
+import { Search } from 'lucide-vue-next';
+import { nextTick, onMounted, ref, watch } from 'vue';
+import { Input } from '@/components/ui/input';
+import { useCommandPalette } from '@/composables/useCommandPalette';
+import { useI18nSafe } from '@/composables/useI18nSafe';
+import { useShortcuts } from '@/composables/useShortcuts';
+
+const { t } = useI18nSafe();
+const { isOpen, searchQuery, filteredCommands, close, open, run } = useCommandPalette();
+const { registerShortcuts } = useShortcuts();
+
+const inputRef = ref<HTMLInputElement | null>(null);
+const activeIndex = ref(0);
+const listRef = ref<HTMLElement | null>(null);
+
+// Focus the search input when the palette opens
+watch(isOpen, (open) => {
+    if (open) {
+        activeIndex.value = 0;
+        nextTick(() => inputRef.value?.focus());
+    }
+});
+
+// Reset active index when the query changes
+watch(searchQuery, () => {
+    activeIndex.value = 0;
+});
+
+// Register the global Cmd/Ctrl+K shortcut (Volume 1.1 §6.1)
+onMounted(() => {
+    registerShortcuts([
+        {
+            key: 'ctrl+k',
+            action: 'open-command-palette',
+            label: t('shell.command_palette'),
+            scope: 'global',
+            handler: () => {
+                if (!isOpen.value) {
+                    open();
+                }
+            },
+        },
+    ]);
+});
+
+function onKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        close();
+    } else if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        activeIndex.value = Math.min(activeIndex.value + 1, filteredCommands.value.length - 1);
+        scrollToActive();
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        activeIndex.value = Math.max(activeIndex.value - 1, 0);
+        scrollToActive();
+    } else if (event.key === 'Enter') {
+        event.preventDefault();
+        const command = filteredCommands.value[activeIndex.value];
+        if (command) run(command);
+    }
+}
+
+function scrollToActive() {
+    nextTick(() => {
+        listRef.value?.querySelector(`[data-index="${activeIndex.value}"]`)?.scrollIntoView({ block: 'nearest' });
+    });
+}
+</script>
+
+<template>
+    <Teleport to="body">
+        <div
+            v-if="isOpen"
+            class="fixed inset-0 z-[var(--z-command)] flex items-start justify-center bg-black/50 p-4 pt-[15vh]"
+            role="dialog"
+            aria-modal="true"
+            :aria-label="t('shell.command_palette')"
+            @click.self="close"
+        >
+            <div
+                class="w-full max-w-lg overflow-hidden rounded-lg border border-border bg-surface shadow-elevation-lg"
+                @keydown="onKeydown"
+            >
+                <!-- Search input -->
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3">
+                    <Search class="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <Input
+                        ref="inputRef"
+                        v-model="searchQuery"
+                        type="text"
+                        class="border-none bg-transparent shadow-none focus-visible:ring-0"
+                        :placeholder="t('shell.search')"
+                        :aria-label="t('shell.search')"
+                    />
+                    <kbd class="shrink-0 rounded border border-border bg-muted px-1.5 text-xs text-muted-foreground">{{
+                        t("shell.esc")
+                    }}</kbd>
+                </div>
+
+                <!-- Results -->
+                <div
+                    ref="listRef"
+                    class="max-h-80 overflow-auto py-1"
+                    role="listbox"
+                    :aria-label="t('shell.command_palette')"
+                >
+                    <p
+                        v-if="filteredCommands.length === 0"
+                        class="px-4 py-6 text-center text-sm text-muted-foreground"
+                        role="status"
+                    >
+                        {{ t('common.no_data') }}
+                    </p>
+                    <button
+                        v-for="(command, index) in filteredCommands"
+                        :key="command.id"
+                        :data-index="index"
+                        type="button"
+                        role="option"
+                        :aria-selected="index === activeIndex"
+                        class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors"
+                        :class="index === activeIndex ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-muted'"
+                        @mouseenter="activeIndex = index"
+                        @click="run(command)"
+                    >
+                        <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-xs" aria-hidden="true">
+                            <component
+                                v-if="typeof command.icon === 'object'"
+                                :is="command.icon"
+                                class="size-4"
+                            />
+                            <template v-else>{{ command.icon ?? '›' }}</template>
+                        </span>
+                        <span class="flex-1 truncate">{{ command.label }}</span>
+                        <span v-if="command.type" class="shrink-0 text-xs text-muted-foreground">{{ command.type }}</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </Teleport>
+</template>

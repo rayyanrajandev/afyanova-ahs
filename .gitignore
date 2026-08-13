@@ -1,0 +1,52 @@
+# Dependencies (regenerated via composer install / npm install)
+/vendor
+/node_modules
+
+# Environment / secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Build artifacts (regenerated via npm run build / vite)
+/public/build
+/public/hot
+/public/histoire
+
+# Laravel generated cache (storage/* is scoped by its own nested .gitignore files)
+/bootstrap/cache/*.php
+
+# Testing / coverage output
+/coverage
+.phpunit.result.cache
+/playwright-report
+/test-results
+
+# Python attendance-agent (local machine config/db, not committed)
+attendance-agent/config.json
+attendance-agent/*.db
+attendance-agent/__pycache__/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.log
+
+# Claude Code agent tooling (not part of the app itself)
+/.claude
+/.agents
+
+# Internal design docs / dev-only notes — excluded from this push by request
+/documents
+TEST_USERS.md
+SETUP_GUIDE.md
+
+# Only the top-level README.md is kept — all other .md files excluded per request
+tests/e2e/README.md
+tools/mailpit/README.md
+
+# Stray orphaned artifacts (truncated filenames, unused/superseded content —
+# not part of the real source tree; left untouched on disk, just untracked)
+/re
+/resour

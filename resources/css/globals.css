@@ -1,0 +1,253 @@
+/**
+ * AFYANOVA AHS — FRESH DESIGN SYSTEM
+ * =================================================
+ * Volume 0.2 — Design Tokens & Theming System
+ * Volume 1.2 — Global Component Library
+ *
+ * Built entirely on the token pipeline:
+ *   tokens.ts (source) → tokens.css (variables) → tailwind.css (@theme inline)
+ *
+ * Architecture:
+ *   1. Token imports
+ *   2. @layer base — resets, typography, scrollbars, selection
+ *   3. @layer utilities — focus, glass, reduced-motion, high-contrast
+ *   4. @layer components — buttons, cards, badges, alerts, status
+ */
+
+/* ================================================================
+   1. TOKEN IMPORTS
+   ================================================================ */
+@import './tokens.css';
+@import './tailwind.css';
+
+/* ================================================================
+   2. BASE LAYER
+   ================================================================ */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border, currentColor);
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+    line-height: var(--leading-normal);
+    transition:
+      background-color var(--motion-state),
+      color var(--motion-state);
+  }
+
+  /* Typography — clinical legibility */
+  h1 { @apply text-3xl font-bold tracking-tight; }
+  h2 { @apply text-2xl font-bold tracking-tight; }
+  h3 { @apply text-xl font-semibold tracking-tight; }
+  h4 { @apply text-lg font-semibold; }
+  h5 { @apply text-base font-semibold; }
+  h6 { @apply text-sm font-semibold uppercase tracking-wide; }
+
+  p {
+    @apply leading-relaxed;
+    text-wrap: pretty;
+  }
+
+  /* Selection */
+  ::selection {
+    @apply bg-primary/25 text-foreground;
+  }
+
+  /* Scrollbars — thin, themed */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--color-muted-foreground) 22%, transparent) transparent;
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--color-muted-foreground) 22%, transparent);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--color-muted-foreground) 38%, transparent);
+  }
+
+  /* Tabular numbers for clinical values (Volume 0.2 §5.1) */
+  table,
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  /* Clinical values use mono font (Volume 0.2 §5.1) */
+  .clinical-value {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1, 'zero' 1;
+  }
+}
+
+/* ================================================================
+   3. UTILITY LAYER
+   ================================================================ */
+@layer utilities {
+  /* Focus ring — always visible (Volume 0.2 §10, Volume 0.3 §6) */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  /* Skip-to-content link (Volume 0.3 §6.1) */
+  .sr-only-focusable:not(:focus):not(:focus-within) {
+    @apply sr-only;
+  }
+
+  /* Glass effect */
+  .glass {
+    background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid color-mix(in srgb, var(--color-border) 45%, transparent);
+  }
+
+  /* Elevated surface */
+  .surface-elevated {
+    @apply bg-surface text-surface-foreground;
+    box-shadow: var(--elevation-sm);
+  }
+
+  /* PHI mask (Volume 1.5 §3) */
+  .phi-mask {
+    background: var(--phi-mask);
+    opacity: var(--opacity-phi-mask);
+    border-radius: var(--radius-sm);
+  }
+
+  /* Reduced motion (Volume 0.3 §9) */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ================================================================
+   4. COMPONENT LAYER — Healthcare UI Primitives (Volume 1.2)
+   ================================================================ */
+@layer components {
+  /* ---- Buttons ---- */
+  .btn-base {
+    @apply inline-flex items-center justify-center gap-2
+           px-4 py-2.5 rounded-md text-sm font-medium
+           transition-all duration-200
+           disabled:opacity-50 disabled:pointer-events-none;
+    outline: none;
+  }
+  .btn-base:focus-visible {
+    @apply ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-primary-foreground border border-primary;
+    box-shadow: var(--elevation-sm);
+  }
+  .btn-primary:hover:not(:disabled) {
+    @apply bg-primary/90;
+    box-shadow: var(--elevation-md);
+  }
+
+  .btn-secondary {
+    @apply bg-secondary text-secondary-foreground border border-border;
+  }
+  .btn-secondary:hover:not(:disabled) {
+    @apply bg-accent text-accent-foreground border-accent;
+  }
+
+  .btn-critical {
+    @apply bg-critical text-critical-foreground border border-critical;
+  }
+  .btn-critical:hover:not(:disabled) {
+    @apply bg-critical/90;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-foreground;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    @apply bg-muted;
+  }
+
+  /* ---- Cards ---- */
+  .card {
+    @apply rounded-lg border border-border bg-surface p-6;
+    box-shadow: var(--elevation-sm);
+  }
+  .card-critical {
+    @apply border-2 border-critical bg-surface;
+  }
+  .card-warning {
+    @apply border-2 border-warning bg-surface;
+  }
+  .card-success {
+    @apply border-2 border-success bg-surface;
+  }
+
+  /* ---- Inputs ---- */
+  .input {
+    @apply w-full px-3 py-2.5 rounded-md border border-input
+           bg-input-background text-foreground placeholder:text-muted-foreground
+           transition-colors duration-200
+           disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .input:focus {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 18%, transparent);
+    outline: none;
+  }
+
+  /* ---- Badges (never color alone — Volume 0.3 §3) ---- */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium uppercase tracking-wide;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+  }
+  .badge-critical {
+    @apply bg-critical/12 text-critical border-critical/22;
+  }
+  .badge-warning {
+    @apply bg-warning/12 text-warning border-warning/22;
+  }
+  .badge-success {
+    @apply bg-success/12 text-success border-success/22;
+  }
+  .badge-info {
+    @apply bg-info/12 text-info border-info/22;
+  }
+
+  /* ---- Alerts ---- */
+  .alert {
+    @apply rounded-lg border p-4 text-sm;
+  }
+  .alert-critical { @apply border-critical/25 bg-critical/5 text-critical; }
+  .alert-warning  { @apply border-warning/25 bg-warning/5 text-warning; }
+  .alert-success  { @apply border-success/25 bg-success/5 text-success; }
+  .alert-info     { @apply border-info/25 bg-info/5 text-info; }
+}

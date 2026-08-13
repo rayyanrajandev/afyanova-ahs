@@ -1,0 +1,12 @@
+{
+  "cloud_api_url": "https://your-app.com/api",
+  "agent_token": "set-this-to-same-value-as-ATTENDANCE_AGENT_TOKEN-in-your-env",
+  "device_ip": "192.168.1.100",
+  "device_port": 4370,
+  "device_password": 0,
+  "connection_timeout": 25,
+  "api_timeout": 30,
+  "interval": 300,
+  "backoff_base": 10,
+  "backoff_max": 600
+}

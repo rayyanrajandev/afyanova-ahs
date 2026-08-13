@@ -1,0 +1,93 @@
+/**
+ * Login Page (Volume 2.9 §5, Volume 3.6 §3)
+ * ==========================================
+ * Fresh token + i18n driven login. Uses Inertia useForm to POST to the
+ * Fortify /login endpoint. All inputs, labels, checkboxes, and buttons are
+ * shadcn-vue primitives (Volume 1.2 §4.1), styled with Afyanova tokens.
+ */
+
+<script setup lang="ts">
+import { useForm } from '@inertiajs/vue3';
+import { useI18n } from 'vue-i18n';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import AuthLayout from '@/layouts/AuthLayout.vue';
+
+const { t } = useI18n();
+
+const form = useForm({
+    email: '',
+    password: '',
+    remember: false,
+});
+
+function submit() {
+    form.post('/login', {
+        onFinish: () => form.reset('password'),
+    });
+}
+</script>
+
+<template>
+    <AuthLayout>
+        <h1 class="mb-1 text-xl font-semibold text-foreground">
+            {{ t('auth.sign_in') }}
+        </h1>
+        <p class="mb-6 text-sm text-muted-foreground">
+            {{ t('auth.sign_in_hint') }}
+        </p>
+
+        <form class="flex flex-col gap-4" @submit.prevent="submit">
+            <!-- Email -->
+            <div class="grid gap-1.5">
+                <Label for="email">{{ t('auth.email') }}</Label>
+                <Input
+                    id="email"
+                    v-model="form.email"
+                    type="email"
+                    required
+                    autofocus
+                    autocomplete="email"
+                    :class="{ 'border-destructive': form.errors.email }"
+                />
+                <p v-if="form.errors.email" class="text-xs text-destructive" role="alert">
+                    {{ form.errors.email }}
+                </p>
+            </div>
+
+            <!-- Password -->
+            <div class="grid gap-1.5">
+                <div class="flex items-center justify-between">
+                    <Label for="password">{{ t('auth.password') }}</Label>
+                    <a href="/forgot-password" class="text-xs text-primary hover:underline">
+                        {{ t('auth.forgot_password') }}
+                    </a>
+                </div>
+                <Input
+                    id="password"
+                    v-model="form.password"
+                    type="password"
+                    required
+                    autocomplete="current-password"
+                    :class="{ 'border-destructive': form.errors.password }"
+                />
+                <p v-if="form.errors.password" class="text-xs text-destructive" role="alert">
+                    {{ form.errors.password }}
+                </p>
+            </div>
+
+            <!-- Remember -->
+            <Label class="flex items-center gap-2 text-sm text-foreground">
+                <Checkbox v-model="form.remember" />
+                {{ t('auth.remember_me') }}
+            </Label>
+
+            <!-- Submit -->
+            <Button type="submit" class="mt-2 w-full" :disabled="form.processing">
+                {{ form.processing ? t('common.loading') : t('auth.sign_in') }}
+            </Button>
+        </form>
+    </AuthLayout>
+</template>

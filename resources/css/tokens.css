@@ -1,0 +1,443 @@
+/**
+ * AFYANOVA DESIGN TOKENS — GENERATED CSS VARIABLES
+ * =================================================
+ * Volume 0.2 §12 — Token pipeline
+ * Source of truth: resources/ts/design/tokens.ts
+ * (This file is generated from tokens.ts; keep the source in sync.)
+ *
+ * Theme switching: `data-theme` on <html> — CSS variable swap, no re-render.
+ * Density switching: `data-density` on <html>.
+ */
+
+/* ================================================================
+   LIGHT THEME (default) — clinical daylight
+   ================================================================ */
+:root {
+  /* Surfaces */
+  --background: oklch(0.98 0.003 250);
+  --foreground: oklch(0.2 0.02 250);
+  --surface: oklch(1 0 0);
+  --surface-foreground: oklch(0.2 0.02 250);
+  --surface-raised: oklch(0.995 0.002 250);
+  --surface-raised-foreground: oklch(0.2 0.02 250);
+
+  /* Brand (teal-cyan, ADR-0002) */
+  --primary: oklch(0.55 0.09 210);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.95 0.01 250);
+  --secondary-foreground: oklch(0.2 0.02 250);
+  --muted: oklch(0.96 0.005 250);
+  --muted-foreground: oklch(0.55 0.01 250);
+  --accent: oklch(0.93 0.02 210);
+  --accent-foreground: oklch(0.2 0.02 250);
+
+  /* Status */
+  --destructive: oklch(0.55 0.18 25);
+  --destructive-foreground: oklch(1 0 0);
+  --critical: oklch(0.55 0.2 25);
+  --critical-foreground: oklch(1 0 0);
+  --warning: oklch(0.7 0.15 75);
+  --warning-foreground: oklch(0.2 0.02 250);
+  --success: oklch(0.62 0.13 150);
+  --success-foreground: oklch(1 0 0);
+  --info: oklch(0.55 0.1 250);
+  --info-foreground: oklch(1 0 0);
+
+  /* Vitals */
+  --vitals-normal: oklch(0.62 0.13 150);
+  --vitals-warning: oklch(0.7 0.15 75);
+  --vitals-critical: oklch(0.55 0.2 25);
+
+  /* Borders & inputs */
+  --border: oklch(0.9 0.01 250);
+  --input: oklch(0.9 0.01 250);
+  --input-background: oklch(0.97 0.003 250);
+  --ring: oklch(0.55 0.09 210);
+
+  /* Charts */
+  --chart-1: oklch(0.55 0.09 210);
+  --chart-2: oklch(0.62 0.13 150);
+  --chart-3: oklch(0.6 0.18 25);
+  --chart-4: oklch(0.7 0.15 75);
+  --chart-5: oklch(0.55 0.15 300);
+
+  /* Sidebar */
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.2 0.02 250);
+  --sidebar-primary: oklch(0.55 0.09 210);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.2 0.02 250);
+  --sidebar-border: oklch(0.92 0 0);
+  --sidebar-ring: oklch(0.55 0.09 210);
+
+  /* Privacy */
+  --phi-mask: oklch(0.9 0.01 250);
+
+  /* Radius */
+  --radius: 0.5rem;
+
+  /* Dialog widths (Volume 1.2 §10.4) */
+  --dialog-width-sm: 400px;
+  --dialog-width-md: 480px;
+  --dialog-width-lg: 640px;
+  --dialog-width-xl: 800px;
+}
+
+/* ================================================================
+   DARK THEME — night shift / low light
+   ================================================================ */
+[data-theme='dark'] {
+  --background: oklch(0.16 0.01 250);
+  --foreground: oklch(0.96 0.005 250);
+  --surface: oklch(0.19 0.01 250);
+  --surface-foreground: oklch(0.96 0.005 250);
+  --surface-raised: oklch(0.22 0.01 250);
+  --surface-raised-foreground: oklch(0.96 0.005 250);
+
+  --primary: oklch(0.72 0.1 210);
+  --primary-foreground: oklch(0.16 0.02 210);
+  --secondary: oklch(0.27 0.01 250);
+  --secondary-foreground: oklch(0.96 0.005 250);
+  --muted: oklch(0.25 0.01 250);
+  --muted-foreground: oklch(0.7 0.01 250);
+  --accent: oklch(0.3 0.02 210);
+  --accent-foreground: oklch(0.96 0.005 250);
+
+  --destructive: oklch(0.65 0.2 25);
+  --destructive-foreground: oklch(0.98 0.02 25);
+  --critical: oklch(0.65 0.22 25);
+  --critical-foreground: oklch(0.98 0.02 25);
+  --warning: oklch(0.75 0.16 75);
+  --warning-foreground: oklch(0.16 0.02 250);
+  --success: oklch(0.7 0.15 150);
+  --success-foreground: oklch(0.16 0.02 150);
+  --info: oklch(0.7 0.12 250);
+  --info-foreground: oklch(0.16 0.02 250);
+
+  --vitals-normal: oklch(0.7 0.15 150);
+  --vitals-warning: oklch(0.75 0.16 75);
+  --vitals-critical: oklch(0.65 0.22 25);
+
+  --border: oklch(0.28 0.01 250);
+  --input: oklch(0.28 0.01 250);
+  --input-background: oklch(0.21 0.01 250);
+  --ring: oklch(0.72 0.1 210);
+
+  --chart-1: oklch(0.72 0.1 210);
+  --chart-2: oklch(0.7 0.15 150);
+  --chart-3: oklch(0.65 0.2 25);
+  --chart-4: oklch(0.75 0.15 75);
+  --chart-5: oklch(0.7 0.15 300);
+
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.72 0.1 210);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-ring: oklch(0.72 0.1 210);
+
+  --phi-mask: oklch(0.3 0.01 250);
+}
+
+/* ================================================================
+   HIGH-CONTRAST THEME — WCAG AAA target, low vision
+   ================================================================ */
+[data-theme='high-contrast'] {
+  --background: oklch(0.99 0 0);
+  --foreground: oklch(0.1 0 0);
+  --surface: oklch(1 0 0);
+  --surface-foreground: oklch(0.1 0 0);
+  --surface-raised: oklch(1 0 0);
+  --surface-raised-foreground: oklch(0.1 0 0);
+
+  --primary: oklch(0.4 0.12 210);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.9 0.01 250);
+  --secondary-foreground: oklch(0.1 0 0);
+  --muted: oklch(0.92 0.005 250);
+  --muted-foreground: oklch(0.3 0.01 250);
+  --accent: oklch(0.85 0.04 210);
+  --accent-foreground: oklch(0.1 0 0);
+
+  --destructive: oklch(0.45 0.22 25);
+  --destructive-foreground: oklch(1 0 0);
+  --critical: oklch(0.45 0.22 25);
+  --critical-foreground: oklch(1 0 0);
+  --warning: oklch(0.55 0.18 75);
+  --warning-foreground: oklch(0.1 0 0);
+  --success: oklch(0.45 0.16 150);
+  --success-foreground: oklch(1 0 0);
+  --info: oklch(0.4 0.14 250);
+  --info-foreground: oklch(1 0 0);
+
+  --vitals-normal: oklch(0.45 0.16 150);
+  --vitals-warning: oklch(0.55 0.18 75);
+  --vitals-critical: oklch(0.45 0.22 25);
+
+  --border: oklch(0.6 0.01 250);
+  --input: oklch(0.6 0.01 250);
+  --input-background: oklch(0.98 0 0);
+  --ring: oklch(0.4 0.12 210);
+
+  --chart-1: oklch(0.4 0.12 210);
+  --chart-2: oklch(0.45 0.16 150);
+  --chart-3: oklch(0.45 0.22 25);
+  --chart-4: oklch(0.55 0.18 75);
+  --chart-5: oklch(0.4 0.18 300);
+
+  --sidebar: oklch(0.99 0 0);
+  --sidebar-foreground: oklch(0.1 0 0);
+  --sidebar-primary: oklch(0.4 0.12 210);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.92 0.005 250);
+  --sidebar-accent-foreground: oklch(0.1 0 0);
+  --sidebar-border: oklch(0.6 0.01 250);
+  --sidebar-ring: oklch(0.4 0.12 210);
+
+  --phi-mask: oklch(0.85 0.01 250);
+}
+
+/* ================================================================
+   DEUTERANOPIA THEME — red-green color-blind safe
+   ================================================================ */
+[data-theme='deuteranopia'] {
+  /* Inherits light; shifts green success to blue for deuteranopia safety */
+  --success: oklch(0.6 0.12 250);
+  --success-foreground: oklch(1 0 0);
+  --vitals-normal: oklch(0.6 0.12 250);
+  --chart-2: oklch(0.6 0.12 250);
+  --chart-3: oklch(0.55 0.18 25);
+}
+
+/* ================================================================
+   TRITANOPIA THEME — blue-yellow color-blind safe
+   ================================================================ */
+[data-theme='tritanopia'] {
+  /* Inherits light; shifts blue info to red, amber warning to green */
+  --info: oklch(0.55 0.18 25);
+  --info-foreground: oklch(1 0 0);
+  --warning: oklch(0.62 0.13 150);
+  --warning-foreground: oklch(1 0 0);
+  --vitals-warning: oklch(0.62 0.13 150);
+  --chart-1: oklch(0.55 0.18 25);
+  --chart-4: oklch(0.62 0.13 150);
+}
+
+/* ================================================================
+   IMAGING THEME — radiology, pure black, no chroma
+   ================================================================ */
+[data-theme='imaging'] {
+  --background: oklch(0 0 0);
+  --foreground: oklch(0.98 0 0);
+  --surface: oklch(0.1 0 0);
+  --surface-foreground: oklch(0.98 0 0);
+  --surface-raised: oklch(0.15 0 0);
+  --surface-raised-foreground: oklch(0.98 0 0);
+
+  --primary: oklch(0.8 0 0);
+  --primary-foreground: oklch(0 0 0);
+  --secondary: oklch(0.2 0 0);
+  --secondary-foreground: oklch(0.98 0 0);
+  --muted: oklch(0.18 0 0);
+  --muted-foreground: oklch(0.7 0 0);
+  --accent: oklch(0.25 0 0);
+  --accent-foreground: oklch(0.98 0 0);
+
+  --destructive: oklch(0.7 0 0);
+  --destructive-foreground: oklch(0 0 0);
+  --critical: oklch(0.7 0 0);
+  --critical-foreground: oklch(0 0 0);
+  --warning: oklch(0.75 0 0);
+  --warning-foreground: oklch(0 0 0);
+  --success: oklch(0.75 0 0);
+  --success-foreground: oklch(0 0 0);
+  --info: oklch(0.75 0 0);
+  --info-foreground: oklch(0 0 0);
+
+  --vitals-normal: oklch(0.75 0 0);
+  --vitals-warning: oklch(0.75 0 0);
+  --vitals-critical: oklch(0.7 0 0);
+
+  --border: oklch(0.3 0 0);
+  --input: oklch(0.3 0 0);
+  --input-background: oklch(0.12 0 0);
+  --ring: oklch(0.8 0 0);
+
+  --chart-1: oklch(0.8 0 0);
+  --chart-2: oklch(0.75 0 0);
+  --chart-3: oklch(0.7 0 0);
+  --chart-4: oklch(0.75 0 0);
+  --chart-5: oklch(0.8 0 0);
+
+  --sidebar: oklch(0.05 0 0);
+  --sidebar-foreground: oklch(0.98 0 0);
+  --sidebar-primary: oklch(0.8 0 0);
+  --sidebar-primary-foreground: oklch(0 0 0);
+  --sidebar-accent: oklch(0.15 0 0);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
+  --sidebar-border: oklch(0.25 0 0);
+  --sidebar-ring: oklch(0.8 0 0);
+
+  --phi-mask: oklch(0.25 0 0);
+}
+
+/* ================================================================
+   DENSITY MODES (Volume 0.2 §6.2)
+   ================================================================ */
+:root,
+[data-density='comfortable'] {
+  --space-control-xs: 6px;
+  --space-control-sm: 8px;
+  --space-control-md: 12px;
+  --space-control-lg: 16px;
+  --space-page: 24px;
+  --space-section: 32px;
+  --size-control-sm: 32px;
+  --size-control-md: 36px;
+  --size-control-lg: 40px;
+  --size-icon-sm: 16px;
+  --size-icon-md: 20px;
+  --size-icon-lg: 24px;
+  /* Shell layout tokens (Volume 1.1 §11) — added 2026-08-10, previously
+     referenced by AppShell.vue with a hardcoded fallback and never
+     actually defined, so the shell never varied by density. */
+  --shell-topbar-height: 56px;
+  --shell-navrail-width: 64px;
+  --shell-navrail-width-expanded: 220px;
+  --shell-statusbar-height: 28px;
+  --shell-pane-min-width: 320px;
+  --shell-pane-handle-width: 6px;
+  --shell-banner-height: 64px;
+  --shell-content-padding: var(--space-page);
+}
+
+[data-density='compact'] {
+  --space-control-xs: 2px;
+  --space-control-sm: 6px;
+  --space-control-md: 8px;
+  --space-control-lg: 12px;
+  --space-page: 16px;
+  --space-section: 24px;
+  --size-control-sm: 28px;
+  --size-control-md: 32px;
+  --size-control-lg: 36px;
+  --size-icon-sm: 16px;
+  --size-icon-md: 20px;
+  --size-icon-lg: 24px;
+  --shell-topbar-height: 48px;
+  --shell-navrail-width: 56px;
+  --shell-navrail-width-expanded: 200px;
+  --shell-statusbar-height: 24px;
+  --shell-pane-min-width: 280px;
+  --shell-pane-handle-width: 4px;
+  --shell-banner-height: 56px;
+  --shell-content-padding: var(--space-page);
+}
+
+[data-density='spacious'] {
+  --space-control-xs: 8px;
+  --space-control-sm: 12px;
+  --space-control-md: 16px;
+  --space-control-lg: 20px;
+  --space-page: 32px;
+  --space-section: 48px;
+  --size-control-sm: 36px;
+  --size-control-md: 44px; /* gloved-hand minimum (Volume 0.3 §5) */
+  --size-control-lg: 48px;
+  --size-icon-sm: 20px;
+  --size-icon-md: 24px;
+  --size-icon-lg: 32px;
+  --shell-topbar-height: 64px;
+  --shell-navrail-width: 72px;
+  --shell-navrail-width-expanded: 240px;
+  --shell-statusbar-height: 32px;
+  --shell-pane-min-width: 360px;
+  --shell-pane-handle-width: 8px;
+  --shell-banner-height: 72px;
+  --shell-content-padding: var(--space-page);
+}
+
+/* ================================================================
+   MOTION, Z-INDEX & FOCUS (Volume 0.2 §8–§10)
+   ================================================================ */
+:root {
+  /* Motion durations */
+  --motion-instant: 0.01ms;
+  --motion-fast: 100ms;
+  --motion-base: 150ms;
+  --motion-slow: 250ms;
+  --motion-slower: 400ms;
+
+  /* Motion easing */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+
+  /* Semantic motion intents */
+  --motion-enter: var(--motion-slow) var(--ease-emphasized);
+  --motion-exit: var(--motion-base) var(--ease-in);
+  --motion-state: var(--motion-fast) var(--ease-standard);
+  --motion-shift: var(--motion-base) var(--ease-standard);
+
+  /* Z-index layer map */
+  --z-base: 0;
+  --z-dropdown: 1000;
+  --z-sticky: 1100;
+  --z-drawer: 1200;
+  --z-modal: 1300;
+  --z-popover: 1400;
+  --z-toast: 1500;
+  --z-command: 1600;
+
+  /* Focus system */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring-style: solid;
+  --focus-ring-color: var(--ring);
+
+  /* Elevation */
+  --elevation-none: none;
+  --elevation-sm: 0 1px 2px 0 oklch(0 0 0 / 0.05);
+  --elevation-md: 0 2px 4px -1px oklch(0 0 0 / 0.08), 0 1px 2px 0 oklch(0 0 0 / 0.04);
+  --elevation-lg: 0 8px 16px -4px oklch(0 0 0 / 0.1), 0 4px 6px -2px oklch(0 0 0 / 0.05);
+  --elevation-xl: 0 16px 32px -8px oklch(0 0 0 / 0.14), 0 8px 16px -4px oklch(0 0 0 / 0.06);
+
+  /* Opacity */
+  --opacity-disabled: 0.5;
+  --opacity-overlay: 0.5;
+  --opacity-hover: 0.8;
+  --opacity-phi-mask: 0.12;
+
+  /* Typography — 'Inter Variable'/'DM Mono' are self-hosted (tailwind.css
+     imports @fontsource-variable/inter + @fontsource/dm-mono); the rest
+     of each stack is the pre-existing OS-font fallback chain, used only
+     if the webfont somehow fails to load. */
+  --font-sans:
+    'Inter Variable', 'Inter', 'Aptos', 'Segoe UI Variable', 'Segoe UI', system-ui,
+    -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    'DM Mono', 'JetBrains Mono', 'SF Mono', Fira Code, Consolas,
+    Monaco, 'Courier New', monospace;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+}
+
+/* Reduced motion collapses all durations (Volume 0.3 §9) */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-instant: 0.01ms;
+    --motion-fast: 0.01ms;
+    --motion-base: 0.01ms;
+    --motion-slow: 0.01ms;
+    --motion-slower: 0.01ms;
+  }
+}

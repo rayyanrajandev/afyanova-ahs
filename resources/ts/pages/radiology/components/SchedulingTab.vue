@@ -92,7 +92,7 @@ async function cancel() {
 </script>
 
 <template>
-  <div class="space-y-4 p-4 max-w-4xl">
+  <div class="space-y-3.5 p-3.5 w-full">
     <!-- Header Section -->
     <div class="flex items-center justify-between border-b border-border pb-3">
       <div class="flex items-center gap-2">

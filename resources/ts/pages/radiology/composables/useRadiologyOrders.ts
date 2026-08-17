@@ -254,15 +254,36 @@ export function useRadiologyOrders() {
 
       orders.value = (body.data ?? []).map((raw) => {
         const patient = (raw.patient ?? {}) as Record<string, unknown>;
+        const pFirst = (patient.firstName as string) || (raw.patientFirstName as string) || "";
+        const pMiddle = (patient.middleName as string) || "";
+        const pLast = (patient.lastName as string) || (raw.patientLastName as string) || "";
+        const pFullName = [pFirst, pMiddle, pLast].filter(Boolean).join(" ");
+
+        const patientName =
+          (patient.name as string) ||
+          (patient.fullName as string) ||
+          (pFullName.length > 0 ? pFullName : (raw.patientName as string) || undefined);
+        const patientMrn =
+          (patient.mrn as string) ||
+          (patient.patientNumber as string) ||
+          (raw.patientMrn as string) ||
+          (raw.patientNumber as string) ||
+          undefined;
+        const patientGender =
+          (patient.gender as string) || (raw.patientGender as string) || undefined;
+        const patientAge =
+          (patient.age as string | number) ||
+          (raw.patientAge as string | number) ||
+          (patient.dateOfBirth ? `${new Date().getFullYear() - new Date(patient.dateOfBirth as string).getFullYear()} yrs` : undefined);
 
         return {
           id: String(raw.id),
           orderNumber: (raw.orderNumber as string) ?? undefined,
           patientId: String(raw.patientId ?? ""),
-          patientName: (patient.fullName as string) ?? (raw.patientName as string) ?? undefined,
-          patientMrn: (patient.patientNumber as string) ?? undefined,
-          patientGender: (patient.gender as string) ?? undefined,
-          patientAge: (patient.age as number) ?? undefined,
+          patientName,
+          patientMrn,
+          patientGender,
+          patientAge,
           appointmentId: (raw.appointmentId as string) ?? null,
           modality: (raw.modality as string) ?? "xray",
           procedureCode: (raw.procedureCode as string) ?? null,

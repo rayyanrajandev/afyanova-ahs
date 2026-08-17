@@ -111,7 +111,7 @@ export function usePatientRegistration(registrationOptions: UsePatientRegistrati
     liveCheckTimer = setTimeout(async () => {
       isCheckingDuplicates.value = true;
       try {
-        const res = await fetch("/api/v1/patients/duplicate-check", {
+        const res = await fetch("/api/v1/reception/patients/duplicate-check", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

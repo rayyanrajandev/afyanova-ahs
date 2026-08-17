@@ -128,7 +128,7 @@ export function usePatientProfile(selectedPatient: ComputedRef<Patient | null>) 
   async function fetchPatientActivityFeed(patientId: string) {
     try {
       const res = await fetch(
-        `/api/v1/patients/${encodeURIComponent(patientId)}/activity-feed?perPage=8`,
+        `/api/v1/reception/patients/${encodeURIComponent(patientId)}/activity-feed?perPage=8`,
         { headers: { "X-Requested-With": "XMLHttpRequest" } },
       );
       if (!res.ok) {

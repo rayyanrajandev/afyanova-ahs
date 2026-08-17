@@ -55,7 +55,15 @@ class WorkspaceTestUsersSeeder extends Seeder
                 'name' => 'Lab Technician Test',
                 'email' => 'lab@local.test',
                 'role_code' => 'LAB.STAFF',
+                'additional_role_code' => 'LAB.SUPERVISOR',
                 'facility_role' => 'lab_technician',
+                'is_platform_admin' => false,
+            ],
+            [
+                'name' => 'Lab Supervisor Test',
+                'email' => 'lab.supervisor@local.test',
+                'role_code' => 'LAB.SUPERVISOR',
+                'facility_role' => 'lab_supervisor',
                 'is_platform_admin' => false,
             ],
             [
@@ -94,10 +102,16 @@ class WorkspaceTestUsersSeeder extends Seeder
             $user->save();
 
             // Attach RBAC role if present
-            if ($cfg['role_code']) {
+            if (!empty($cfg['role_code'])) {
                 $role = RoleModel::where('code', $cfg['role_code'])->first();
                 if ($role) {
                     $user->roles()->syncWithoutDetaching([$role->id]);
+                }
+            }
+            if (!empty($cfg['additional_role_code'])) {
+                $addRole = RoleModel::where('code', $cfg['additional_role_code'])->first();
+                if ($addRole) {
+                    $user->roles()->syncWithoutDetaching([$addRole->id]);
                 }
             }
 

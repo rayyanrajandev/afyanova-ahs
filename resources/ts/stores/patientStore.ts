@@ -496,11 +496,16 @@ export const usePatientStore = defineStore('patient', () => {
      */
     async function fetchPatientSummary(id: string): Promise<PatientSummary | null> {
         try {
-            let res = await fetch(`${BASE_URL}/patients/${encodeURIComponent(id)}/summary`, {
+            // Workspace-scoped first, mirroring fetchPatient() above: reception,
+            // then clinician on a 403. This used to try the *generic*
+            // /patients/{id}/summary first and only fall back to reception,
+            // which made the legacy route the primary path for a store that
+            // nursing and clinician both use (2026-08-17).
+            let res = await fetch(`${BASE_URL}/reception/patients/${encodeURIComponent(id)}/summary`, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
             });
-            if (!res.ok) {
-                res = await fetch(`${BASE_URL}/reception/patients/${encodeURIComponent(id)}/summary`, {
+            if (!res.ok && res.status === 403) {
+                res = await fetch(`${BASE_URL}/clinician/patients/${encodeURIComponent(id)}/summary`, {
                     headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 });
             }

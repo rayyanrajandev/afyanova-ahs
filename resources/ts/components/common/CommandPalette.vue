@@ -84,7 +84,7 @@ function onSearchInput() {
   isLoading.value = true;
   if (searchDebounce) clearTimeout(searchDebounce);
   searchDebounce = setTimeout(() => {
-    void fetch(`/api/v1/patients/search?q=${encodeURIComponent(query)}`, {
+    void fetch(`/api/v1/reception/patients/search?q=${encodeURIComponent(query)}`, {
       headers: { "X-Requested-With": "XMLHttpRequest" },
     })
       .then((res) => (res.ok ? (res.json() as Promise<{ data?: Patient[] }>) : null))

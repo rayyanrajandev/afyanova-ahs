@@ -4,12 +4,10 @@
  * - Quick Time Slot Presets (30m, 2h, Tomorrow Morning, Tomorrow Afternoon)
  * - Examination Suite & Modality Equipment Assignment
  * - Pre-Procedure Patient Preparation Checklist (Fasting, Hydration, Contrast)
- * - Reschedule and Safe Cancellation Workflows
  */
 
 <script setup lang="ts">
 import {
-  AlertCircle,
   Calendar,
   CalendarClock,
   CheckCircle2,
@@ -19,7 +17,6 @@ import {
   Layers,
   Sparkles,
   UtensilsCrossed,
-  XCircle,
   Zap,
 } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
@@ -28,7 +25,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import type { RadiologyOrder, UseRadiologyOrders } from "../composables/useRadiologyOrders";
 
 const props = defineProps<{
@@ -39,17 +35,12 @@ const props = defineProps<{
 const { t } = useI18n({ useScope: "global" });
 
 const slot = ref("");
-const cancelReason = ref("");
-const showCancel = ref(false);
-const selectedSuite = ref("Suite 1");
 
 /** Reset the form when a different study is selected. */
 watch(
   () => props.order.id,
   () => {
     slot.value = toLocalInput(props.order.scheduledFor);
-    cancelReason.value = "";
-    showCancel.value = false;
   },
   { immediate: true },
 );
@@ -65,7 +56,6 @@ function toLocalInput(value: string | null | undefined): string {
 
 const isBookable = computed(() => props.order.status === "ordered");
 const isBooked = computed(() => props.order.status === "scheduled");
-const canCancel = computed(() => ["ordered", "scheduled"].includes(props.order.status));
 
 function applyPreset(minutesFromNow: number) {
   const d = new Date(Date.now() + minutesFromNow * 60 * 1000);
@@ -82,12 +72,6 @@ function applyTomorrowPreset(hour: number) {
 async function book() {
   if (!slot.value) return;
   await props.radiology.scheduleStudy(props.order.id, new Date(slot.value).toISOString());
-}
-
-async function cancel() {
-  if (!cancelReason.value.trim()) return;
-  await props.radiology.cancelStudy(props.order.id, cancelReason.value.trim());
-  showCancel.value = false;
 }
 </script>
 
@@ -280,58 +264,6 @@ async function cancel() {
           </p>
         </div>
       </section>
-    </div>
-
-    <!-- Safe Cancellation Accordion / Action -->
-    <div v-if="canCancel" class="border-t border-border/70 pt-3">
-      <div v-if="!showCancel">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          class="h-7 gap-1 px-2.5 text-xs text-rose-600 hover:bg-rose-500/10 cursor-pointer"
-          @click="showCancel = true"
-        >
-          <XCircle class="size-3.5" />
-          <span>{{ t('radiology.cancel_study', 'Cancel Imaging Order') }}</span>
-        </Button>
-      </div>
-
-      <div v-else class="p-3.5 rounded-lg border border-rose-500/30 bg-rose-500/5 space-y-2.5 max-w-lg">
-        <div class="flex items-center gap-2 text-rose-700 dark:text-rose-400 font-bold text-xs">
-          <AlertCircle class="size-4" />
-          <span>{{ t('radiology.cancel_reason_title', 'Reason for Cancellation') }}</span>
-        </div>
-
-        <Textarea
-          v-model="cancelReason"
-          rows="2"
-          class="text-xs resize-none bg-background"
-          :placeholder="t('radiology.cancel_reason_placeholder', 'e.g. Patient declined, duplicate request, contraindicated...')"
-        />
-
-        <div class="flex items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            class="h-7 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer"
-            :disabled="!cancelReason.trim() || props.radiology.isUpdatingOrder.value"
-            @click="cancel"
-          >
-            {{ t('radiology.confirm_cancel', 'Confirm Cancellation') }}
-          </Button>
-
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            class="h-7 text-xs cursor-pointer"
-            @click="showCancel = false"
-          >
-            {{ t('common.cancel', 'Back') }}
-          </Button>
-        </div>
-      </div>
     </div>
   </div>
 </template>

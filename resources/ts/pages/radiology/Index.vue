@@ -114,6 +114,7 @@ watch(
                 :order="radiology.selectedOrder.value"
                 :patient-orders="radiology.selectedPatientOrders.value"
                 :on-select-order="radiology.selectOrder"
+                :radiology="radiology"
               />
 
               <RadiologyStageBar

@@ -6,10 +6,12 @@
  * - Modality Badge & Study Description
  * - Ordering Clinician & Clinical Indication preview
  * - Acuity / Status Badges & Scheduled Slot Time
+ * - Header Actions: Cancel Study modal dialog
  */
 
 <script setup lang="ts">
 import {
+  AlertCircle,
   CalendarClock,
   Clock,
   FileText,
@@ -17,20 +19,52 @@ import {
   ShieldCheck,
   Stethoscope,
   User,
+  X,
+  XCircle,
 } from "lucide-vue-next";
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { stepBadgeStatus, stepLabelKey } from "@/composables/patientFlowStep";
 import { Badge } from "@/components/ui/badge";
-import type { RadiologyOrder } from "../composables/useRadiologyOrders";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import type { RadiologyOrder, UseRadiologyOrders } from "../composables/useRadiologyOrders";
 
 const props = defineProps<{
   order: RadiologyOrder;
   patientOrders?: RadiologyOrder[];
   onSelectOrder?: (orderId: string) => void;
+  radiology?: UseRadiologyOrders;
 }>();
 
 const { t } = useI18n({ useScope: "global" });
+
+const showCancelModal = ref(false);
+const cancelReason = ref("");
+
+const canCancel = computed(() =>
+  Boolean(props.radiology) &&
+  ["ordered", "scheduled"].includes(props.order.status) &&
+  !props.order.verifiedAt,
+);
+
+const CANCEL_PRESETS = [
+  "Patient declined examination",
+  "Duplicate imaging request",
+  "Medically contraindicated",
+  "Patient referred to higher center",
+];
+
+function applyCancelPreset(preset: string) {
+  cancelReason.value = preset;
+}
+
+async function handleConfirmCancel() {
+  if (!cancelReason.value.trim() || !props.radiology) return;
+  await props.radiology.cancelStudy(props.order.id, cancelReason.value.trim());
+  cancelReason.value = "";
+  showCancelModal.value = false;
+}
 
 const visitStageLabel = computed<string | null>(() => {
   const key = stepLabelKey(props.order.visitStage);
@@ -61,7 +95,6 @@ function modalityBadgeClass(modality: string): string {
     case "ct":
       return "border-purple-500/40 text-purple-700 dark:text-purple-300 bg-purple-500/10";
     case "mri":
-    case "mr":
       return "border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10";
     case "mammography":
     case "mammo":
@@ -140,7 +173,7 @@ const scheduledLabel = computed<string | null>(() => {
         </div>
       </div>
 
-      <!-- Right: Status / Slot Badges -->
+      <!-- Right: Status / Slot Badges & Actions -->
       <div class="flex shrink-0 flex-wrap items-center gap-2">
         <!-- Scheduled Time Slot -->
         <Badge
@@ -171,6 +204,95 @@ const scheduledLabel = computed<string | null>(() => {
           <ShieldCheck class="size-3" />
           {{ t('radiology.verified_released', 'Released') }}
         </Badge>
+
+        <!-- Cancel Study Button -->
+        <Button
+          v-if="canCancel"
+          type="button"
+          size="sm"
+          variant="ghost"
+          class="h-7 gap-1 px-2 text-xs font-semibold text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 cursor-pointer border border-rose-500/30 ml-1"
+          @click="showCancelModal = true"
+        >
+          <XCircle class="size-3.5" />
+          <span>{{ t('radiology.cancel_study', 'Cancel Study') }}</span>
+        </Button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Safe Cancellation Modal Dialog -->
+  <div
+    v-if="showCancelModal"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+    @click.self="showCancelModal = false"
+  >
+    <div class="w-full max-w-md rounded-xl border border-rose-500/30 bg-popover p-5 shadow-2xl space-y-4 text-xs">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between border-b border-border pb-3">
+        <div class="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-bold text-sm">
+          <AlertCircle class="size-4.5" />
+          <span>{{ t('radiology.cancel_study', 'Cancel Imaging Order') }}</span>
+        </div>
+        <button
+          type="button"
+          class="text-muted-foreground hover:text-foreground cursor-pointer p-1 rounded"
+          @click="showCancelModal = false"
+        >
+          <X class="size-4" />
+        </button>
+      </div>
+
+      <p class="text-xs text-muted-foreground">
+        Are you sure you want to cancel the <strong class="text-foreground">{{ props.order.studyDescription }}</strong> for <strong class="text-foreground">{{ props.order.patientName }}</strong>?
+      </p>
+
+      <!-- Reason Presets -->
+      <div class="space-y-1.5">
+        <span class="text-[10.5px] font-semibold text-muted-foreground block">
+          {{ t('radiology.cancel_reason_title', 'Reason for Cancellation') }}:
+        </span>
+        <div class="flex flex-wrap gap-1">
+          <button
+            v-for="preset in CANCEL_PRESETS"
+            :key="preset"
+            type="button"
+            class="px-2 py-0.5 rounded border border-border text-[10.5px] text-muted-foreground hover:border-primary/40 hover:text-foreground cursor-pointer bg-muted/30"
+            @click="applyCancelPreset(preset)"
+          >
+            {{ preset }}
+          </button>
+        </div>
+      </div>
+
+      <Textarea
+        v-model="cancelReason"
+        rows="2"
+        class="text-xs resize-none bg-background"
+        :placeholder="t('radiology.cancel_reason_placeholder', 'e.g. Patient declined, duplicate request, contraindicated...')"
+      />
+
+      <!-- Modal Actions -->
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-border">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          class="h-8 text-xs cursor-pointer"
+          @click="showCancelModal = false"
+        >
+          {{ t('common.cancel', 'Back') }}
+        </Button>
+
+        <Button
+          type="button"
+          size="sm"
+          class="h-8 text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer disabled:opacity-60"
+          :disabled="!cancelReason.trim() || props.radiology?.isUpdatingOrder.value"
+          @click="handleConfirmCancel"
+        >
+          {{ t('radiology.confirm_cancel', 'Confirm Cancellation') }}
+        </Button>
       </div>
     </div>
   </div>

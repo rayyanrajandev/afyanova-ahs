@@ -221,11 +221,13 @@ async function openPatientRecord(
         visitCategory: appt.department ?? null,
       };
     }
-    resultsManager.fetchResults(patientId);
   } else {
     encounterManager.resetNoteFields();
     ordersManager.clearOrders();
   }
+
+  // Fetch all diagnostic laboratory and radiology results for the selected patient
+  resultsManager.fetchResults(patientId);
 }
 
 // Sync selected patient, encounter, and active tabs with URL query params (?patient=...&encounter=...&tab=...&chartTab=...)

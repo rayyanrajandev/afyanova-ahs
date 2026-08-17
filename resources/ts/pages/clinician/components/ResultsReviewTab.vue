@@ -156,8 +156,16 @@ onMounted(() => {
           </div>
 
           <div v-if="result.interpretation" class="border-t border-border/60 pt-2 text-xs">
-            <span class="text-muted-foreground text-[10.5px] block font-semibold">{{ t("clinician.impression") }}:</span>
-            <p class="text-foreground leading-relaxed mt-0.5">{{ result.interpretation }}</p>
+            <span class="text-muted-foreground text-[10.5px] block font-semibold">
+              {{ result.category === 'imaging' ? t('clinician.imaging_findings_impression', 'Diagnostic Findings & Impression:') : t("clinician.impression") + ':' }}
+            </span>
+            <div
+              v-if="result.category === 'imaging'"
+              class="text-foreground leading-relaxed mt-1 p-2.5 rounded bg-muted/20 border border-border/50 whitespace-pre-wrap font-mono text-[11px]"
+            >
+              {{ result.interpretation }}
+            </div>
+            <p v-else class="text-foreground leading-relaxed mt-0.5">{{ result.interpretation }}</p>
           </div>
         </div>
       </div>

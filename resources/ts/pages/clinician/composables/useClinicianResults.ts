@@ -38,77 +38,112 @@ export function useClinicianResults() {
     isResultsLoading.value = true;
     resultsError.value = null;
     try {
-      // Only fetch verified/completed results — unverified lab work must not be visible to clinicians
-      const url = patientId
+      // 1. Fetch verified/completed Laboratory results
+      const labUrl = patientId
         ? `/api/v1/clinician/results?patientId=${encodeURIComponent(patientId)}&status=completed`
         : "/api/v1/clinician/results?status=completed";
 
-      const res = await fetch(url, {
-        headers: { "X-Requested-With": "XMLHttpRequest" },
-      });
+      // 2. Fetch completed/verified Radiology imaging results
+      const radUrl = patientId
+        ? `/api/v1/radiology/orders?patientId=${encodeURIComponent(patientId)}&status=completed`
+        : "/api/v1/radiology/orders?status=completed";
 
-      if (!res.ok) {
-        throw new Error("Failed to fetch diagnostic results");
-      }
+      const [labRes, radRes] = await Promise.all([
+        fetch(labUrl, { headers: { "X-Requested-With": "XMLHttpRequest" } }).catch(() => null),
+        fetch(radUrl, { headers: { "X-Requested-With": "XMLHttpRequest" } }).catch(() => null),
+      ]);
 
-      const body = await res.json();
       const resultsList: DiagnosticResultItem[] = [];
 
-      for (const item of (body.data ?? [])) {
-        const isLab = !item.modality && (item.category === "lab" || !!item.testCode || !!item.labTestCatalogItemId || !!item.specimenType);
+      // Process Laboratory Results
+      if (labRes && labRes.ok) {
+        const body = await labRes.json();
+        for (const item of (body.data ?? [])) {
+          const isLab = !item.modality && (item.category === "lab" || !!item.testCode || !!item.labTestCatalogItemId || !!item.specimenType);
 
-        // Strict Medicolegal Gate: Unverified lab work (draft) must NEVER appear on the clinician chart
-        const isVerified = isLab ? !!item.verifiedAt : (!!item.verifiedAt || item.status === "completed");
-        if (!isVerified) {
-          continue;
-        }
+          // Strict Medicolegal Gate: Unverified lab work (draft) must NEVER appear on the clinician chart
+          const isVerified = isLab ? !!item.verifiedAt : (!!item.verifiedAt || item.status === "completed");
+          if (!isVerified) {
+            continue;
+          }
 
-        const technicianName = item.verifiedBy || item.technicianName || item.performedBy || "Lab Staff";
-        const performedAt = item.verifiedAt || item.resultedAt || item.performedAt || item.createdAt || new Date().toISOString();
+          const technicianName = item.verifiedBy || item.technicianName || item.performedBy || "Lab Staff";
+          const performedAt = item.verifiedAt || item.resultedAt || item.performedAt || item.createdAt || new Date().toISOString();
 
-        // If structured resultParameters exist, unpack each parameter for clean clinician review
-        if (Array.isArray(item.resultParameters) && item.resultParameters.length > 0) {
-          for (const param of item.resultParameters) {
+          // If structured resultParameters exist, unpack each parameter for clean clinician review
+          if (Array.isArray(item.resultParameters) && item.resultParameters.length > 0) {
+            for (const param of item.resultParameters) {
+              resultsList.push({
+                id: `${item.id}-${param.code || param.name}`,
+                encounterId: item.encounterId,
+                patientId: item.patientId,
+                testName: item.resultParameters.length > 1 ? `${item.testName} (${param.name})` : (item.testName || param.name),
+                category: "lab",
+                value: param.value !== undefined && param.value !== null && param.value !== "" ? String(param.value) : (item.resultSummary || "—"),
+                unit: param.unit || item.catalogUnit || "",
+                referenceRange: param.referenceRange || param.reference || "—",
+                flag: param.flag === "critical" || param.isCritical ? "critical" : (param.flag === "abnormal" || param.isAbnormal ? "abnormal" : "normal"),
+                performedAt,
+                technicianName,
+                isAcknowledged: !!item.acknowledgedAt || !!item.isAcknowledged,
+                acknowledgedBy: item.acknowledgedBy,
+                interpretation: item.verificationNote || item.clinicalNotes || item.resultSummary,
+                conclusion: item.verificationNote || item.resultSummary,
+              });
+            }
+          } else {
+            // Single summary or qualitative result
             resultsList.push({
-              id: `${item.id}-${param.code || param.name}`,
+              id: item.id || `res-${Math.random()}`,
               encounterId: item.encounterId,
               patientId: item.patientId,
-              testName: item.resultParameters.length > 1 ? `${item.testName} (${param.name})` : (item.testName || param.name),
-              category: "lab",
-              value: param.value !== undefined && param.value !== null && param.value !== "" ? String(param.value) : (item.resultSummary || "—"),
-              unit: param.unit || item.catalogUnit || "",
-              referenceRange: param.referenceRange || param.reference || "—",
-              flag: param.flag === "critical" || param.isCritical ? "critical" : (param.flag === "abnormal" || param.isAbnormal ? "abnormal" : "normal"),
+              testName: item.testName || item.test || "Diagnostic Test",
+              category: isLab ? "lab" : "imaging",
+              value: item.resultSummary || item.value || item.resultValue || "—",
+              unit: item.catalogUnit || item.unit || "",
+              referenceRange: item.referenceRange || item.reference || "—",
+              flag: item.flag || (item.isCritical ? "critical" : item.isAbnormal ? "abnormal" : "normal"),
               performedAt,
               technicianName,
               isAcknowledged: !!item.acknowledgedAt || !!item.isAcknowledged,
               acknowledgedBy: item.acknowledgedBy,
-              interpretation: item.verificationNote || item.clinicalNotes || item.resultSummary,
-              conclusion: item.verificationNote || item.resultSummary,
+              interpretation: item.verificationNote || item.interpretation || item.impression || item.notes || item.conclusion,
+              conclusion: item.verificationNote || item.conclusion || item.impression || item.notes,
             });
           }
-        } else {
-          // Single summary or qualitative result
-          resultsList.push({
-            id: item.id || `res-${Math.random()}`,
-            encounterId: item.encounterId,
-            patientId: item.patientId,
-            testName: item.testName || item.test || "Diagnostic Test",
-            category: isLab ? "lab" : "imaging",
-            value: item.resultSummary || item.value || item.resultValue || "—",
-            unit: item.catalogUnit || item.unit || "",
-            referenceRange: item.referenceRange || item.reference || "—",
-            flag: item.flag || (item.isCritical ? "critical" : item.isAbnormal ? "abnormal" : "normal"),
-            performedAt,
-            technicianName,
-            isAcknowledged: !!item.acknowledgedAt || !!item.isAcknowledged,
-            acknowledgedBy: item.acknowledgedBy,
-            interpretation: item.verificationNote || item.interpretation || item.impression || item.notes || item.conclusion,
-            conclusion: item.verificationNote || item.conclusion || item.impression || item.notes,
-          });
         }
       }
 
+      // Process Radiology Imaging Results
+      if (radRes && radRes.ok) {
+        const radBody = await radRes.json();
+        for (const order of (radBody.data ?? [])) {
+          if (order.reportSummary || order.status === "completed" || order.verifiedAt) {
+            const technicianName = order.verifiedBy || order.orderingClinician || "Radiology Specialist";
+            const performedAt = order.verifiedAt || order.completedAt || order.orderedAt || new Date().toISOString();
+
+            resultsList.push({
+              id: `rad-${order.id}`,
+              encounterId: order.appointmentId || undefined,
+              patientId: order.patientId,
+              testName: order.studyDescription || order.procedureCode || "Diagnostic Imaging Study",
+              category: "imaging",
+              value: order.verifiedAt ? "Final Verified Report" : "Report Submitted",
+              unit: (order.modality || "RAD").toUpperCase(),
+              referenceRange: `Modality: ${(order.modality || "Imaging").toUpperCase()}`,
+              flag: "normal",
+              performedAt,
+              technicianName,
+              isAcknowledged: false,
+              interpretation: order.reportSummary || "Examination completed. Findings documented.",
+              conclusion: order.verificationNote || order.clinicalIndication || undefined,
+            });
+          }
+        }
+      }
+
+      // Sort newest results first
+      resultsList.sort((a, b) => new Date(b.performedAt).getTime() - new Date(a.performedAt).getTime());
       results.value = resultsList;
     } catch (err: any) {
       resultsError.value = err.message;

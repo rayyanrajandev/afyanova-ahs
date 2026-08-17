@@ -51,3 +51,8 @@ tools/mailpit/README.md
 /re
 /resour
 /.vite
+
+# Local SQLite database artifact. The app runs on pgsql (DB_CONNECTION);
+# this file is a leftover local dump containing sessions and audit tables,
+# so it must never reach the remote.
+/afyanova-ahs-v2

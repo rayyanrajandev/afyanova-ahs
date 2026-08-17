@@ -17,6 +17,7 @@ import {
   HeartPulse,
   History,
   Info,
+  Lock,
   ShieldCheck,
   TestTube2,
   Users,
@@ -34,20 +35,52 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LabAuditTab from "./components/LabAuditTab.vue";
 import LabOrderHeader from "./components/LabOrderHeader.vue";
 import LabQueuePanel from "./components/LabQueuePanel.vue";
+import LabStageBar from "./components/LabStageBar.vue";
 import ResultEntryTab from "./components/ResultEntryTab.vue";
 import SpecimenAccessioningTab from "./components/SpecimenAccessioningTab.vue";
 import VerificationTab from "./components/VerificationTab.vue";
-import { useLaboratoryOrders } from "./composables/useLaboratoryOrders";
+import {
+  LAB_STAGE_TAB,
+  isLabTabReachable,
+  useLaboratoryOrders,
+  type LabTabId,
+} from "./composables/useLaboratoryOrders";
 
 const { t } = useI18n({ useScope: "global" });
 
 const laboratoryManager = useLaboratoryOrders();
 
-const activeTab = ref<"results" | "accessioning" | "verification" | "audit" | "journey">("results");
+const activeTab = ref<LabTabId>("accessioning");
 
 onMounted(() => {
   laboratoryManager.fetchOrders();
 });
+
+/**
+ * A tab is open only once the bench has reached the step it serves. Result
+ * entry on an order whose specimen never arrived, or a release screen for
+ * results that were never typed, are not "advanced options" — they are the
+ * exact mistakes this workspace used to allow.
+ */
+function tabReachable(tab: LabTabId): boolean {
+  const stage = laboratoryManager.selectedStage.value;
+
+  return stage === null ? false : isLabTabReachable(tab, stage);
+}
+
+function tabLockReason(tab: LabTabId): string {
+  if (tabReachable(tab)) return "";
+
+  return tab === "results"
+    ? t("laboratory.locked_results", "Locked until analysis has started on this specimen")
+    : t("laboratory.locked_verification", "Locked until results have been saved");
+}
+
+function selectTab(tab: LabTabId) {
+  if (tabReachable(tab)) {
+    activeTab.value = tab;
+  }
+}
 
 // Laboratory was the only built workspace not listening to the board: a doctor
 // ordering a new test, a nurse finishing triage, or reception checking someone
@@ -58,20 +91,21 @@ usePatientFlowLiveSync({
   },
 });
 
-// Auto-switch tab based on order status
+/**
+ * Land on the step that is actually the technician's turn.
+ *
+ * Keyed on the order id as well as the stage: the old watcher fired only on
+ * status *changes*, so selecting a different patient whose order sat at the
+ * same status left you on whichever tab you happened to be looking at.
+ */
 watch(
-  () => laboratoryManager.selectedOrder.value?.status,
-  (newStatus) => {
-    if (newStatus === "ordered") {
-      activeTab.value = "accessioning";
-    } else if (newStatus === "sample_collected") {
-      activeTab.value = "accessioning";
-    } else if (newStatus === "in_progress") {
-      activeTab.value = "results";
-    } else if (newStatus === "completed") {
-      activeTab.value = "verification";
+  () => [laboratoryManager.selectedOrderId.value, laboratoryManager.selectedStage.value] as const,
+  ([, stage]) => {
+    if (stage !== null) {
+      activeTab.value = LAB_STAGE_TAB[stage];
     }
   },
+  { immediate: true },
 );
 </script>
 
@@ -111,62 +145,74 @@ watch(
                 :order="laboratoryManager.selectedOrder.value"
                 :patient-orders="laboratoryManager.selectedPatientOrders.value"
                 :on-select-order="laboratoryManager.selectOrder"
-                :is-verifying="laboratoryManager.isVerifying.value"
-                :on-verify="() => laboratoryManager.verifyOrder(laboratoryManager.selectedOrder.value!.id)"
               />
+
+              <!-- Which of the four bench steps this order is on, and what to do next -->
+              <LabStageBar :order="laboratoryManager.selectedOrder.value" />
 
               <!-- Station Navigation Tabs -->
               <Tabs v-model="activeTab" class="flex flex-1 flex-col overflow-hidden">
-                <div class="shrink-0 border-b border-border bg-surface px-4">
-                  <TabsList class="h-9 gap-1 bg-transparent p-0">
-                    
-                    <!-- Tab 1: Analytical Result Entry Matrix -->
-                    <TabsTrigger
-                      value="results"
-                      class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-3 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
-                    >
-                      <Activity class="size-3.5 text-primary" />
-                      <span>{{ t('laboratory.result_entry') }}</span>
-                    </TabsTrigger>
+                <!-- Tab Navigation Bar -->
+                <div class="border-b border-border bg-surface px-3.5 pt-1 shrink-0">
+                  <TabsList class="h-8 gap-1 bg-transparent p-0 justify-start w-auto border-b-0 -mb-px">
 
-                    <!-- Tab 2: Specimen Accessioning -->
+                    <!-- Tab 1: Specimen Accessioning (step 1–2) -->
                     <TabsTrigger
                       value="accessioning"
-                      class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-3 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                      class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                      @click="selectTab('accessioning')"
                     >
                       <TestTube2 class="size-3.5 text-blue-600 dark:text-blue-400" />
                       <span>{{ t('laboratory.accessioning') }}</span>
-                      <Badge
+                      <span
                         v-if="laboratoryManager.selectedOrder.value.status === 'ordered'"
-                        variant="outline"
-                        class="text-[9px] font-mono border-amber-500/40 text-amber-600 bg-amber-500/10 px-1 py-0"
+                        class="rounded-full bg-amber-500/15 px-1.5 py-0 text-[10px] font-bold text-amber-600 dark:text-amber-400 font-mono"
                       >
                         {{ t('laboratory.pending') }}
-                      </Badge>
+                      </span>
                     </TabsTrigger>
 
-                    <!-- Tab 3: Verification & Report -->
+                    <!-- Tab 2: Analytical Result Entry Matrix (step 3) -->
+                    <TabsTrigger
+                      value="results"
+                      class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary -mb-px"
+                      :class="tabReachable('results') ? 'cursor-pointer' : 'cursor-not-allowed opacity-45'"
+                      :disabled="!tabReachable('results')"
+                      :title="tabLockReason('results')"
+                      @click="selectTab('results')"
+                    >
+                      <Lock v-if="!tabReachable('results')" class="size-3.5 text-muted-foreground" aria-hidden="true" />
+                      <Activity v-else class="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span>{{ t('laboratory.result_entry') }}</span>
+                    </TabsTrigger>
+
+                    <!-- Tab 3: Verification & Report (step 4) -->
                     <TabsTrigger
                       value="verification"
-                      class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-3 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                      class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary -mb-px"
+                      :class="tabReachable('verification') ? 'cursor-pointer' : 'cursor-not-allowed opacity-45'"
+                      :disabled="!tabReachable('verification')"
+                      :title="tabLockReason('verification')"
+                      @click="selectTab('verification')"
                     >
-                      <ShieldCheck class="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <Lock v-if="!tabReachable('verification')" class="size-3.5 text-muted-foreground" aria-hidden="true" />
+                      <ShieldCheck v-else class="size-3.5 text-purple-600 dark:text-purple-400" />
                       <span>{{ t('laboratory.verification_report') }}</span>
                     </TabsTrigger>
 
                     <!-- Tab 4: Specimen Chain of Custody / Audit -->
                     <TabsTrigger
                       value="audit"
-                      class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-3 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                      class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
                     >
-                      <Award class="size-3.5 text-purple-600 dark:text-purple-400" />
+                      <Award class="size-3.5 text-amber-600 dark:text-amber-400" />
                       <span>{{ t('laboratory.quality_assurance') }}</span>
                     </TabsTrigger>
 
                     <!-- Tab 5: Patient Journey Flow -->
                     <TabsTrigger
                       value="journey"
-                      class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-3 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                      class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
                     >
                       <History class="size-3.5 text-teal-600 dark:text-teal-400" />
                       <span>{{ t('laboratory.patient_journey') }}</span>
@@ -203,10 +249,12 @@ watch(
                 </TabsContent>
 
                 <TabsContent value="journey" class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
-                  <PatientFlowTimeline
-                    :patient-id="laboratoryManager.selectedOrder.value.patientId"
-                    workspace="laboratory"
-                  />
+                  <div class="p-3.5 space-y-3.5">
+                    <PatientFlowTimeline
+                      :patient-id="laboratoryManager.selectedOrder.value.patientId"
+                      workspace="laboratory"
+                    />
+                  </div>
                 </TabsContent>
               </Tabs>
             </div>

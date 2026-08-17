@@ -30,8 +30,22 @@ import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { LaboratoryOrder, UseLaboratoryOrders } from "../composables/useLaboratoryOrders";
+import {
+  labStageOf,
+  secondReviewReason,
+  type LabStage,
+  type LaboratoryOrder,
+  type UseLaboratoryOrders,
+} from "../composables/useLaboratoryOrders";
+import { printLaboratoryReport } from "../laboratoryReportPrint";
 
 const props = defineProps<{
   order: LaboratoryOrder;
@@ -40,36 +54,113 @@ const props = defineProps<{
 
 const { t } = useI18n({ useScope: "global" });
 
-const supervisorComments = ref(props.order.interpretation || "All parameters verified against quality control standards and biological reference limits.");
+const supervisorComments = ref(props.order.interpretation || "");
 
-const isOrderVerified = computed(() => props.order.status === "completed");
+interface ReleaseNotePreset {
+  label: string;
+  text: string;
+}
 
-const hasCritical = computed(() => {
-  return props.order.parameters.some((p) => p.flag === "critical_low" || p.flag === "critical_high");
+const releaseNotePresets: ReleaseNotePreset[] = [
+  {
+    label: "Standard — IQC Passed (2SD)",
+    text: "Results verified against daily IQC calibration within 2SD limits. Clinically valid.",
+  },
+  {
+    label: "Normal Screening Baseline",
+    text: "Normal baseline parameters confirmed. No significant pathological abnormalities noted.",
+  },
+  {
+    label: "Duplicate Analysis Verified",
+    text: "Analytical parameters repeated in duplicate and confirmed. QC rules satisfied.",
+  },
+  {
+    label: "Critical Value Telephoned",
+    text: "Panic critical values flagged, verified, and read back to attending clinician.",
+  },
+  {
+    label: "Pre-analytical Quality Note",
+    text: "Sample slightly hemolyzed/lipemic; results verified with clinical correlation advised.",
+  },
+];
+
+function onSelectQuickNote(event: Event) {
+  const target = event.target as HTMLSelectElement;
+  if (target && target.value) {
+    supervisorComments.value = target.value;
+    target.selectedIndex = 0;
+  }
+}
+
+function applyPreset(text: string) {
+  supervisorComments.value = text;
+}
+
+const stage = computed<LabStage>(() => labStageOf(props.order));
+
+/**
+ * Released means the report is on the patient's chart — `verifiedAt` is set.
+ * The old check treated `status === 'completed'` as verified, which was true
+ * the instant results were typed, so a draft rendered as "Final Verified
+ * Report" before anyone had reviewed it.
+ */
+const isReleased = computed(() => stage.value === "released");
+
+const canRelease = computed(() => stage.value === "awaiting_release");
+
+/**
+ * A second pair of eyes is demanded only where it changes the outcome —
+ * critical values and high-stakes disciplines. Prompting on every release
+ * turns the acknowledgement into a reflex click within a week.
+ */
+const secondReview = computed(() => secondReviewReason(props.order));
+
+const selfVerifyAcknowledged = ref(false);
+
+const releaseBlockReason = computed<string | null>(() => {
+  if (!canRelease.value) {
+    return t("laboratory.release_blocked_stage", "Save the results before releasing this report.");
+  }
+  if (supervisorComments.value.trim() === "") {
+    return t("laboratory.release_blocked_note", "A release note is required.");
+  }
+  if (secondReview.value !== null && !selfVerifyAcknowledged.value) {
+    return t("laboratory.release_blocked_review", "Confirm the second-review declaration first.");
+  }
+
+  return null;
 });
 
-function handleVerify() {
-  props.laboratory.verifyOrder(props.order.id, supervisorComments.value);
+async function handleRelease() {
+  if (releaseBlockReason.value !== null) return;
+
+  await props.laboratory.releaseResults(
+    props.order.id,
+    supervisorComments.value,
+    secondReview.value !== null && selfVerifyAcknowledged.value,
+  );
 }
 
 function handlePrintReport() {
-  window.print();
+  printLaboratoryReport(props.order);
 }
 </script>
 
 <template>
   <div class="space-y-3.5 p-3.5 w-full">
     
-    <!-- Verified Success Banner -->
+
+
+    <!-- Released Success Banner -->
     <div
-      v-if="isOrderVerified"
-      class="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-950 dark:text-emerald-100 flex items-center justify-between gap-3 shadow-xs"
+      v-if="isReleased"
+      class="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-950 dark:text-emerald-100 flex items-center justify-between gap-2.5 shadow-xs"
     >
-      <div class="flex items-center gap-2.5">
-        <ShieldCheck class="size-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-        <div>
-          <p class="font-bold text-xs">{{ t('laboratory.verified_banner_title', 'Diagnostic Report Electronically Verified & Released') }}</p>
-          <p class="text-[11px] text-emerald-800/90 dark:text-emerald-300/90 mt-0.5 font-mono">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <ShieldCheck class="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+        <div class="min-w-0">
+          <p class="font-bold text-xs leading-tight">{{ t('laboratory.verified_banner_title', 'Diagnostic Report Electronically Verified & Released') }}</p>
+          <p class="text-[11px] text-emerald-800/85 dark:text-emerald-300/85 mt-0.5 font-mono leading-tight truncate">
             {{ t('laboratory.verified_banner_desc', { user: order.verifiedBy || 'Senior MLS', time: order.verifiedAt ? new Date(order.verifiedAt).toLocaleString() : 'Recent' }) }}
           </p>
         </div>
@@ -78,7 +169,7 @@ function handlePrintReport() {
       <Button
         variant="outline"
         size="sm"
-        class="h-7 text-xs font-semibold gap-1.5 px-3 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15 cursor-pointer"
+        class="h-7 text-xs font-semibold gap-1.5 px-3 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15 cursor-pointer shrink-0"
         @click="handlePrintReport"
       >
         <Printer class="size-3.5" />
@@ -105,12 +196,22 @@ function handlePrintReport() {
         </div>
 
         <div class="flex items-center gap-2 font-mono text-xs">
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-7 text-xs font-semibold gap-1.5 px-2.5 border-border hover:bg-muted cursor-pointer"
+            @click="handlePrintReport"
+          >
+            <Printer class="size-3.5 text-primary" />
+            <span>{{ t('laboratory.print_report', 'Print Report') }}</span>
+          </Button>
+
           <Badge
             variant="outline"
             class="text-[10px] uppercase font-mono px-2 py-0.5"
-            :class="isOrderVerified ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10' : 'border-amber-500 text-amber-600 bg-amber-500/10'"
+            :class="isReleased ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10' : 'border-amber-500 text-amber-600 bg-amber-500/10'"
           >
-            {{ isOrderVerified ? t('laboratory.final_report', 'Final Verified Report') : t('laboratory.draft_report', 'Draft / Pre-Release') }}
+            {{ isReleased ? t('laboratory.final_report', 'Final Verified Report') : t('laboratory.draft_report', 'Draft / Pre-Release') }}
           </Badge>
         </div>
       </div>
@@ -193,26 +294,107 @@ function handlePrintReport() {
         </div>
 
         <!-- Supervisor Clinical Impression -->
-        <div class="space-y-1">
-          <Label class="text-xs font-semibold text-foreground">
-            {{ t('laboratory.senior_remarks', 'Senior Scientist Remarks & Clinical Release Notes') }}
-          </Label>
+        <div class="space-y-1.5">
+          <div class="flex flex-wrap items-center justify-between gap-1.5">
+            <Label required class="text-xs font-semibold text-foreground">
+              {{ t('laboratory.senior_remarks', 'Senior Scientist Remarks & Clinical Release Notes') }}
+            </Label>
+
+            <!-- Quick Preset Templates Dropdown (Shadcn Vue Select) -->
+            <div v-if="canRelease" class="flex items-center gap-1.5">
+              <span class="text-[10px] text-muted-foreground font-medium whitespace-nowrap">{{ t('laboratory.quick_presets', 'Quick Presets:') }}</span>
+              <Select @update:model-value="(val: any) => val && applyPreset(String(val))">
+                <SelectTrigger class="h-6.5 min-w-[190px] text-[11px] px-2 py-0 border-border bg-background shadow-2xs">
+                  <SelectValue :placeholder="t('laboratory.select_preset', 'Select standard note...')" />
+                </SelectTrigger>
+                <SelectContent class="text-xs">
+                  <SelectItem
+                    v-for="preset in releaseNotePresets"
+                    :key="preset.label"
+                    :value="preset.text"
+                    class="text-xs py-1.5 cursor-pointer"
+                  >
+                    <span class="font-medium">{{ preset.label }}</span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <!-- Quick Template Chips (1-click autofill) -->
+          <div v-if="canRelease" class="flex flex-wrap gap-1 pb-0.5">
+            <button
+              v-for="preset in releaseNotePresets.slice(0, 3)"
+              :key="preset.label"
+              type="button"
+              class="inline-flex items-center gap-1 rounded-md border border-border/80 bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-primary/10 hover:text-primary hover:border-primary/40 transition-colors cursor-pointer"
+              @click="applyPreset(preset.text)"
+            >
+              <Sparkles class="size-2.5 text-primary/70" />
+              <span>{{ preset.label }}</span>
+            </button>
+          </div>
+
           <Textarea
             v-model="supervisorComments"
             rows="2"
             class="text-xs resize-none"
-            :disabled="isOrderVerified"
-            placeholder="Add clinical remarks or authorization notes..."
+            :disabled="!canRelease"
+            :placeholder="t('laboratory.senior_remarks_placeholder', 'Select a preset above or type specific clinical observations...')"
           />
+          <p v-if="canRelease && supervisorComments.trim() === ''" class="text-[10.5px] text-amber-600">
+            {{ t('laboratory.release_note_required', 'A release note is required — choose a preset above or type specific remarks.') }}
+          </p>
+        </div>
+
+        <!--
+          Second-review declaration, scoped to results where it matters.
+          Recorded in the audit log via the verification note, so a single-tech
+          district lab is never blocked but the self-verification is traceable.
+        -->
+        <div
+          v-if="canRelease && secondReview !== null"
+          class="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5"
+        >
+          <div class="flex items-start gap-2">
+            <AlertTriangle class="size-4 text-amber-600 shrink-0 mt-px" />
+            <div class="text-[11px] text-amber-900 dark:text-amber-200">
+              <p class="font-bold">
+                {{ secondReview === 'critical'
+                  ? t('laboratory.second_review_critical', 'Critical result — second review required')
+                  : t('laboratory.second_review_high_stakes', 'High-stakes result — second review required') }}
+              </p>
+              <p class="mt-0.5">
+                {{ t('laboratory.second_review_desc', 'ISO 15189 §7.4 requires these results to be checked by a second reviewer before release. If no second scientist is available, you may self-verify — this is recorded in the audit log.') }}
+              </p>
+            </div>
+          </div>
+
+          <label class="flex items-center gap-2 text-[11px] font-semibold text-amber-900 dark:text-amber-200 cursor-pointer">
+            <input
+              v-model="selfVerifyAcknowledged"
+              type="checkbox"
+              class="size-3.5 accent-amber-600 cursor-pointer"
+            />
+            <span>{{ t('laboratory.second_review_ack', 'I have reviewed these results and accept responsibility for releasing them.') }}</span>
+          </label>
         </div>
       </div>
     </section>
 
-    <!-- Sign-off Action Bar -->
-    <div class="flex items-center justify-between gap-3 p-3.5 rounded-lg border border-border bg-surface shadow-2xs">
+    <!--
+      Sign-off Action Bar — Step 4, and the ONLY route to the patient chart.
+      Reachable only from `awaiting_release`, so a report cannot be released
+      before its results exist.
+    -->
+    <div class="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-lg border border-border bg-surface shadow-2xs">
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
-        <UserCheck class="size-4 text-primary" />
-        <span>{{ t('laboratory.two_eye_protocol', 'Two-Eye Verification Protocol:') }} <strong class="text-foreground">{{ t('laboratory.two_eye_required', 'Required') }}</strong></span>
+        <UserCheck class="size-4 text-primary shrink-0" />
+        <span v-if="releaseBlockReason">{{ releaseBlockReason }}</span>
+        <span v-else-if="isReleased">
+          {{ t('laboratory.already_released', 'Released — this report is final and on the patient chart.') }}
+        </span>
+        <span v-else>{{ t('laboratory.ready_to_release', 'Ready to release to the patient chart.') }}</span>
       </div>
 
       <div class="flex items-center gap-2">
@@ -227,11 +409,12 @@ function handlePrintReport() {
         </Button>
 
         <Button
-          v-if="!isOrderVerified"
+          v-if="!isReleased"
           size="sm"
-          class="h-8 text-xs font-semibold gap-1.5 px-4 cursor-pointer shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-          :disabled="laboratory.isVerifying.value"
-          @click="handleVerify"
+          class="h-8 text-xs font-semibold gap-1.5 px-4 shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+          :class="releaseBlockReason === null ? 'cursor-pointer' : 'cursor-not-allowed'"
+          :disabled="releaseBlockReason !== null || laboratory.isVerifying.value"
+          @click="handleRelease"
         >
           <CheckCircle2 class="size-3.5" />
           <span>{{ laboratory.isVerifying.value ? t('laboratory.verifying', 'Publishing...') : t('laboratory.authorize_release', 'Authorize & Release to EMR') }}</span>

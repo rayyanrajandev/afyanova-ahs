@@ -41,7 +41,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { LabTestParameter, LaboratoryOrder, UseLaboratoryOrders } from "../composables/useLaboratoryOrders";
+import {
+  labStageOf,
+  missingParameters,
+  type LabStage,
+  type LabTestParameter,
+  type LaboratoryOrder,
+  type UseLaboratoryOrders,
+} from "../composables/useLaboratoryOrders";
 import CriticalAlertModal from "./CriticalAlertModal.vue";
 
 const props = defineProps<{
@@ -49,13 +56,23 @@ const props = defineProps<{
   laboratory: UseLaboratoryOrders;
 }>();
 
-const emit = defineEmits<{
-  verified: [];
-}>();
-
 const { t } = useI18n({ useScope: "global" });
 
 const showCriticalModal = ref(false);
+
+const stage = computed<LabStage>(() => labStageOf(props.order));
+
+/**
+ * Results are editable during analysis and nowhere else. Typing numbers into an
+ * order whose specimen has not arrived, or editing a report that is already on
+ * the patient's chart, are both silently wrong — so the sheet is read-only
+ * outside `in_analysis` and says why.
+ */
+const isEditable = computed(() => stage.value === "in_analysis");
+
+const missing = computed(() => missingParameters(props.order));
+
+const canSave = computed(() => isEditable.value && missing.value.length === 0);
 
 // Watch parameters to re-evaluate flags live as tech types
 function handleValueChange(param: LabTestParameter) {
@@ -75,8 +92,8 @@ function handleFillNormal() {
   props.laboratory.fillNormalDefaults(props.order.id);
 }
 
-function handleVerifyOrder() {
-  props.laboratory.verifyOrder(props.order.id);
+function handleSaveResults() {
+  void props.laboratory.saveResults(props.order.id);
 }
 </script>
 
@@ -86,17 +103,17 @@ function handleVerifyOrder() {
     <!-- Panic Critical Value Banner (Safety Alert P1) -->
     <div
       v-if="hasCriticalValue"
-      class="rounded-lg border-2 border-rose-500 bg-rose-500/15 p-3 text-xs text-rose-950 dark:text-rose-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md animate-pulse"
+      class="rounded-md border-2 border-rose-500 bg-rose-500/15 px-3 py-2 text-xs text-rose-950 dark:text-rose-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-xs animate-pulse"
     >
-      <div class="flex items-center gap-2.5">
-        <div class="flex size-8 items-center justify-center rounded-full bg-rose-600 text-white shrink-0">
-          <AlertTriangle class="size-4.5" />
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="flex size-7 items-center justify-center rounded-full bg-rose-600 text-white shrink-0">
+          <AlertTriangle class="size-4" />
         </div>
-        <div>
-          <h4 class="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300">
+        <div class="min-w-0">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300 leading-tight">
             {{ t('laboratory.critical_alert_title', 'Critical Panic Value Alert') }}
           </h4>
-          <p class="text-[11px] text-rose-900 dark:text-rose-200 mt-0.5">
+          <p class="text-[11px] text-rose-900 dark:text-rose-200 mt-0.5 truncate leading-tight">
             <span v-for="(crit, idx) in criticalParameters" :key="crit.key">
               <strong>{{ crit.name }}: {{ crit.value }} {{ crit.unit }}</strong> (Ref: {{ crit.referenceRange }}){{ idx < criticalParameters.length - 1 ? ' · ' : '' }}
             </span>
@@ -106,7 +123,7 @@ function handleVerifyOrder() {
 
       <Button
         size="sm"
-        class="h-7.5 text-xs font-bold gap-1.5 px-3 bg-rose-600 hover:bg-rose-700 text-white cursor-pointer shadow-xs shrink-0"
+        class="h-7 text-xs font-bold gap-1.5 px-3 bg-rose-600 hover:bg-rose-700 text-white cursor-pointer shadow-xs shrink-0"
         @click="showCriticalModal = true"
       >
         <PhoneCall class="size-3.5" />
@@ -128,9 +145,9 @@ function handleVerifyOrder() {
         </div>
 
         <div class="flex items-center gap-2">
-          <!-- Quick Normal Fill Button -->
+          <!-- Quick Normal Fill Button — only while the sheet is actually open -->
           <Button
-            v-if="order.status !== 'completed'"
+            v-if="isEditable"
             variant="outline"
             size="sm"
             class="h-6.5 text-[11px] px-2 text-primary border-primary/40 hover:bg-primary/10 cursor-pointer gap-1"
@@ -186,7 +203,7 @@ function handleVerifyOrder() {
                       'border-rose-500 text-rose-600 bg-rose-500/10': param.flag === 'critical_low' || param.flag === 'critical_high',
                       'border-amber-500 text-amber-600 bg-amber-500/10': param.flag === 'abnormal',
                     }"
-                    :disabled="order.status === 'completed'"
+                    :disabled="!isEditable"
                     @input="handleValueChange(param)"
                   />
                 </div>
@@ -235,7 +252,7 @@ function handleVerifyOrder() {
             rows="2"
             class="text-xs resize-none"
             :placeholder="t('laboratory.technician_remarks_placeholder', 'e.g. Analyzed on Sysmex XN-550 / Beckman AU480; calibrated today...')"
-            :disabled="order.status === 'completed'"
+            :disabled="!isEditable"
           />
         </div>
 
@@ -248,34 +265,70 @@ function handleVerifyOrder() {
             rows="2"
             class="text-xs resize-none"
             :placeholder="t('laboratory.clinical_interpretation_placeholder', 'e.g. Findings consistent with microcytic hypochromic anemia...')"
-            :disabled="order.status === 'completed'"
+            :disabled="!isEditable"
           />
         </div>
       </div>
     </section>
 
-    <!-- Bottom Action Footer -->
-    <div class="flex items-center justify-between gap-3 p-3 rounded-lg border border-border bg-surface shadow-2xs">
-      <div class="flex items-center gap-2 text-xs text-muted-foreground font-mono">
-        <Clock class="size-3.5 text-primary" />
-        <span>{{ t('laboratory.status_label', 'Status:') }} <strong class="text-foreground uppercase">{{ order.status }}</strong></span>
+    <!--
+      Bottom Action Footer — Step 3 only.
+      Saving results is deliberately NOT releasing them. The release button
+      lives solely in the Verification tab, so no single click can put an
+      unreviewed report on a patient's chart.
+    -->
+    <div class="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-border bg-surface shadow-2xs">
+      <div class="flex items-center gap-2 text-xs text-muted-foreground">
+        <Clock class="size-3.5 text-primary shrink-0" />
+        <span v-if="isEditable && missing.length > 0" class="text-amber-700 dark:text-amber-300">
+          {{ t('laboratory.awaiting_values', { count: missing.length }) }}
+        </span>
+        <span v-else-if="isEditable">
+          {{ t('laboratory.all_values_entered', 'All parameters entered — ready to save.') }}
+        </span>
+        <span v-else-if="stage === 'awaiting_specimen' || stage === 'ready_for_analysis'">
+          {{ t('laboratory.entry_locked_pre', 'Result entry opens once analysis has started.') }}
+        </span>
+        <span v-else-if="stage === 'rejected'">
+          {{ t('laboratory.entry_locked_rejected', 'This specimen was rejected — no results can be entered.') }}
+        </span>
+        <span v-else>
+          {{ t('laboratory.entry_locked_saved', 'Results are saved and can no longer be edited here.') }}
+        </span>
       </div>
 
       <div class="flex items-center gap-2">
         <Button
-          v-if="order.status !== 'completed' && order.status !== 'cancelled'"
+          v-if="isEditable"
           size="sm"
-          class="h-8 text-xs font-semibold gap-1.5 px-4 cursor-pointer shadow-xs"
-          :disabled="laboratory.isVerifying.value"
-          @click="handleVerifyOrder"
+          class="h-8 text-xs font-semibold gap-1.5 px-4 shadow-xs"
+          :class="canSave ? 'cursor-pointer' : 'cursor-not-allowed'"
+          :disabled="!canSave || laboratory.isSavingResults.value"
+          :title="canSave ? '' : t('laboratory.save_blocked', 'Fill every parameter first')"
+          @click="handleSaveResults"
         >
-          <CheckCircle2 class="size-3.5" />
-          <span>{{ laboratory.isVerifying.value ? t('laboratory.verifying', 'Verifying...') : t('laboratory.verify_and_release', 'Verify & Publish Results') }}</span>
+          <Save class="size-3.5" />
+          <span>
+            {{ laboratory.isSavingResults.value
+              ? t('laboratory.saving_results', 'Saving...')
+              : t('laboratory.save_results', 'Save Results') }}
+          </span>
         </Button>
 
-        <span v-else-if="order.status === 'completed'" class="inline-flex items-center gap-1.5 text-emerald-600 font-bold text-xs font-mono">
+        <span
+          v-else-if="stage === 'awaiting_release'"
+          class="inline-flex items-center gap-1.5 text-sky-600 font-bold text-xs"
+        >
+          <FileCheck class="size-4" />
+          {{ t('laboratory.draft_saved_go_release', 'Draft saved — release it from the Verification tab') }}
+        </span>
+
+        <span
+          v-else-if="stage === 'released'"
+          class="inline-flex items-center gap-1.5 text-emerald-600 font-bold text-xs"
+        >
           <CheckCircle2 class="size-4" />
-          {{ t('laboratory.verified_and_published', 'Verified & Published to EMR') }}
+          {{ t('laboratory.verified_and_published', 'Released to patient chart') }}
         </span>
       </div>
     </div>

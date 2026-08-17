@@ -14,7 +14,6 @@
 import {
   AlertTriangle,
   Barcode,
-  CheckCircle2,
   Clock,
   FlaskConical,
   HeartPulse,
@@ -28,18 +27,30 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { stepBadgeStatus, stepLabelKey } from "@/composables/patientFlowStep";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import type { LaboratoryOrder } from "../composables/useLaboratoryOrders";
+import { labStageOf, type LabStage, type LaboratoryOrder } from "../composables/useLaboratoryOrders";
 
 const props = defineProps<{
   order: LaboratoryOrder;
   patientOrders?: LaboratoryOrder[];
   onSelectOrder?: (orderId: string) => void;
-  onVerify?: () => void;
-  isVerifying?: boolean;
 }>();
 
 const { t } = useI18n({ useScope: "global" });
+
+const stage = computed<LabStage>(() => labStageOf(props.order));
+
+const STAGE_LABELS: Record<LabStage, { key: string; fallback: string }> = {
+  awaiting_specimen: { key: "laboratory.awaiting_sample", fallback: "Awaiting Sample" },
+  ready_for_analysis: { key: "laboratory.specimen_received", fallback: "Specimen Received" },
+  in_analysis: { key: "laboratory.in_analysis", fallback: "In Analysis" },
+  awaiting_release: { key: "laboratory.draft_unreleased", fallback: "Draft — Not Released" },
+  released: { key: "laboratory.verified_released", fallback: "Verified & Released" },
+  rejected: { key: "laboratory.sample_rejected", fallback: "Sample Rejected" },
+};
+
+const stageLabel = computed(() =>
+  t(STAGE_LABELS[stage.value].key, STAGE_LABELS[stage.value].fallback),
+);
 
 /**
  * Where the patient stands in the whole visit — separate from this order's own
@@ -101,7 +112,7 @@ const visitStageClass = computed<string>(() => {
       </div>
 
       <!-- Priority & Status Badges & Quick Action -->
-      <div class="flex items-center gap-2 shrink-0">
+      <div class="flex items-center gap-2 shrink-0 flex-wrap">
         <!-- Priority Flag -->
         <Badge
           v-if="order.priority === 'stat'"
@@ -137,70 +148,29 @@ const visitStageClass = computed<string>(() => {
           {{ visitStageLabel }}
         </Badge>
 
-        <!-- Lifecycle Status Badge -->
+        <!--
+          Bench stage badge. This reads from labStageOf(), so "Verified &
+          Released" can no longer appear on an order that merely has results
+          typed into it — `completed` alone never meant released.
+        -->
         <Badge
           variant="outline"
           class="text-[10px] font-mono uppercase px-2 py-0.5"
           :class="{
-            'border-amber-500/40 text-amber-600 bg-amber-500/10': order.status === 'ordered',
-            'border-blue-500/40 text-blue-600 bg-blue-500/10': order.status === 'sample_collected',
-            'border-purple-500/40 text-purple-600 bg-purple-500/10': order.status === 'in_progress',
-            'border-emerald-500/40 text-emerald-600 bg-emerald-500/10': order.status === 'completed',
-            'border-rose-500/40 text-rose-600 bg-rose-500/10': order.status === 'cancelled',
+            'border-amber-500/40 text-amber-600 bg-amber-500/10': stage === 'awaiting_specimen',
+            'border-blue-500/40 text-blue-600 bg-blue-500/10': stage === 'ready_for_analysis',
+            'border-purple-500/40 text-purple-600 bg-purple-500/10': stage === 'in_analysis',
+            'border-sky-500/40 text-sky-600 bg-sky-500/10': stage === 'awaiting_release',
+            'border-emerald-500/40 text-emerald-600 bg-emerald-500/10': stage === 'released',
+            'border-rose-500/40 text-rose-600 bg-rose-500/10': stage === 'rejected',
           }"
         >
-          <span v-if="order.status === 'ordered'">{{ t('laboratory.awaiting_sample', 'Awaiting Sample') }}</span>
-          <span v-else-if="order.status === 'sample_collected'">{{ t('laboratory.specimen_received', 'Specimen Received') }}</span>
-          <span v-else-if="order.status === 'in_progress'">{{ t('laboratory.in_analysis', 'In Analysis') }}</span>
-          <span v-else-if="order.status === 'completed'">{{ t('laboratory.verified_released', 'Verified & Released') }}</span>
-          <span v-else-if="order.status === 'cancelled'">{{ t('laboratory.sample_rejected', 'Sample Rejected') }}</span>
+          {{ stageLabel }}
         </Badge>
-
-        <Button
-          v-if="order.status !== 'completed' && order.status !== 'cancelled' && onVerify"
-          size="sm"
-          class="h-7 text-xs font-semibold gap-1 px-3 cursor-pointer shadow-xs"
-          :disabled="isVerifying"
-          @click="onVerify"
-        >
-          <CheckCircle2 class="size-3.5" />
-          <span>{{ isVerifying ? t('laboratory.verifying', 'Verifying...') : t('laboratory.verify_action', 'Verify & Release') }}</span>
-        </Button>
       </div>
     </div>
 
-    <!-- Patient Multi-Test Selector Switcher (if patient has multiple orders) -->
-    <div
-      v-if="patientOrders && patientOrders.length > 1"
-      class="flex items-center gap-1.5 overflow-x-auto py-1 px-2 rounded-md bg-muted/30 border border-border/70 text-xs no-scrollbar"
-    >
-      <span class="text-[10.5px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0 mr-1">
-        {{ t('laboratory.patient_tests', 'Patient Tests') }} ({{ patientOrders.length }}):
-      </span>
-      <button
-        v-for="pOrder in patientOrders"
-        :key="pOrder.id"
-        type="button"
-        class="flex items-center gap-1.5 px-2 py-0.5 rounded border text-[11px] font-medium transition-all cursor-pointer shrink-0"
-        :class="[
-          pOrder.id === order.id
-            ? 'border-primary bg-primary text-primary-foreground font-bold shadow-2xs'
-            : 'border-border/80 bg-surface hover:bg-muted text-foreground',
-        ]"
-        @click="onSelectOrder && onSelectOrder(pOrder.id)"
-      >
-        <span
-          class="size-1.5 rounded-full shrink-0"
-          :class="{
-            'bg-amber-500': pOrder.status === 'ordered',
-            'bg-blue-500': pOrder.status === 'sample_collected',
-            'bg-purple-500': pOrder.status === 'in_progress',
-            'bg-emerald-500': pOrder.status === 'completed',
-          }"
-        />
-        <span>{{ pOrder.testName }}</span>
-      </button>
-    </div>
+
 
     <!-- Bottom Detail Strip: Clinician Indication & Barcode -->
     <div class="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-border/60 text-xs">

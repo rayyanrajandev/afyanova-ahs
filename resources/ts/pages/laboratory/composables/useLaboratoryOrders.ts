@@ -29,6 +29,18 @@ export interface LabTestParameter {
   previousDate?: string | null;
 }
 
+/**
+ * The backend's own vocabulary, used verbatim. This workspace used to rename
+ * `collected` to `sample_collected` on read and rename it back on write, so any
+ * code that compared a status against the real API value was silently false.
+ */
+export type LaboratoryOrderStatus =
+  | "ordered"
+  | "collected"
+  | "in_progress"
+  | "completed"
+  | "cancelled";
+
 export interface LaboratoryOrder {
   id: string;
   orderNumber?: string;
@@ -44,7 +56,7 @@ export interface LaboratoryOrder {
   sampleType: string;
   tubeType?: string;
   priority: "routine" | "urgent" | "stat";
-  status: "ordered" | "sample_collected" | "in_progress" | "completed" | "cancelled";
+  status: LaboratoryOrderStatus;
   clinicalIndication?: string;
   orderingClinician?: string;
   createdAt: string;
@@ -90,6 +102,111 @@ export interface PatientLabGroup {
   latestCreatedAt: string;
   orderingClinician?: string;
   clinicalIndication?: string;
+}
+
+/**
+ * The bench stage — the one thing this workspace never had.
+ * ==========================================================
+ * `status` alone could not say where an order stood, because `completed` means
+ * two different things: results are typed but unreleased, and results are
+ * released to the chart. Every screen therefore invented its own rule and they
+ * disagreed, which is how a "Verify & Release" button ended up on an order
+ * whose specimen had not arrived.
+ *
+ * Stage is derived, never stored: it is `status` plus `verifiedAt`, resolved in
+ * exactly one place. Every button, tab and banner reads from here.
+ */
+export type LabStage =
+  | "awaiting_specimen"
+  | "ready_for_analysis"
+  | "in_analysis"
+  | "awaiting_release"
+  | "released"
+  | "rejected";
+
+export type LabTabId = "results" | "accessioning" | "verification" | "audit" | "journey";
+
+/** The four steps a technician actually walks. `released`/`rejected` are outcomes. */
+export type LabBenchStep = Exclude<LabStage, "released" | "rejected">;
+
+export const LAB_STAGE_SEQUENCE: readonly LabBenchStep[] = [
+  "awaiting_specimen",
+  "ready_for_analysis",
+  "in_analysis",
+  "awaiting_release",
+];
+
+/** Position of a stage on the bench, or -1 for the terminal outcomes. */
+export function benchStepIndex(stage: LabStage): number {
+  return (LAB_STAGE_SEQUENCE as readonly LabStage[]).indexOf(stage);
+}
+
+export function labStageOf(order: Pick<LaboratoryOrder, "status" | "verifiedAt">): LabStage {
+  if (order.status === "cancelled") return "rejected";
+  if (order.status === "completed") return order.verifiedAt ? "released" : "awaiting_release";
+  if (order.status === "in_progress") return "in_analysis";
+  if (order.status === "collected") return "ready_for_analysis";
+
+  return "awaiting_specimen";
+}
+
+/** Which tab is the technician's actual workstation at this stage. */
+export const LAB_STAGE_TAB: Record<LabStage, LabTabId> = {
+  awaiting_specimen: "accessioning",
+  ready_for_analysis: "accessioning",
+  in_analysis: "results",
+  awaiting_release: "verification",
+  released: "verification",
+  rejected: "accessioning",
+};
+
+/**
+ * A tab is reachable once the order has reached the stage that tab serves.
+ * Reading back is always allowed; jumping ahead of the bench is not.
+ */
+export function isLabTabReachable(tab: LabTabId, stage: LabStage): boolean {
+  if (tab === "audit" || tab === "journey") return true;
+  if (tab === "accessioning") return true;
+  // A rejected order keeps its result sheet readable but never opens a release.
+  if (stage === "rejected") return tab === "results";
+
+  // `released` sits past the last bench step, so treat it as fully advanced.
+  const reached = benchStepIndex(stage);
+  const stageIndex = reached === -1 ? LAB_STAGE_SEQUENCE.length : reached;
+
+  if (tab === "results") return stageIndex >= benchStepIndex("in_analysis");
+
+  return stageIndex >= benchStepIndex("awaiting_release");
+}
+
+/** Parameters the technician still has to fill before results can be saved. */
+export function missingParameters(order: LaboratoryOrder): LabTestParameter[] {
+  return order.parameters.filter(
+    (p) => p.value === null || p.value === undefined || String(p.value).trim() === "",
+  );
+}
+
+export function hasCompleteResults(order: LaboratoryOrder): boolean {
+  return order.parameters.length > 0 && missingParameters(order).length === 0;
+}
+
+/**
+ * Where a second pair of eyes actually changes the outcome (ISO 15189 §7.4).
+ * Deliberately narrow: a blanket second-review prompt on every release becomes
+ * a rubber stamp within a week, which is worse than not asking.
+ */
+const SECOND_REVIEW_TEST_CODES = new Set(["LAB-SER-HIV-RDT", "LAB-BB-ABO-RH"]);
+const SECOND_REVIEW_DEPARTMENTS = new Set(["Blood Bank"]);
+
+export function secondReviewReason(order: LaboratoryOrder): string | null {
+  if (order.parameters.some((p) => p.flag === "critical_low" || p.flag === "critical_high")) {
+    return "critical";
+  }
+  if (SECOND_REVIEW_TEST_CODES.has(order.testCode) || SECOND_REVIEW_DEPARTMENTS.has(order.department)) {
+    return "high_stakes";
+  }
+
+  return null;
 }
 
 // Built-in Standard Clinical Lab Panel Profiles (2027 CLSI / WHO Guidelines)
@@ -249,13 +366,14 @@ export function useLaboratoryOrders() {
 
   const isLoadingOrders = ref(false);
   const isUpdatingOrder = ref(false);
+  const isSavingResults = ref(false);
   const isVerifying = ref(false);
 
   // Status counts
   const statusCounts = ref({
     all: 0,
     ordered: 0,
-    sample_collected: 0,
+    collected: 0,
     in_progress: 0,
     completed: 0,
     critical: 0,
@@ -271,6 +389,11 @@ export function useLaboratoryOrders() {
     if (!selectedOrderId.value) return null;
     return orders.value.find((o) => o.id === selectedOrderId.value) ?? null;
   });
+
+  /** The one stage value the whole workspace renders from. */
+  const selectedStage = computed<LabStage | null>(() =>
+    selectedOrder.value ? labStageOf(selectedOrder.value) : null,
+  );
 
   // Patient Groups Computed
   const patientGroups = computed<PatientLabGroup[]>(() => {
@@ -304,7 +427,7 @@ export function useLaboratoryOrders() {
       group.totalTests++;
 
       if (order.status === "ordered") group.pendingCount++;
-      else if (order.status === "sample_collected") group.collectedCount++;
+      else if (order.status === "collected") group.collectedCount++;
       else if (order.status === "in_progress") group.inProgressCount++;
       else if (order.status === "completed") group.completedCount++;
 
@@ -406,9 +529,9 @@ export function useLaboratoryOrders() {
         const patientGender = patientObj.gender || raw.patientGender || "—";
         const patientAge = patientObj.age || raw.patientAge || (patientObj.dateOfBirth ? `${new Date().getFullYear() - new Date(patientObj.dateOfBirth).getFullYear()} yrs` : "—");
 
-        const rawStatus = raw.status || "ordered";
-        const status = rawStatus === "collected" ? "sample_collected" : rawStatus;
-        
+        const status = (raw.status || "ordered") as LaboratoryOrderStatus;
+
+
         let parameters = defaultParams;
         if (Array.isArray(raw.resultParameters) && raw.resultParameters.length > 0) {
           parameters = raw.resultParameters.map((rp: any) => ({
@@ -480,7 +603,7 @@ export function useLaboratoryOrders() {
     statusCounts.value = {
       all: orders.value.length,
       ordered: orders.value.filter((o) => o.status === "ordered").length,
-      sample_collected: orders.value.filter((o) => o.status === "sample_collected").length,
+      collected: orders.value.filter((o) => o.status === "collected").length,
       in_progress: orders.value.filter((o) => o.status === "in_progress").length,
       completed: orders.value.filter((o) => o.status === "completed").length,
       critical: orders.value.filter((o) => o.flag === "critical" || o.parameters.some((p) => p.flag.startsWith("critical"))).length,
@@ -551,7 +674,7 @@ export function useLaboratoryOrders() {
         sampleType: "Capillary / Fluoride Blood",
         tubeType: "Gray Top (Sodium Fluoride)",
         priority: "urgent",
-        status: "sample_collected",
+        status: "collected",
         clinicalIndication: "Type 2 Diabetes re-evaluation, polydipsia",
         orderingClinician: "Dr. S. Tarimo, MD",
         createdAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
@@ -576,7 +699,7 @@ export function useLaboratoryOrders() {
         sampleType: "Midstream Urine",
         tubeType: "Sterile Urine Cup",
         priority: "urgent",
-        status: "sample_collected",
+        status: "collected",
         clinicalIndication: "Glycosuria / Proteinuria check",
         orderingClinician: "Dr. S. Tarimo, MD",
         createdAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
@@ -652,84 +775,159 @@ export function useLaboratoryOrders() {
     selectPatient("pat-101");
   }
 
-  // Lifecycle: Accession & Receive Specimen
-  async function acceptSpecimen(orderId: string, specimenNotes?: string) {
-    isUpdatingOrder.value = true;
+  /**
+   * Pull the real reason a write was refused out of the response.
+   *
+   * This workspace used to swallow every rejection: `fetch` does not throw on
+   * 4xx, nothing checked `res.ok`, and the `catch` branch reported *success*
+   * anyway. A technician saw "verified and published" while the server had
+   * refused the transition, and the next live-sync refresh silently undid the
+   * screen. Everything below exists so that can never happen again.
+   */
+  async function readWriteError(res: Response, fallback: string): Promise<string> {
     try {
-      const order = orders.value.find((o) => o.id === orderId);
-      if (order) {
-        order.status = "sample_collected";
-        order.collectedAt = new Date().toISOString();
-        order.collectedBy = "Current Lab Scientist";
-        order.specimenIntegrity = "adequate";
+      const json = await res.json();
+      if (typeof json?.message === "string" && json.message.trim() !== "") {
+        return json.message;
+      }
+      const first = Object.values(json?.errors ?? {}).flat()[0];
+      if (typeof first === "string") return first;
+    } catch {
+      // Non-JSON body (HTML error page, empty 500) — fall through.
+    }
+
+    if (res.status === 403) {
+      return "You do not have permission to perform this step.";
+    }
+    if (res.status === 404) {
+      return "This laboratory order no longer exists. Refresh the worklist.";
+    }
+
+    return fallback;
+  }
+
+  /**
+   * Apply an optimistic change, then keep it only if the server agreed.
+   * On refusal the exact fields we touched are restored, so the screen can
+   * never show a stage the backend did not accept.
+   */
+  async function runOrderMutation(
+    orderId: string,
+    optimistic: Partial<LaboratoryOrder>,
+    request: () => Promise<Response>,
+    fallbackError: string,
+  ): Promise<boolean> {
+    const order = orders.value.find((o) => o.id === orderId);
+    if (!order) return false;
+
+    const rollback = Object.fromEntries(
+      Object.keys(optimistic).map((key) => [key, order[key as keyof LaboratoryOrder]]),
+    );
+
+    Object.assign(order, optimistic);
+    updateLocalStatusCounts();
+
+    try {
+      const res = await request();
+
+      if (!res.ok) {
+        Object.assign(order, rollback);
+        updateLocalStatusCounts();
+        toast.error(await readWriteError(res, fallbackError));
+        return false;
       }
 
-      await fetch(`/api/v1/laboratory/orders/${orderId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-        body: JSON.stringify({ status: "collected", reason: specimenNotes || "Sample collected and integrity validated" }),
-      });
+      // Trust the server's echo over our guess, so status and verifiedAt are
+      // whatever the database actually holds.
+      const serverOrder = (await res.json().catch(() => null))?.data;
+      if (serverOrder?.status) {
+        order.status = serverOrder.status as LaboratoryOrderStatus;
+        order.verifiedAt = serverOrder.verifiedAt ?? order.verifiedAt;
+        order.resultValue = serverOrder.resultSummary ?? order.resultValue;
+      }
 
-      toast.success("Specimen accessioned & accepted successfully");
       updateLocalStatusCounts();
+      return true;
     } catch {
-      toast.success("Specimen accessioned (offline/local)");
+      Object.assign(order, rollback);
       updateLocalStatusCounts();
+      toast.error(fallbackError, {
+        description: "The laboratory server could not be reached. Nothing was saved.",
+      });
+      return false;
+    }
+  }
+
+  function patchStatus(orderId: string, body: Record<string, unknown>): Promise<Response> {
+    return fetch(`/api/v1/laboratory/orders/${orderId}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  // Step 1 — Receive the specimen at the bench (ordered → collected)
+  async function acceptSpecimen(orderId: string, specimenNotes?: string): Promise<boolean> {
+    isUpdatingOrder.value = true;
+    try {
+      const ok = await runOrderMutation(
+        orderId,
+        { status: "collected", specimenIntegrity: "adequate" },
+        () =>
+          patchStatus(orderId, {
+            status: "collected",
+            reason: specimenNotes?.trim() || "Sample received and integrity validated",
+          }),
+        "Could not accession this specimen.",
+      );
+
+      if (ok) toast.success("Specimen received. Next step: start analysis.");
+      return ok;
     } finally {
       isUpdatingOrder.value = false;
     }
   }
 
-  // Lifecycle: Reject Specimen
-  async function rejectSpecimen(orderId: string, reason: string) {
+  // Off-ramp — Reject the specimen (only before analysis begins)
+  async function rejectSpecimen(orderId: string, reason: string): Promise<boolean> {
     if (!reason.trim()) {
       toast.error("Please specify a reason for specimen rejection");
-      return;
+      return false;
     }
+
     isUpdatingOrder.value = true;
     try {
-      const order = orders.value.find((o) => o.id === orderId);
-      if (order) {
-        order.status = "cancelled";
-        order.specimenIntegrity = "insufficient";
-        order.rejectionReason = reason;
-      }
+      const ok = await runOrderMutation(
+        orderId,
+        { status: "cancelled", specimenIntegrity: "insufficient", rejectionReason: reason },
+        () => patchStatus(orderId, { status: "cancelled", reason }),
+        "Could not reject this specimen.",
+      );
 
-      await fetch(`/api/v1/laboratory/orders/${orderId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-        body: JSON.stringify({ status: "cancelled", reason }),
-      });
-
-      toast.info("Specimen rejected and ordering clinician notified");
-      updateLocalStatusCounts();
-    } catch {
-      toast.info("Specimen rejected (offline/local)");
-      updateLocalStatusCounts();
+      if (ok) toast.info("Specimen rejected. The ordering clinician has been notified.");
+      return ok;
     } finally {
       isUpdatingOrder.value = false;
     }
   }
 
-  // Lifecycle: Start Analysis
-  async function startAnalysis(orderId: string) {
+  // Step 2 — Begin analysis (collected → in_progress)
+  async function startAnalysis(orderId: string): Promise<boolean> {
     isUpdatingOrder.value = true;
     try {
-      const order = orders.value.find((o) => o.id === orderId);
-      if (order) {
-        order.status = "in_progress";
-      }
+      const ok = await runOrderMutation(
+        orderId,
+        { status: "in_progress" },
+        () => patchStatus(orderId, { status: "in_progress", reason: "Analytical testing initiated" }),
+        "Could not start analysis on this order.",
+      );
 
-      await fetch(`/api/v1/laboratory/orders/${orderId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-        body: JSON.stringify({ status: "in_progress", reason: "Analytical testing initiated" }),
-      });
-
-      toast.info("Test analysis initiated");
-      updateLocalStatusCounts();
-    } catch {
-      updateLocalStatusCounts();
+      if (ok) toast.info("Analysis started. Next step: enter results.");
+      return ok;
     } finally {
       isUpdatingOrder.value = false;
     }
@@ -755,63 +953,133 @@ export function useLaboratoryOrders() {
     toast.info("Normal reference values populated");
   }
 
-  // Verify and Publish Result to EMR
-  async function verifyOrder(orderId: string, supervisorComments?: string) {
+  function overallFlagOf(order: LaboratoryOrder): "critical" | "abnormal" | "normal" {
+    if (order.parameters.some((p) => p.flag === "critical_low" || p.flag === "critical_high")) {
+      return "critical";
+    }
+
+    return order.parameters.some((p) => p.flag === "abnormal") ? "abnormal" : "normal";
+  }
+
+  /**
+   * Step 3 — Save the results to the order (in_progress → completed).
+   *
+   * Saving is NOT releasing. This writes the numbers and stops; the report is
+   * still a draft that no clinician can see. Refusing to fill a parameter used
+   * to publish "Hemoglobin: — g/dL" straight to the patient chart, because the
+   * old one-click path substituted an em dash for every empty field.
+   */
+  async function saveResults(orderId: string): Promise<boolean> {
     const order = orders.value.find((o) => o.id === orderId);
-    if (!order) return;
+    if (!order) return false;
 
-    // Evaluate overall flag
-    const hasCritical = order.parameters.some((p) => p.flag === "critical_low" || p.flag === "critical_high");
-    const hasAbnormal = order.parameters.some((p) => p.flag === "abnormal");
-    const overallFlag = hasCritical ? "critical" : hasAbnormal ? "abnormal" : "normal";
+    const missing = missingParameters(order);
+    if (missing.length > 0) {
+      toast.error("Every parameter needs a value before results can be saved.", {
+        description: `Still empty: ${missing.map((p) => p.name).join(", ")}`,
+      });
+      return false;
+    }
 
-    const summaryParts = order.parameters.map((p) => `${p.name}: ${p.value ?? '—'} ${p.unit}`);
-    const resultSummary = summaryParts.join(", ");
-    const note = supervisorComments || (overallFlag === "normal" ? "Diagnostic parameters within normal biological reference limits." : "Abnormal findings detected. Clinical correlation recommended.");
+    const resultSummary = [
+      order.parameters.map((p) => `${p.name}: ${p.value} ${p.unit}`.trim()).join(", "),
+      // The backend decides a result is critical by looking for this exact
+      // phrase (VerifyLaboratoryOrderResultUseCase::isCriticalResultSummary),
+      // which then makes the verification note mandatory. Emit it so a critical
+      // panel cannot be released with an empty note.
+      overallFlagOf(order) === "critical" ? "Result flag: critical" : null,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    const resultParameters = order.parameters.map((p) => ({
+      code: p.key,
+      name: p.name,
+      value: String(p.value),
+      unit: p.unit || "",
+      flag:
+        p.flag === "critical_high" || p.flag === "critical_low"
+          ? "critical"
+          : p.flag === "abnormal"
+            ? "abnormal"
+            : "normal",
+      referenceRange: p.referenceRange || "",
+    }));
+
+    isSavingResults.value = true;
+    try {
+      const ok = await runOrderMutation(
+        orderId,
+        { status: "completed", flag: overallFlagOf(order), resultValue: resultSummary },
+        () => patchStatus(orderId, { status: "completed", resultSummary, resultParameters }),
+        "Could not save these results.",
+      );
+
+      if (ok) {
+        toast.success("Results saved as a draft report.", {
+          description: "Nothing has reached the patient chart yet — review and release it next.",
+        });
+      }
+      return ok;
+    } finally {
+      isSavingResults.value = false;
+    }
+  }
+
+  /**
+   * Step 4 — Release the saved report to the patient chart.
+   *
+   * Separate call, separate button, separate tab. This is the only path that
+   * makes a result visible to a clinician, and it is reachable only from
+   * `awaiting_release`.
+   */
+  async function releaseResults(
+    orderId: string,
+    verificationNote: string,
+    selfVerified = false,
+  ): Promise<boolean> {
+    const order = orders.value.find((o) => o.id === orderId);
+    if (!order) return false;
+
+    if (labStageOf(order) !== "awaiting_release") {
+      toast.error("Save the results before releasing this report.");
+      return false;
+    }
+
+    const note = verificationNote.trim();
+    if (note === "") {
+      toast.error("A release note is required before this report goes to the chart.");
+      return false;
+    }
 
     isVerifying.value = true;
     try {
-      order.status = "completed";
-      order.verifiedAt = new Date().toISOString();
-      order.verifiedBy = "Senior Medical Laboratory Scientist";
-      order.flag = overallFlag;
-      order.resultValue = resultSummary;
-      order.interpretation = note;
+      const ok = await runOrderMutation(
+        orderId,
+        { verifiedAt: new Date().toISOString(), interpretation: note },
+        () =>
+          fetch(`/api/v1/laboratory/orders/${orderId}/verify`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+            },
+            body: JSON.stringify({
+              verificationNote: selfVerified ? `[Self-verified] ${note}` : note,
+            }),
+          }),
+        "Could not release this report.",
+      );
 
-      const formattedParams = order.parameters.map((p) => ({
-        code: p.key,
-        name: p.name,
-        value: p.value !== null && p.value !== undefined ? String(p.value) : "—",
-        unit: p.unit || "",
-        flag: p.flag === "critical_high" || p.flag === "critical_low" ? "critical" : p.flag === "abnormal" ? "abnormal" : "normal",
-        referenceRange: p.referenceRange || "",
-      }));
-
-      // Step 1: Update status to completed with results
-      await fetch(`/api/v1/laboratory/orders/${orderId}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-        body: JSON.stringify({
-          status: "completed",
-          resultSummary,
-          resultParameters: formattedParams,
-        }),
-      });
-
-      // Step 2: Electronically verify and release
-      await fetch(`/api/v1/laboratory/orders/${orderId}/verify`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-        body: JSON.stringify({
-          verificationNote: note,
-        }),
-      });
-
-      toast.success("Lab Results verified and electronically published to patient chart!");
-      updateLocalStatusCounts();
-    } catch {
-      toast.success("Lab Results verified (local mode)");
-      updateLocalStatusCounts();
+      if (ok) {
+        toast.success("Report released to the patient chart.");
+        // The release is what hands the patient back to the clinician
+        // (RecordLaboratoryFlowTransitionService), so re-read the worklist to
+        // pick up the new visit stage rather than guessing at it here.
+        void fetchOrders();
+      }
+      return ok;
     } finally {
       isVerifying.value = false;
     }
@@ -919,7 +1187,9 @@ export function useLaboratoryOrders() {
     filteredPatientGroups,
     isLoadingOrders,
     isUpdatingOrder,
+    isSavingResults,
     isVerifying,
+    selectedStage,
     statusCounts,
     searchQuery,
     selectedStatusFilter,
@@ -933,7 +1203,8 @@ export function useLaboratoryOrders() {
     rejectSpecimen,
     startAnalysis,
     fillNormalDefaults,
-    verifyOrder,
+    saveResults,
+    releaseResults,
     logCriticalNotification,
     evaluateParameterFlag,
   };

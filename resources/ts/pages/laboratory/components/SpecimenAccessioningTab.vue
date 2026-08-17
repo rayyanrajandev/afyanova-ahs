@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Clock,
   FlaskConical,
+  Printer,
   RotateCcw,
   Send,
   Sparkles,
@@ -29,7 +30,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { LaboratoryOrder, UseLaboratoryOrders } from "../composables/useLaboratoryOrders";
+import {
+  labStageOf,
+  type LabStage,
+  type LaboratoryOrder,
+  type UseLaboratoryOrders,
+} from "../composables/useLaboratoryOrders";
 
 const props = defineProps<{
   order: LaboratoryOrder;
@@ -42,22 +48,34 @@ const accessionNotes = ref("");
 const rejectReason = ref("");
 const showRejectModal = ref(false);
 
-const isSampleReceived = computed(() => {
-  return props.order.status !== "ordered";
-});
+const stage = computed<LabStage>(() => labStageOf(props.order));
+
+/**
+ * Rejection is a pre-analytical decision. Once the analyser has run, discarding
+ * the order destroys work and hides a result that was actually produced — the
+ * right move there is to report it, not to cancel. The button used to stay live
+ * all the way through result entry.
+ */
+const canReject = computed(
+  () => stage.value === "awaiting_specimen" || stage.value === "ready_for_analysis",
+);
 
 function handleAcceptSample() {
-  props.laboratory.acceptSpecimen(props.order.id, accessionNotes.value);
+  void props.laboratory.acceptSpecimen(props.order.id, accessionNotes.value);
 }
 
 function handleStartTesting() {
-  props.laboratory.startAnalysis(props.order.id);
+  void props.laboratory.startAnalysis(props.order.id);
 }
 
-function handleConfirmRejection() {
+async function handleConfirmRejection() {
   if (!rejectReason.value.trim()) return;
-  props.laboratory.rejectSpecimen(props.order.id, rejectReason.value);
-  showRejectModal.value = false;
+
+  const ok = await props.laboratory.rejectSpecimen(props.order.id, rejectReason.value);
+  if (ok) {
+    showRejectModal.value = false;
+    rejectReason.value = "";
+  }
 }
 </script>
 
@@ -66,55 +84,43 @@ function handleConfirmRejection() {
     
     <!-- Status Overview Alert -->
     <div
-      v-if="order.status === 'ordered'"
-      class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between gap-3"
+      v-if="stage === 'awaiting_specimen'"
+      class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between gap-2.5"
     >
-      <div class="flex items-center gap-2.5">
-        <Clock class="size-4.5 text-amber-600 dark:text-amber-400 shrink-0" />
-        <div>
+      <div class="flex items-center gap-2 min-w-0">
+        <Clock class="size-4 text-amber-600 dark:text-amber-400 shrink-0" />
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
           <p class="font-bold text-xs">{{ t('laboratory.specimen_pending_banner', 'Specimen Pending Receipt in Laboratory') }}</p>
-          <p class="text-[11px] text-amber-800/90 dark:text-amber-300/90 mt-0.5">
+          <span class="hidden sm:inline text-amber-500/60">·</span>
+          <p class="text-[11px] text-amber-800/85 dark:text-amber-300/85 truncate">
             {{ t('laboratory.specimen_pending_desc', { doctor: order.orderingClinician }) }}
           </p>
         </div>
       </div>
 
-      <div class="flex items-center gap-2 shrink-0">
-        <Button
-          size="sm"
-          class="h-7.5 text-xs font-semibold gap-1.5 px-3 cursor-pointer shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-          :disabled="laboratory.isUpdatingOrder.value"
-          @click="handleAcceptSample"
-        >
-          <Check class="size-3.5" />
-          <span>{{ t('laboratory.accept_specimen', 'Accept Specimen') }}</span>
-        </Button>
-      </div>
+      <Badge variant="outline" class="border-amber-500/40 text-amber-700 dark:text-amber-300 bg-amber-500/15 font-mono text-[9.5px] uppercase px-1.5 py-0 shrink-0">
+        {{ t('laboratory.status_awaiting_specimen', 'Awaiting Receipt') }}
+      </Badge>
     </div>
 
     <div
-      v-else-if="order.status === 'sample_collected'"
-      class="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-900 dark:text-blue-200 flex items-center justify-between gap-3"
+      v-else-if="stage === 'ready_for_analysis'"
+      class="rounded-md border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-900 dark:text-blue-200 flex items-center justify-between gap-2.5"
     >
-      <div class="flex items-center gap-2.5">
-        <TestTube2 class="size-4.5 text-blue-600 dark:text-blue-400 shrink-0" />
-        <div>
+      <div class="flex items-center gap-2 min-w-0">
+        <TestTube2 class="size-4 text-blue-600 dark:text-blue-400 shrink-0" />
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
           <p class="font-bold text-xs">{{ t('laboratory.specimen_in_lab_banner', 'Specimen Accessioned & Ready for Analysis') }}</p>
-          <p class="text-[11px] text-blue-800/90 dark:text-blue-300/90 mt-0.5">
-            {{ t('laboratory.specimen_in_lab_desc', { time: order.collectedAt ? new Date(order.collectedAt).toLocaleTimeString() : 'Recent', user: order.collectedBy || 'Lab Team' }) }}
+          <span class="hidden sm:inline text-blue-500/60">·</span>
+          <p class="text-[11px] text-blue-800/85 dark:text-blue-300/85 truncate">
+            {{ t('laboratory.specimen_in_lab_hint', 'Review container integrity below and start analysis to begin result entry.') }}
           </p>
         </div>
       </div>
 
-      <Button
-        size="sm"
-        class="h-7.5 text-xs font-semibold gap-1.5 px-3.5 cursor-pointer shadow-xs"
-        :disabled="laboratory.isUpdatingOrder.value"
-        @click="handleStartTesting"
-      >
-        <FlaskConical class="size-3.5" />
-        <span>{{ t('laboratory.start_analysis', 'Start Test Analysis') }}</span>
-      </Button>
+      <Badge variant="outline" class="border-blue-500/40 text-blue-700 dark:text-blue-300 bg-blue-500/15 font-mono text-[9.5px] uppercase px-1.5 py-0 shrink-0">
+        {{ t('laboratory.status_ready_analysis', 'Ready on Bench') }}
+      </Badge>
     </div>
 
     <!-- 1. Specimen Protocol & Container Details Card -->
@@ -146,9 +152,21 @@ function handleConfirmRejection() {
           <span class="font-bold text-primary">{{ order.tubeType || 'Standard EDTA / SST Tube' }}</span>
         </div>
 
-        <!-- Barcode Identifier -->
-        <div class="space-y-1 p-2 rounded-md border border-border/60 bg-muted/20">
-          <span class="text-[10.5px] text-muted-foreground block">{{ t('laboratory.specimen_barcode', 'Specimen Barcode') }}</span>
+        <!-- Barcode Identifier & Tube Label Printing -->
+        <div class="space-y-1 p-2 rounded-md border border-border/60 bg-muted/20 flex flex-col justify-between">
+          <div class="flex items-center justify-between">
+            <span class="text-[10.5px] text-muted-foreground block">{{ t('laboratory.specimen_barcode', 'Specimen Barcode') }}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-4.5 px-1.5 text-[10px] text-primary hover:bg-primary/10 gap-1 cursor-pointer font-medium"
+              :title="t('laboratory.print_tube_label', 'Print Thermal Tube Barcode')"
+              @click="() => window.print()"
+            >
+              <Printer class="size-2.5" />
+              <span>{{ t('laboratory.print_label', 'Print') }}</span>
+            </Button>
+          </div>
           <span class="font-mono font-bold text-foreground">{{ order.orderNumber }}</span>
         </div>
 
@@ -183,25 +201,37 @@ function handleConfirmRejection() {
             v-model="accessionNotes"
             rows="2"
             class="text-xs resize-none"
-            :placeholder="t('laboratory.accession_remarks_placeholder', 'Optional specimen condition notes (e.g. Received intact at room temperature)...')"
+            :disabled="stage !== 'awaiting_specimen'"
+            :placeholder="stage === 'awaiting_specimen'
+              ? t('laboratory.accession_remarks_placeholder', 'Optional specimen condition notes (e.g. Received intact at room temperature)...')
+              : t('laboratory.accession_remarks_closed', 'Recorded at the time the specimen was accepted.')"
           />
         </div>
 
+        <!--
+          Exactly one forward action is ever live here, chosen by stage. Both
+          "Accept" and "Start Analysis" used to be reachable together, and
+          "Reject" stayed clickable long after the analyser had run.
+        -->
         <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/60">
           <Button
+            v-if="canReject"
             variant="outline"
             size="sm"
             class="h-8 text-xs text-rose-600 border-rose-500/40 hover:bg-rose-500/10 cursor-pointer gap-1"
-            :disabled="order.status === 'completed' || order.status === 'cancelled'"
+            :disabled="laboratory.isUpdatingOrder.value"
             @click="showRejectModal = true"
           >
             <XCircle class="size-3.5" />
             <span>{{ t('laboratory.reject_specimen', 'Reject Specimen') }}</span>
           </Button>
+          <span v-else class="text-[11px] text-muted-foreground">
+            {{ t('laboratory.reject_closed', 'Rejection is only possible before analysis begins.') }}
+          </span>
 
           <div class="flex items-center gap-2">
             <Button
-              v-if="order.status === 'ordered'"
+              v-if="stage === 'awaiting_specimen'"
               size="sm"
               class="h-8 text-xs font-semibold gap-1.5 px-4 cursor-pointer shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white"
               :disabled="laboratory.isUpdatingOrder.value"
@@ -212,15 +242,19 @@ function handleConfirmRejection() {
             </Button>
 
             <Button
-              v-else-if="order.status === 'sample_collected'"
+              v-else-if="stage === 'ready_for_analysis'"
               size="sm"
               class="h-8 text-xs font-semibold gap-1.5 px-4 cursor-pointer shadow-xs"
               :disabled="laboratory.isUpdatingOrder.value"
               @click="handleStartTesting"
             >
               <FlaskConical class="size-3.5" />
-              <span>{{ t('laboratory.transfer_to_entry', 'Transfer to Result Entry') }}</span>
+              <span>{{ t('laboratory.start_analysis', 'Start Test Analysis') }}</span>
             </Button>
+
+            <span v-else class="text-[11px] font-medium text-muted-foreground">
+              {{ t('laboratory.accessioning_done', 'Accessioning complete for this specimen.') }}
+            </span>
           </div>
         </div>
       </div>

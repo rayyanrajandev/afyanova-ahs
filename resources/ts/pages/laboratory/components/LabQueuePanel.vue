@@ -32,6 +32,7 @@ import { stepBadgeStatus, stepLabelKey } from "@/composables/patientFlowStep";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { UseLaboratoryOrders } from "../composables/useLaboratoryOrders";
 
 const props = defineProps<{
@@ -95,66 +96,188 @@ function groupVisitStage(group: { orders: Array<{ visitStage?: string | null }> 
 </script>
 
 <template>
-  <div class="flex h-full flex-col overflow-hidden bg-background border-r border-border">
-    <!-- Header -->
-    <header class="flex shrink-0 items-center justify-between border-b border-border bg-surface px-3 py-2">
-      <div class="flex items-center gap-1.5">
-        <div class="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <FlaskConical class="size-3.5" />
-        </div>
-        <h3 class="text-xs font-bold uppercase tracking-wider text-foreground">
-          {{ t('laboratory.worklist', 'Lab Worklist') }}
-        </h3>
-      </div>
-
-      <Button
-        variant="ghost"
-        size="sm"
-        class="h-6 text-[11px] px-1.5 text-muted-foreground hover:text-foreground cursor-pointer gap-1"
-        :disabled="laboratory.isLoadingOrders.value"
-        @click="laboratory.fetchOrders"
-      >
-        <RefreshCw class="size-3" :class="{ 'animate-spin': laboratory.isLoadingOrders.value }" />
-        <span>{{ t("common.refresh", "Refresh") }}</span>
-      </Button>
-    </header>
-
-    <!-- Dual-View Mode Switcher (2027 Enterprise LIS) -->
-    <div class="shrink-0 p-2.5 pb-0 bg-surface/50 border-b border-border/60">
-      <div class="grid grid-cols-2 gap-1 p-0.5 rounded-lg border border-border bg-muted/30 text-xs">
-        <button
-          type="button"
-          class="flex items-center justify-center gap-1.5 py-1 px-2 rounded-md font-semibold transition-all cursor-pointer select-none"
-          :class="[
-            laboratory.viewMode.value === 'patient'
-              ? 'bg-primary text-primary-foreground shadow-2xs font-bold'
-              : 'text-muted-foreground hover:text-foreground',
-          ]"
-          @click="laboratory.viewMode.value = 'patient'"
+  <Tabs v-model="laboratory.viewMode.value" class="flex h-full flex-col overflow-hidden bg-surface">
+    <!-- Top Header Tabs (Standardized with Clinician / Nursing Left Pane) -->
+    <div class="border-b border-border bg-surface px-3 pt-1 shrink-0">
+      <TabsList class="h-8 gap-1 bg-transparent p-0 justify-start w-auto border-b-0 -mb-px">
+        <TabsTrigger
+          value="patient"
+          class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
         >
-          <Users class="size-3.5" />
-          <span class="text-[11px]">{{ t('laboratory.by_patient', 'By Patient') }} ({{ laboratory.patientGroups.value.length }})</span>
-        </button>
+          <Users class="size-3.5" aria-hidden="true" />
+          <span>{{ t('laboratory.by_patient', 'Patients') }}</span>
+          <Badge
+            v-if="laboratory.patientGroups.value.length > 0"
+            variant="secondary"
+            class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
+            :class="laboratory.viewMode.value === 'patient' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+          >
+            {{ laboratory.patientGroups.value.length }}
+          </Badge>
+        </TabsTrigger>
 
-        <button
-          type="button"
-          class="flex items-center justify-center gap-1.5 py-1 px-2 rounded-md font-semibold transition-all cursor-pointer select-none"
-          :class="[
-            laboratory.viewMode.value === 'test'
-              ? 'bg-primary text-primary-foreground shadow-2xs font-bold'
-              : 'text-muted-foreground hover:text-foreground',
-          ]"
-          @click="laboratory.viewMode.value = 'test'"
+        <TabsTrigger
+          value="test"
+          class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
         >
-          <TestTube2 class="size-3.5" />
-          <span class="text-[11px]">{{ t('laboratory.by_specimen', 'By Specimen') }} ({{ laboratory.orders.value.length }})</span>
-        </button>
-      </div>
+          <TestTube2 class="size-3.5" aria-hidden="true" />
+          <span>{{ t('laboratory.by_specimen', 'Specimens') }}</span>
+          <Badge
+            v-if="laboratory.orders.value.length > 0"
+            variant="secondary"
+            class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
+            :class="laboratory.viewMode.value === 'test' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+          >
+            {{ laboratory.orders.value.length }}
+          </Badge>
+        </TabsTrigger>
+      </TabsList>
     </div>
 
     <!-- Search & Filters Container -->
     <div class="shrink-0 p-2.5 space-y-2 border-b border-border/70 bg-surface/50">
-      <!-- Search Input -->
+      <!-- 1. Status Count Filter Segmented Bar -->
+      <div class="grid grid-cols-5 gap-0.5 rounded-lg bg-muted/70 p-0.5 text-xs font-medium">
+        <!-- 1. All -->
+        <button
+          type="button"
+          class="flex items-center justify-center gap-1 rounded-md py-1 px-1 transition-all cursor-pointer select-none"
+          :class="
+            laboratory.selectedStatusFilter.value === 'all'
+              ? 'bg-card text-foreground font-semibold shadow-2xs'
+              : 'text-muted-foreground hover:text-foreground'
+          "
+          @click="laboratory.selectedStatusFilter.value = 'all'"
+        >
+          <span class="truncate text-[10.5px]">{{ t('laboratory.status_all', 'All') }}</span>
+          <span
+            class="rounded-full px-1.5 py-0 text-[9.5px] font-mono"
+            :class="
+              laboratory.selectedStatusFilter.value === 'all'
+                ? 'bg-primary/15 text-primary font-bold'
+                : 'bg-secondary text-muted-foreground'
+            "
+          >
+            {{ laboratory.statusCounts.value.all }}
+          </span>
+        </button>
+
+        <!-- 2. Pending -->
+        <button
+          type="button"
+          class="flex items-center justify-center gap-1 rounded-md py-1 px-1 transition-all cursor-pointer select-none"
+          :class="
+            laboratory.selectedStatusFilter.value === 'ordered'
+              ? 'bg-card text-foreground font-semibold shadow-2xs'
+              : 'text-muted-foreground hover:text-foreground'
+          "
+          @click="laboratory.selectedStatusFilter.value = 'ordered'"
+        >
+          <span class="truncate text-[10.5px]">{{ t('laboratory.status_pending', 'Pending') }}</span>
+          <span
+            class="rounded-full px-1.5 py-0 text-[9.5px] font-mono"
+            :class="
+              laboratory.selectedStatusFilter.value === 'ordered'
+                ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold'
+                : 'bg-secondary text-muted-foreground'
+            "
+          >
+            {{ laboratory.statusCounts.value.ordered }}
+          </span>
+        </button>
+
+        <!-- 3. In Lab -->
+        <button
+          type="button"
+          class="flex items-center justify-center gap-1 rounded-md py-1 px-1 transition-all cursor-pointer select-none"
+          :class="
+            laboratory.selectedStatusFilter.value === 'collected'
+              ? 'bg-card text-foreground font-semibold shadow-2xs'
+              : 'text-muted-foreground hover:text-foreground'
+          "
+          @click="laboratory.selectedStatusFilter.value = 'collected'"
+        >
+          <span class="truncate text-[10.5px]">{{ t('laboratory.status_in_lab', 'In Lab') }}</span>
+          <span
+            class="rounded-full px-1.5 py-0 text-[9.5px] font-mono"
+            :class="
+              laboratory.selectedStatusFilter.value === 'collected'
+                ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 font-bold'
+                : 'bg-secondary text-muted-foreground'
+            "
+          >
+            {{ laboratory.statusCounts.value.collected }}
+          </span>
+        </button>
+
+        <!-- 4. Testing -->
+        <button
+          type="button"
+          class="flex items-center justify-center gap-1 rounded-md py-1 px-1 transition-all cursor-pointer select-none"
+          :class="
+            laboratory.selectedStatusFilter.value === 'in_progress'
+              ? 'bg-card text-foreground font-semibold shadow-2xs'
+              : 'text-muted-foreground hover:text-foreground'
+          "
+          @click="laboratory.selectedStatusFilter.value = 'in_progress'"
+        >
+          <span class="truncate text-[10.5px]">{{ t('laboratory.status_testing', 'Testing') }}</span>
+          <span
+            class="rounded-full px-1.5 py-0 text-[9.5px] font-mono"
+            :class="
+              laboratory.selectedStatusFilter.value === 'in_progress'
+                ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 font-bold'
+                : 'bg-secondary text-muted-foreground'
+            "
+          >
+            {{ laboratory.statusCounts.value.in_progress }}
+          </span>
+        </button>
+
+        <!-- 5. Done -->
+        <button
+          type="button"
+          class="flex items-center justify-center gap-1 rounded-md py-1 px-1 transition-all cursor-pointer select-none"
+          :class="
+            laboratory.selectedStatusFilter.value === 'completed'
+              ? 'bg-card text-foreground font-semibold shadow-2xs'
+              : 'text-muted-foreground hover:text-foreground'
+          "
+          @click="laboratory.selectedStatusFilter.value = 'completed'"
+        >
+          <span class="truncate text-[10.5px]">{{ t('laboratory.status_done', 'Done') }}</span>
+          <span
+            class="rounded-full px-1.5 py-0 text-[9.5px] font-mono"
+            :class="
+              laboratory.selectedStatusFilter.value === 'completed'
+                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold'
+                : 'bg-secondary text-muted-foreground'
+            "
+          >
+            {{ laboratory.statusCounts.value.completed }}
+          </span>
+        </button>
+      </div>
+
+      <!-- 2. Department Filter Pills -->
+      <div class="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar">
+        <button
+          v-for="dept in DEPARTMENTS"
+          :key="dept.id"
+          type="button"
+          class="rounded-full px-2.5 py-0.5 text-[10.5px] font-medium whitespace-nowrap border transition-all cursor-pointer shrink-0"
+          :class="[
+            laboratory.selectedDepartmentFilter.value === dept.id
+              ? 'border-primary bg-primary text-primary-foreground font-bold shadow-2xs'
+              : 'border-border/80 bg-surface text-muted-foreground hover:text-foreground hover:bg-muted/40',
+          ]"
+          @click="laboratory.selectedDepartmentFilter.value = (laboratory.selectedDepartmentFilter.value === dept.id ? 'all' : dept.id)"
+        >
+          {{ dept.label }}
+        </button>
+      </div>
+
+      <!-- 3. Search Input (positioned below filters) -->
       <div class="relative">
         <Search class="absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
         <Input
@@ -170,97 +293,6 @@ function groupVisitStage(group: { orders: Array<{ visitStage?: string | null }> 
           @click="laboratory.searchQuery.value = ''"
         >
           <X class="size-3.5" />
-        </button>
-      </div>
-
-      <!-- Status Count Tabs -->
-      <div class="grid grid-cols-5 gap-1 text-center">
-        <button
-          type="button"
-          class="flex flex-col items-center justify-center py-1 rounded-md border text-[10px] font-semibold transition-all cursor-pointer"
-          :class="[
-            laboratory.selectedStatusFilter.value === 'all'
-              ? 'border-primary bg-primary text-primary-foreground font-bold shadow-2xs'
-              : 'border-border/80 bg-surface hover:bg-muted text-muted-foreground',
-          ]"
-          @click="laboratory.selectedStatusFilter.value = 'all'"
-        >
-          <span class="font-mono text-xs">{{ laboratory.statusCounts.value.all }}</span>
-          <span class="text-[9px] uppercase">{{ t('laboratory.status_all', 'All') }}</span>
-        </button>
-
-        <button
-          type="button"
-          class="flex flex-col items-center justify-center py-1 rounded-md border text-[10px] font-semibold transition-all cursor-pointer"
-          :class="[
-            laboratory.selectedStatusFilter.value === 'ordered'
-              ? 'border-amber-500 bg-amber-500 text-white font-bold shadow-2xs'
-              : 'border-border/80 bg-surface hover:bg-muted text-muted-foreground',
-          ]"
-          @click="laboratory.selectedStatusFilter.value = 'ordered'"
-        >
-          <span class="font-mono text-xs">{{ laboratory.statusCounts.value.ordered }}</span>
-          <span class="text-[9px] uppercase">{{ t('laboratory.status_pending', 'Pending') }}</span>
-        </button>
-
-        <button
-          type="button"
-          class="flex flex-col items-center justify-center py-1 rounded-md border text-[10px] font-semibold transition-all cursor-pointer"
-          :class="[
-            laboratory.selectedStatusFilter.value === 'sample_collected'
-              ? 'border-blue-500 bg-blue-500 text-white font-bold shadow-2xs'
-              : 'border-border/80 bg-surface hover:bg-muted text-muted-foreground',
-          ]"
-          @click="laboratory.selectedStatusFilter.value = 'sample_collected'"
-        >
-          <span class="font-mono text-xs">{{ laboratory.statusCounts.value.sample_collected }}</span>
-          <span class="text-[9px] uppercase">{{ t('laboratory.status_in_lab', 'In Lab') }}</span>
-        </button>
-
-        <button
-          type="button"
-          class="flex flex-col items-center justify-center py-1 rounded-md border text-[10px] font-semibold transition-all cursor-pointer"
-          :class="[
-            laboratory.selectedStatusFilter.value === 'in_progress'
-              ? 'border-purple-500 bg-purple-500 text-white font-bold shadow-2xs'
-              : 'border-border/80 bg-surface hover:bg-muted text-muted-foreground',
-          ]"
-          @click="laboratory.selectedStatusFilter.value = 'in_progress'"
-        >
-          <span class="font-mono text-xs">{{ laboratory.statusCounts.value.in_progress }}</span>
-          <span class="text-[9px] uppercase">{{ t('laboratory.status_testing', 'Testing') }}</span>
-        </button>
-
-        <button
-          type="button"
-          class="flex flex-col items-center justify-center py-1 rounded-md border text-[10px] font-semibold transition-all cursor-pointer"
-          :class="[
-            laboratory.selectedStatusFilter.value === 'completed'
-              ? 'border-emerald-500 bg-emerald-500 text-white font-bold shadow-2xs'
-              : 'border-border/80 bg-surface hover:bg-muted text-muted-foreground',
-          ]"
-          @click="laboratory.selectedStatusFilter.value = 'completed'"
-        >
-          <span class="font-mono text-xs">{{ laboratory.statusCounts.value.completed }}</span>
-          <span class="text-[9px] uppercase">{{ t('laboratory.status_done', 'Done') }}</span>
-        </button>
-      </div>
-
-      <!-- Department Filter Pills -->
-      <div class="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar">
-        <button
-          v-for="dept in DEPARTMENTS"
-          :key="dept.id"
-          type="button"
-          class="rounded-full px-2.5 py-0.5 text-[10.5px] font-medium whitespace-nowrap border transition-all cursor-pointer shrink-0"
-          :class="[
-            laboratory.selectedDepartmentFilter.value === dept.id
-              ? 'border-primary bg-primary text-primary-foreground font-bold shadow-2xs'
-              : 'border-border/80 bg-surface text-muted-foreground hover:text-foreground hover:bg-muted/40',
-          ]"
-          @click="laboratory.selectedDepartmentFilter.value = (laboratory.selectedDepartmentFilter.value === dept.id ? 'all' : dept.id)"
-        >
-          {{ dept.label }}
         </button>
       </div>
     </div>
@@ -351,9 +383,11 @@ function groupVisitStage(group: { orders: Array<{ visitStage?: string | null }> 
               class="size-1.5 rounded-full shrink-0"
               :class="{
                 'bg-amber-500': order.status === 'ordered',
-                'bg-blue-500': order.status === 'sample_collected',
+                'bg-blue-500': order.status === 'collected',
                 'bg-purple-500': order.status === 'in_progress',
-                'bg-emerald-500': order.status === 'completed',
+                'bg-sky-500': order.status === 'completed' && !order.verifiedAt,
+                'bg-emerald-500': order.status === 'completed' && !!order.verifiedAt,
+                'bg-rose-500': order.status === 'cancelled',
               }"
             />
             <span class="truncate max-w-[130px]">{{ order.testName }}</span>
@@ -435,5 +469,5 @@ function groupVisitStage(group: { orders: Array<{ visitStage?: string | null }> 
         </div>
       </div>
     </div>
-  </div>
+  </Tabs>
 </template>

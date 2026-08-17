@@ -337,16 +337,16 @@ function getRelativeTime(dateStr: string | null | undefined): string {
           <div class="flex items-center justify-between gap-1 border-t border-border/40 pt-1 text-[9.5px] font-mono">
             <div class="flex items-center gap-1.5">
               <span v-if="group.orderedCount > 0" class="text-amber-600 font-semibold">
-                {{ group.orderedCount }} Ordered
+                {{ group.orderedCount }} {{ t('radiology.status_ordered', 'Ordered') }}
               </span>
               <span v-if="group.scheduledCount > 0" class="text-blue-600 font-semibold">
-                {{ group.scheduledCount }} Booked
+                {{ group.scheduledCount }} {{ t('radiology.status_scheduled', 'Booked') }}
               </span>
               <span v-if="group.inProgressCount > 0" class="text-purple-600 font-semibold">
-                {{ group.inProgressCount }} Scanning
+                {{ group.inProgressCount }} {{ t('radiology.status_in_progress', 'Scanning') }}
               </span>
               <span v-if="group.completedCount > 0" class="text-emerald-600 font-semibold">
-                {{ group.completedCount }} Done
+                {{ group.completedCount }} {{ t('radiology.status_completed', 'Reported') }}
               </span>
             </div>
 

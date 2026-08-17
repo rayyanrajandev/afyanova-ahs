@@ -42,12 +42,12 @@ const currentStage = computed<BenchStage>(() => {
 
 const isVerified = computed(() => Boolean(props.order.verifiedAt));
 
-const STAGES: Array<{ id: BenchStage; label: string; icon: any }> = [
-  { id: "ordered", label: "Request", icon: FileEdit },
-  { id: "scheduled", label: "Booked", icon: CalendarClock },
-  { id: "in_progress", label: "Scanning", icon: ScanLine },
-  { id: "completed", label: "Released", icon: ShieldCheck },
-];
+const STAGES = computed<Array<{ id: BenchStage; label: string; icon: any }>>(() => [
+  { id: "ordered", label: t("radiology.stage_request", "Request"), icon: FileEdit },
+  { id: "scheduled", label: t("radiology.stage_booked", "Booked"), icon: CalendarClock },
+  { id: "in_progress", label: t("radiology.stage_scanning", "Scanning"), icon: ScanLine },
+  { id: "completed", label: t("radiology.stage_released", "Released"), icon: ShieldCheck },
+]);
 
 function stageIndex(stage: BenchStage): number {
   switch (stage) {
@@ -139,7 +139,7 @@ const contextualGuidance = computed<{ text: string; alert?: boolean; success?: b
     <!-- Right: Contextual Next Action -->
     <div class="flex items-center gap-1.5 text-[11px] truncate pl-3">
       <span class="font-bold text-foreground shrink-0 uppercase text-[9.5px] font-mono tracking-wider text-muted-foreground">
-        Next:
+        {{ t('common.next', 'Next:') }}
       </span>
       <span
         class="truncate font-medium"

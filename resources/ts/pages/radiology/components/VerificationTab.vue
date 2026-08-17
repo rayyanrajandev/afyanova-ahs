@@ -130,7 +130,7 @@ async function verify() {
           </p>
           <p class="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 mt-0.5 font-mono">
             {{ new Date(props.order.verifiedAt!).toLocaleString() }}
-            <template v-if="props.order.verifiedBy"> · Verified by {{ props.order.verifiedBy }}</template>
+            <template v-if="props.order.verifiedBy"> · {{ t('radiology.verified_by_user', { user: props.order.verifiedBy }) }}</template>
           </p>
         </div>
       </div>
@@ -154,7 +154,7 @@ async function verify() {
       <FileText class="size-8 mx-auto text-muted-foreground/40 stroke-1" />
       <p class="font-semibold text-foreground">{{ t('radiology.nothing_to_verify', 'No report submitted for verification yet') }}</p>
       <p class="text-[11px] max-w-md mx-auto">
-        The radiographer must complete the examination and submit findings on the Report tab before the report can be verified and released.
+        {{ t('radiology.nothing_to_verify_desc', 'The radiographer must complete the examination and submit findings on the Report tab before the report can be verified and released.') }}
       </p>
     </div>
 
@@ -164,9 +164,9 @@ async function verify() {
       <div class="flex items-center gap-2.5 rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs">
         <Users class="size-4 text-primary shrink-0" />
         <div>
-          <span class="font-bold text-foreground">Independent Medical Review:</span>
+          <span class="font-bold text-foreground">{{ t('radiology.review_notice_title', 'Independent Medical Review:') }}</span>
           <span class="text-muted-foreground ml-1">
-            Review the findings and clinical impression below. Authorizing this report releases it immediately to the patient chart and ordering clinician.
+            {{ t('radiology.review_notice_desc', 'Review the findings and clinical impression below. Authorizing this report releases it immediately to the patient chart and ordering clinician.') }}
           </span>
         </div>
       </div>
@@ -175,7 +175,7 @@ async function verify() {
       <section class="rounded-lg border border-border bg-surface p-4 space-y-2 shadow-2xs">
         <div class="flex items-center justify-between border-b border-border/70 pb-2">
           <span class="text-xs font-bold text-foreground uppercase tracking-wide">
-            {{ props.order.studyDescription }} Findings ({{ props.order.modality.toUpperCase() }})
+            {{ t('radiology.findings_card_title', { study: props.order.studyDescription, modality: props.order.modality.toUpperCase() }) }}
           </span>
           <span class="text-[10px] font-mono text-muted-foreground">
             Acc: {{ props.order.orderNumber || props.order.id.slice(0, 8).toUpperCase() }}
@@ -220,7 +220,7 @@ async function verify() {
 
         <div class="flex items-center justify-between pt-1">
           <p class="text-[11px] text-muted-foreground">
-            Clicking Authorize &amp; Release signs off this study under your medical credentials.
+            {{ t('radiology.signoff_notice', 'Clicking Authorize & Release signs off this study under your medical credentials.') }}
           </p>
 
           <Button

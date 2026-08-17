@@ -170,9 +170,9 @@ async function submit() {
           ]"
         >
           {{
-            canReport ? 'Examination in Progress' :
-            isReported ? 'Report Submitted' :
-            'Awaiting Acquisition'
+            canReport ? t('radiology.status_in_exam', 'Examination in Progress') :
+            isReported ? t('radiology.status_report_submitted', 'Report Submitted') :
+            t('radiology.status_awaiting_acq', 'Awaiting Acquisition')
           }}
         </Badge>
       </div>
@@ -192,7 +192,7 @@ async function submit() {
             {{ isWalkIn ? t('radiology.walk_in_title', 'Walk-in Examination Ready') : t('radiology.scheduled_ready_title', 'Booked Patient Examination') }}
           </h4>
           <p class="text-xs text-muted-foreground mt-0.5">
-            Click Start when the patient is positioned in the examination room. This moves the patient's global visit stage to "In Radiology".
+            {{ t('radiology.start_scan_hint', 'Click Start when the patient is positioned in the examination room. This moves the patient\'s global visit stage to "In Radiology".') }}
           </p>
         </div>
       </div>
@@ -274,11 +274,11 @@ async function submit() {
       <div class="flex items-center justify-between border-t border-border pt-3">
         <div>
           <p v-if="canReport" class="text-[11px] text-muted-foreground">
-            Submitting will notify the verifying radiologist to authorize and release the report to the doctor chart.
+            {{ t('radiology.submit_info', 'Submitting will notify the verifying radiologist to authorize and release the report to the doctor chart.') }}
           </p>
           <p v-else-if="!isReleased" class="text-[11px] text-primary font-semibold flex items-center gap-1.5">
             <ShieldAlert class="size-3.5" />
-            <span>Report submitted. Awaiting second radiologist verification.</span>
+            <span>{{ t('radiology.awaiting_second_review', 'Report submitted. Awaiting second radiologist verification.') }}</span>
           </p>
         </div>
 

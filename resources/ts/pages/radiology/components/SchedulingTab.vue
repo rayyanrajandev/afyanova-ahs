@@ -148,8 +148,8 @@ async function cancel() {
       <div class="flex items-center gap-2.5">
         <Info class="size-4 text-primary shrink-0" />
         <div class="text-xs">
-          <span class="font-semibold text-foreground">Walk-in Study:</span>
-          <span class="text-muted-foreground ml-1">If the patient is already at the department, you can proceed directly to the Examination tab without scheduling.</span>
+          <span class="font-semibold text-foreground">{{ t('radiology.walk_in_notice_title', 'Walk-in Study:') }}</span>
+          <span class="text-muted-foreground ml-1">{{ t('radiology.walk_in_notice_desc', 'If the patient is already at the department, you can proceed directly to the Examination tab without scheduling.') }}</span>
         </div>
       </div>
       <Button
@@ -172,7 +172,7 @@ async function cancel() {
           <Label class="text-xs font-bold text-foreground">
             {{ t('radiology.select_slot', 'Select Appointment Slot') }}
           </Label>
-          <span class="text-[10px] text-muted-foreground font-mono">Standard 30m slot</span>
+          <span class="text-[10px] text-muted-foreground font-mono">{{ t('radiology.standard_slot_hint', 'Standard 30m slot') }}</span>
         </div>
 
         <Input
@@ -195,7 +195,7 @@ async function cancel() {
               @click="applyPreset(30)"
             >
               <Clock class="size-3 text-primary mr-1 shrink-0" />
-              <span>Today +30 mins</span>
+              <span>{{ t('radiology.preset_today_30m', 'Today +30 mins') }}</span>
             </Button>
 
             <Button
@@ -206,7 +206,7 @@ async function cancel() {
               @click="applyPreset(120)"
             >
               <Clock class="size-3 text-primary mr-1 shrink-0" />
-              <span>Today +2 hours</span>
+              <span>{{ t('radiology.preset_today_2h', 'Today +2 hours') }}</span>
             </Button>
 
             <Button
@@ -217,7 +217,7 @@ async function cancel() {
               @click="applyTomorrowPreset(9)"
             >
               <Calendar class="size-3 text-primary mr-1 shrink-0" />
-              <span>Tomorrow 09:00 AM</span>
+              <span>{{ t('radiology.preset_tomorrow_morning', 'Tomorrow 09:00 AM') }}</span>
             </Button>
 
             <Button
@@ -228,7 +228,7 @@ async function cancel() {
               @click="applyTomorrowPreset(14)"
             >
               <Calendar class="size-3 text-primary mr-1 shrink-0" />
-              <span>Tomorrow 02:00 PM</span>
+              <span>{{ t('radiology.preset_tomorrow_afternoon', 'Tomorrow 02:00 PM') }}</span>
             </Button>
           </div>
         </div>
@@ -249,23 +249,23 @@ async function cancel() {
       <section class="rounded-lg border border-border bg-surface p-4 space-y-3.5 shadow-2xs">
         <div>
           <h4 class="text-xs font-bold text-foreground">{{ t('radiology.prep_guidelines', 'Patient Preparation Guidelines') }}</h4>
-          <p class="text-[11px] text-muted-foreground mt-0.5">Recommended pre-imaging instructions for {{ props.order.studyDescription }}.</p>
+          <p class="text-[11px] text-muted-foreground mt-0.5">{{ t('radiology.prep_guidelines_desc', { study: props.order.studyDescription }) }}</p>
         </div>
 
         <div class="space-y-2 text-xs">
           <div class="flex items-start gap-2 p-2 rounded-md bg-muted/30 border border-border/60">
             <Droplet class="size-4 text-sky-600 shrink-0 mt-0.5" />
             <div>
-              <span class="font-bold text-foreground">Hydration &amp; Bladder:</span>
-              <p class="text-[11px] text-muted-foreground mt-0.5">For pelvic and lower abdominal ultrasound, ensure full bladder (drink 750ml water 1 hr prior).</p>
+              <span class="font-bold text-foreground">{{ t('radiology.prep_hydration_title', 'Hydration & Bladder:') }}</span>
+              <p class="text-[11px] text-muted-foreground mt-0.5">{{ t('radiology.prep_hydration_desc', 'For pelvic and lower abdominal ultrasound, ensure full bladder (drink 750ml water 1 hr prior).') }}</p>
             </div>
           </div>
 
           <div class="flex items-start gap-2 p-2 rounded-md bg-muted/30 border border-border/60">
             <UtensilsCrossed class="size-4 text-amber-600 shrink-0 mt-0.5" />
             <div>
-              <span class="font-bold text-foreground">Fasting Protocol:</span>
-              <p class="text-[11px] text-muted-foreground mt-0.5">NPO for 6 hours prior to hepatobiliary ultrasound or IV contrast studies.</p>
+              <span class="font-bold text-foreground">{{ t('radiology.prep_fasting_title', 'Fasting Protocol:') }}</span>
+              <p class="text-[11px] text-muted-foreground mt-0.5">{{ t('radiology.prep_fasting_desc', 'NPO for 6 hours prior to hepatobiliary ultrasound or IV contrast studies.') }}</p>
             </div>
           </div>
         </div>

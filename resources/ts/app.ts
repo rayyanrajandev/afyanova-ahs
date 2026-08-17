@@ -19,25 +19,22 @@ import AuthLayout from "./layouts/AuthLayout.vue";
 import { i18n } from "./i18n";
 import { useUiStore } from "./stores/uiStore";
 
-// Echo/Reverb client bootstrap (Volume 2.1 §10.4 real-time queue updates,
-// 2026-08-11) — the first real-time frontend wiring in the app; every
-// workspace's live-update composable (starting with Reception's
-// useReceptionLiveSync.ts) calls useEcho()/useChannel() against this one
-// globally-configured client rather than each standing up its own. Values
-// come from VITE_REVERB_* (vite.config.ts has no custom envPrefix, so
-// Vite's default `VITE_` allowlist already exposes them) — themselves
-// `${REVERB_*}`-interpolated from the same REVERB_APP_KEY/HOST/PORT/SCHEME
-// the backend's config/reverb.php reads, so client and server can never
-// drift out of sync by editing only one side.
-configureEcho({
-  broadcaster: "reverb",
-  key: import.meta.env.VITE_REVERB_APP_KEY,
-  wsHost: import.meta.env.VITE_REVERB_HOST,
-  wsPort: Number(import.meta.env.VITE_REVERB_PORT ?? 8080),
-  wssPort: Number(import.meta.env.VITE_REVERB_PORT ?? 8080),
-  forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? "http") === "https",
-  enabledTransports: ["ws", "wss"],
-});
+// Echo/Reverb client bootstrap — only initialize if VITE_REVERB_APP_KEY is present
+if (import.meta.env.VITE_REVERB_APP_KEY) {
+  try {
+    configureEcho({
+      broadcaster: "reverb",
+      key: import.meta.env.VITE_REVERB_APP_KEY,
+      wsHost: import.meta.env.VITE_REVERB_HOST || window.location.hostname,
+      wsPort: Number(import.meta.env.VITE_REVERB_PORT ?? 8080),
+      wssPort: Number(import.meta.env.VITE_REVERB_PORT ?? 8080),
+      forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? "http") === "https",
+      enabledTransports: ["ws", "wss"],
+    });
+  } catch (e) {
+    console.warn("Failed to initialize Echo/Reverb:", e);
+  }
+}
 
 createInertiaApp({
   title: (title) => (title ? `${title} — Afyanova AHS` : "Afyanova AHS"),

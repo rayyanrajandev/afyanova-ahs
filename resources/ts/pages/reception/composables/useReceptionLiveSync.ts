@@ -64,26 +64,31 @@ export function useReceptionLiveSync(options: UseReceptionLiveSyncOptions) {
   const platform = page.props.platform as PlatformScopeProp | undefined;
   const facilityId = platform?.scope?.facility?.id ?? null;
 
+  if (!import.meta.env.VITE_REVERB_APP_KEY) return;
   if (!facilityId) return;
 
-  useEcho(`patient-flow.${facilityId}`, ".board.updated", () => {
-    options.onBoardUpdated();
-  });
-
-  useEcho(
-    `patient-flow.${facilityId}`,
-    ".patient.returned",
-    (payload: { appointmentId: string; patientId?: string; patientName: string; reason: string }) => {
+  try {
+    useEcho(`patient-flow.${facilityId}`, ".board.updated", () => {
       options.onBoardUpdated();
-      options.onPatientReturned?.(payload);
-    },
-  );
+    });
 
-  useEcho(
-    `reception-queue.${facilityId}`,
-    ".queue.appointment-called",
-    (payload: AppointmentCalledPayload) => {
-      options.onPatientCalled(payload);
-    },
-  );
+    useEcho(
+      `patient-flow.${facilityId}`,
+      ".patient.returned",
+      (payload: { appointmentId: string; patientId?: string; patientName: string; reason: string }) => {
+        options.onBoardUpdated();
+        options.onPatientReturned?.(payload);
+      },
+    );
+
+    useEcho(
+      `reception-queue.${facilityId}`,
+      ".queue.appointment-called",
+      (payload: AppointmentCalledPayload) => {
+        options.onPatientCalled(payload);
+      },
+    );
+  } catch (e) {
+    console.warn("Echo subscription skipped:", e);
+  }
 }

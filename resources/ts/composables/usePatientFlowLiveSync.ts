@@ -42,11 +42,14 @@ export function usePatientFlowLiveSync(options: UsePatientFlowLiveSyncOptions) {
   const platform = page.props.platform as PlatformScopeProp | undefined;
   const facilityId = platform?.scope?.facility?.id ?? null;
 
-  // No facility in scope (platform-admin context, or an unmapped session) means
-  // there is no facility board to listen to — not an error, just nothing to do.
+  if (!import.meta.env.VITE_REVERB_APP_KEY) return;
   if (!facilityId) return;
 
-  useEcho(`patient-flow.${facilityId}`, ".board.updated", () => {
-    options.onBoardUpdated();
-  });
+  try {
+    useEcho(`patient-flow.${facilityId}`, ".board.updated", () => {
+      options.onBoardUpdated();
+    });
+  } catch (e) {
+    console.warn("Echo subscription skipped:", e);
+  }
 }

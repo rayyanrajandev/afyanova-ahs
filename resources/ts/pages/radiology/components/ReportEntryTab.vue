@@ -1,7 +1,7 @@
 /**
  * ReportEntryTab — Modality Examination & Structured Diagnostic Reporting (2027 Standard)
  * =========================================================================================
- * - Equipment / Technique metadata (Transducer, Views, Position, Contrast)
+ * - Integrated DICOM PACS Viewer (Interactive Viewport, W/L Presets, Measurements)
  * - Quick 1-Click Clinical Normal Diagnostic Templates
  * - Structured Diagnostic Findings Editor (Technique, Findings, Impression)
  * - Clear workflow gates (Start Examination → Enter Findings → Submit for Verification)
@@ -17,6 +17,7 @@ import {
   FileText,
   Layers,
   Play,
+  Scan,
   Send,
   ShieldAlert,
   Sparkles,
@@ -29,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { RadiologyOrder, UseRadiologyOrders } from "../composables/useRadiologyOrders";
+import RadiologyPacsViewer from "./RadiologyPacsViewer.vue";
 
 const props = defineProps<{
   order: RadiologyOrder;
@@ -149,7 +151,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="space-y-3.5 p-3.5 w-full">
+  <div class="space-y-4 p-3.5 w-full">
     <!-- Header Section -->
     <div class="flex items-center justify-between border-b border-border pb-3">
       <div class="flex items-center gap-2">
@@ -178,7 +180,7 @@ async function submit() {
       </div>
     </div>
 
-    <!-- Step 1: Ready to start examination banner -->
+    <!-- Ready to start examination banner if study is ordered / scheduled -->
     <div
       v-if="canStart"
       class="rounded-lg border border-primary/30 bg-primary/5 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs"
@@ -209,8 +211,26 @@ async function submit() {
       </Button>
     </div>
 
+    <!-- DICOM PACS Medical Image Viewer Stage -->
+    <section class="space-y-1.5">
+      <div class="flex items-center justify-between">
+        <Label class="text-xs font-bold text-foreground flex items-center gap-1.5">
+          <Scan class="size-3.5 text-sky-500" />
+          <span>Diagnostic DICOM &amp; Modality Image Series</span>
+        </Label>
+        <span class="text-[10.5px] font-mono text-muted-foreground">
+          {{ props.order.modality.toUpperCase() }} PACS Stream
+        </span>
+      </div>
+
+      <RadiologyPacsViewer
+        :order="props.order"
+        :radiology="props.radiology"
+      />
+    </section>
+
     <!-- Step 2: Diagnostic Reporting Console -->
-    <div v-if="canReport || isReported" class="space-y-3">
+    <div class="space-y-3 pt-1">
       <!-- Quick Diagnostic Templates Toolbar -->
       <div v-if="canReport" class="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg border border-border/80 bg-muted/20">
         <div class="flex items-center gap-1.5 text-xs text-muted-foreground font-semibold">
@@ -263,7 +283,7 @@ async function submit() {
 
         <Textarea
           v-model="report"
-          rows="14"
+          rows="12"
           class="font-mono text-xs leading-relaxed resize-y bg-surface"
           :disabled="!canReport"
           :placeholder="t('radiology.findings_placeholder', 'Enter technique, observations, anatomical measurements, and clinical impression...')"

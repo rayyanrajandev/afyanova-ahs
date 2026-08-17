@@ -2,6 +2,7 @@
  * VerificationTab — Diagnostic Imaging Verification & Chart Release (2027 Standard)
  * ===================================================================================
  * - Radiologist Two-Person Quality Gate
+ * - PACS DICOM Review Viewport (Key Frames & Measurements Review)
  * - Findings & Impression Full Review Card
  * - Release Note Presets (ISO 15189 / ACR Compliant)
  * - Official A4 Diagnostic Report Print Launcher (clinicalPrintEngine)
@@ -14,6 +15,7 @@ import {
   FileCheck2,
   FileText,
   Printer,
+  Scan,
   ShieldCheck,
   Sparkles,
   Users,
@@ -25,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { RadiologyOrder, UseRadiologyOrders } from "../composables/useRadiologyOrders";
+import RadiologyPacsViewer from "./RadiologyPacsViewer.vue";
 import { printRadiologyReport } from "../radiologyReportPrint";
 
 const props = defineProps<{
@@ -76,7 +79,8 @@ function applyPreset(p: VerificationPreset) {
 }
 
 function handlePrint() {
-  printRadiologyReport(props.order);
+  const images = props.radiology.getOrderImages(props.order.id);
+  printRadiologyReport(props.order, images);
 }
 
 async function verify() {
@@ -86,7 +90,7 @@ async function verify() {
 </script>
 
 <template>
-  <div class="space-y-3.5 p-3.5 w-full">
+  <div class="space-y-4 p-3.5 w-full">
     <!-- Header Section -->
     <div class="flex items-center justify-between border-b border-border pb-3">
       <div class="flex items-center gap-2">
@@ -170,6 +174,25 @@ async function verify() {
           </span>
         </div>
       </div>
+
+      <!-- PACS Viewport Review Card -->
+      <section class="space-y-1.5">
+        <div class="flex items-center justify-between">
+          <Label class="text-xs font-bold text-foreground flex items-center gap-1.5">
+            <Scan class="size-3.5 text-sky-500" />
+            <span>PACS Image Verification &amp; Diagnostic Series</span>
+          </Label>
+          <span class="text-[10.5px] font-mono text-muted-foreground">
+            Reviewing Modality Series
+          </span>
+        </div>
+
+        <RadiologyPacsViewer
+          :order="props.order"
+          :radiology="props.radiology"
+          read-only
+        />
+      </section>
 
       <!-- Findings Review Card -->
       <section class="rounded-lg border border-border bg-surface p-4 space-y-2 shadow-2xs">

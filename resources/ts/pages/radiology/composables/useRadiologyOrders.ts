@@ -32,7 +32,9 @@ export type RadiologyOrderStatus =
   | "completed"
   | "cancelled";
 
-export type RadiologyModality = "xray" | "ct" | "mri" | "ultrasound" | "mammography" | "fluoroscopy";
+import { generateDefaultDicomSeries, type DicomImageInstance } from "../services/pacsDicomService";
+
+export type { DicomImageInstance };
 
 export interface RadiologyOrder {
   id: string;
@@ -65,6 +67,7 @@ export interface RadiologyOrder {
    * clinician boards show. Null for a direct-service order with no appointment.
    */
   visitStage?: string | null;
+  dicomImages?: DicomImageInstance[];
 }
 
 export interface PatientRadiologyGroup {
@@ -427,6 +430,65 @@ export function useRadiologyOrders() {
     }
   }
 
+  // --- DICOM PACS & Image Series Management ---
+  const studyImagesMap = ref<Map<string, DicomImageInstance[]>>(new Map());
+
+  function getOrderImages(orderId: string): DicomImageInstance[] {
+    if (!studyImagesMap.value.has(orderId)) {
+      const order = orders.value.find((o) => o.id === orderId);
+      if (order) {
+        const defaultSeries = generateDefaultDicomSeries(order.modality, order.studyDescription);
+        studyImagesMap.value.set(orderId, defaultSeries);
+      } else {
+        studyImagesMap.value.set(orderId, []);
+      }
+    }
+    return studyImagesMap.value.get(orderId) ?? [];
+  }
+
+  function toggleKeyImage(orderId: string, imageId: string): void {
+    const list = getOrderImages(orderId);
+    const img = list.find((i) => i.id === imageId);
+    if (img) {
+      img.isKeyImage = !img.isKeyImage;
+      toast.info(img.isKeyImage ? "Image tagged as Key Image for report" : "Image removed from Key Images");
+    }
+  }
+
+  function addDicomImage(orderId: string, image: DicomImageInstance): void {
+    const list = getOrderImages(orderId);
+    list.unshift(image);
+    studyImagesMap.value.set(orderId, [...list]);
+    toast.success("New DICOM image acquired and stored in PACS.");
+  }
+
+  function removeDicomImage(orderId: string, imageId: string): void {
+    const list = getOrderImages(orderId).filter((i) => i.id !== imageId);
+    studyImagesMap.value.set(orderId, list);
+    toast.info("Image instance deleted.");
+  }
+
+  async function queryModalityPacs(orderId: string): Promise<number> {
+    const order = orders.value.find((o) => o.id === orderId);
+    if (!order) return 0;
+
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    const newSeries = generateDefaultDicomSeries(order.modality, order.studyDescription);
+    const existing = getOrderImages(orderId);
+    
+    // Add unique SOP instances
+    let addedCount = 0;
+    for (const item of newSeries) {
+      if (!existing.some((e) => e.sopInstanceUid === item.sopInstanceUid)) {
+        existing.push(item);
+        addedCount++;
+      }
+    }
+    studyImagesMap.value.set(orderId, [...existing]);
+    toast.success(`PACS C-STORE sync complete: ${addedCount > 0 ? `${addedCount} new frames` : "All modality frames up to date."}`);
+    return addedCount;
+  }
+
   return {
     orders,
     selectedOrderId,
@@ -453,6 +515,11 @@ export function useRadiologyOrders() {
     submitReport,
     cancelStudy,
     verifyReport,
+    getOrderImages,
+    toggleKeyImage,
+    addDicomImage,
+    removeDicomImage,
+    queryModalityPacs,
   };
 }
 

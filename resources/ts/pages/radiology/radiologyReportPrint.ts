@@ -2,7 +2,7 @@
  * radiologyReportPrint.ts — Official Diagnostic Imaging & Radiology Report Printer
  * =================================================================================
  * Generates hospital-grade A4 diagnostic imaging reports utilizing the universal
- * clinicalPrintEngine.
+ * clinicalPrintEngine with DICOM Key Image embedding.
  */
 
 import {
@@ -13,12 +13,15 @@ import {
   type ClinicalDocumentOptions,
   type DocumentSignatureInfo,
 } from "@/services/print/clinicalPrintEngine";
-import type { RadiologyOrder } from "./composables/useRadiologyOrders";
+import type { DicomImageInstance, RadiologyOrder } from "./composables/useRadiologyOrders";
 
 /**
- * Prints an official Diagnostic Imaging Examination Report.
+ * Prints an official Diagnostic Imaging Examination Report with optional Key Image attachments.
  */
-export function printRadiologyReport(order: RadiologyOrder): void {
+export function printRadiologyReport(
+  order: RadiologyOrder,
+  images?: DicomImageInstance[],
+): void {
   const isReleased = Boolean(order.verifiedAt);
   const statusBadgeText = isReleased ? "FINAL VERIFIED REPORT" : "PRELIMINARY / DRAFT";
   const statusBadgeColor = isReleased ? "#059669" : "#d97706";
@@ -26,7 +29,34 @@ export function printRadiologyReport(order: RadiologyOrder): void {
   const studyDate = formatPrintDate(order.completedAt || order.scheduledFor || order.orderedAt);
 
   // Parse structured report sections if available, or format raw report
-  const rawReport = order.reportSummary || "Examination performed without acute complications. Findings recorded in clinical chart.";
+  const rawReport =
+    order.reportSummary ||
+    "Examination performed without acute complications. Findings recorded in clinical chart.";
+
+  // Filter key images or first 2 images
+  const keyImages = (images || []).filter((i) => i.isKeyImage).slice(0, 3);
+  const displayImages = keyImages.length > 0 ? keyImages : (images || []).slice(0, 2);
+
+  let keyImagesHtml = "";
+  if (displayImages.length > 0) {
+    keyImagesHtml = `
+      <div class="section-title" style="margin-top: 14px;">Key Diagnostic DICOM Captures</div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;">
+        ${displayImages
+          .map(
+            (img, idx) => `
+          <div style="flex: 1; min-width: 180px; max-width: 240px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px; background: #0f172a; text-align: center;">
+            <img src="${img.imageUrl}" alt="${escapeHtml(img.seriesDescription)}" style="width: 100%; height: 130px; object-fit: contain; background: #000; border-radius: 2px;" />
+            <div style="font-family: monospace; font-size: 8.5px; color: #cbd5e1; margin-top: 4px; text-align: left; padding: 0 2px;">
+              <strong style="color: #38bdf8;">Frame ${img.instanceNumber || idx + 1}:</strong> ${escapeHtml(img.seriesDescription)}
+            </div>
+          </div>
+        `,
+          )
+          .join("")}
+      </div>
+    `;
+  }
 
   const bodyHtml = `
     <!-- Examination & Modality Details Table -->
@@ -58,6 +88,9 @@ export function printRadiologyReport(order: RadiologyOrder): void {
           : ""
       }
     </table>
+
+    <!-- Key Medical DICOM Image Captures -->
+    ${keyImagesHtml}
 
     <!-- Diagnostic Findings Body -->
     <div class="section-title">Diagnostic Findings &amp; Observations</div>

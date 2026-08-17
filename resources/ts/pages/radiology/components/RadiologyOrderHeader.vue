@@ -6,7 +6,7 @@
  * - Modality Badge & Study Description
  * - Ordering Clinician & Clinical Indication preview
  * - Acuity / Status Badges & Scheduled Slot Time
- * - Header Actions: Cancel Study modal dialog
+ * - Header Actions: Start Examination (Primary CTA) & Cancel Study modal dialog
  */
 
 <script setup lang="ts">
@@ -15,12 +15,14 @@ import {
   CalendarClock,
   Clock,
   FileText,
+  Play,
   ScanLine,
   ShieldCheck,
   Stethoscope,
   User,
   X,
   XCircle,
+  Zap,
 } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -34,13 +36,23 @@ const props = defineProps<{
   order: RadiologyOrder;
   patientOrders?: RadiologyOrder[];
   onSelectOrder?: (orderId: string) => void;
+  onStartStudy?: () => void;
   radiology?: UseRadiologyOrders;
+}>();
+
+const emit = defineEmits<{
+  (e: "start-study"): void;
 }>();
 
 const { t } = useI18n({ useScope: "global" });
 
 const showCancelModal = ref(false);
 const cancelReason = ref("");
+
+const canStart = computed(() =>
+  Boolean(props.radiology) &&
+  ["ordered", "scheduled"].includes(props.order.status),
+);
 
 const canCancel = computed(() =>
   Boolean(props.radiology) &&
@@ -57,6 +69,13 @@ const CANCEL_PRESETS = [
 
 function applyCancelPreset(preset: string) {
   cancelReason.value = preset;
+}
+
+async function handleStartStudy() {
+  if (!props.radiology) return;
+  await props.radiology.startStudy(props.order.id);
+  emit("start-study");
+  props.onStartStudy?.();
 }
 
 async function handleConfirmCancel() {
@@ -173,7 +192,7 @@ const scheduledLabel = computed<string | null>(() => {
         </div>
       </div>
 
-      <!-- Right: Status / Slot Badges & Actions -->
+      <!-- Right: Status / Slot Badges & Primary Actions -->
       <div class="flex shrink-0 flex-wrap items-center gap-2">
         <!-- Scheduled Time Slot -->
         <Badge
@@ -211,11 +230,24 @@ const scheduledLabel = computed<string | null>(() => {
           type="button"
           size="sm"
           variant="ghost"
-          class="h-7 gap-1 px-2 text-xs font-semibold text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 cursor-pointer border border-rose-500/30 ml-1"
+          class="h-7 gap-1 px-2 text-xs font-semibold text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 cursor-pointer border border-rose-500/30"
           @click="showCancelModal = true"
         >
           <XCircle class="size-3.5" />
           <span>{{ t('radiology.cancel_study', 'Cancel Study') }}</span>
+        </Button>
+
+        <!-- Primary Start Now / Start Examination CTA -->
+        <Button
+          v-if="canStart"
+          type="button"
+          size="sm"
+          class="h-7 gap-1 px-3 text-xs font-bold shadow-xs cursor-pointer disabled:opacity-60 bg-primary text-primary-foreground hover:bg-primary/90"
+          :disabled="props.radiology?.isUpdatingOrder.value"
+          @click="handleStartStudy"
+        >
+          <Play class="size-3 fill-current" />
+          <span>{{ props.order.status === 'scheduled' ? t('radiology.call_patient_start', 'Call & Start Scan') : t('radiology.start_now', 'Start Examination') }}</span>
         </Button>
       </div>
     </div>

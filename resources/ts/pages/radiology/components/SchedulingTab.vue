@@ -32,6 +32,10 @@ const props = defineProps<{
   radiology: UseRadiologyOrders;
 }>();
 
+const emit = defineEmits<{
+  (e: "start-study"): void;
+}>();
+
 const { t } = useI18n({ useScope: "global" });
 
 const slot = ref("");
@@ -72,6 +76,11 @@ function applyTomorrowPreset(hour: number) {
 async function book() {
   if (!slot.value) return;
   await props.radiology.scheduleStudy(props.order.id, new Date(slot.value).toISOString());
+}
+
+async function handleStart() {
+  await props.radiology.startStudy(props.order.id);
+  emit("start-study");
 }
 </script>
 
@@ -117,7 +126,7 @@ async function book() {
         variant="outline"
         class="h-7 text-xs font-semibold gap-1.5 px-3 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15 cursor-pointer shrink-0"
         :disabled="props.radiology.isUpdatingOrder.value"
-        @click="props.radiology.startStudy(props.order.id)"
+        @click="handleStart"
       >
         <Zap class="size-3.5" />
         <span>{{ t('radiology.call_patient_start', 'Call Patient & Start Scan') }}</span>
@@ -141,7 +150,7 @@ async function book() {
         size="sm"
         class="h-7 text-xs font-semibold gap-1 px-3 cursor-pointer shrink-0"
         :disabled="props.radiology.isUpdatingOrder.value"
-        @click="props.radiology.startStudy(props.order.id)"
+        @click="handleStart"
       >
         <Zap class="size-3.5" />
         <span>{{ t('radiology.start_now', 'Start Now') }}</span>

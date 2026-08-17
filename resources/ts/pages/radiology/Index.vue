@@ -115,6 +115,7 @@ watch(
                 :patient-orders="radiology.selectedPatientOrders.value"
                 :on-select-order="radiology.selectOrder"
                 :radiology="radiology"
+                @start-study="activeTab = 'report'"
               />
 
               <RadiologyStageBar
@@ -159,7 +160,11 @@ watch(
                 </div>
 
                 <TabsContent value="scheduling" class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
-                  <SchedulingTab :order="radiology.selectedOrder.value" :radiology="radiology" />
+                  <SchedulingTab
+                    :order="radiology.selectedOrder.value"
+                    :radiology="radiology"
+                    @start-study="activeTab = 'report'"
+                  />
                 </TabsContent>
 
                 <TabsContent value="report" class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">

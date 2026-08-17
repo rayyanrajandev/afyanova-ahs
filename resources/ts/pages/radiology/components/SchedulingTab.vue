@@ -133,30 +133,6 @@ async function handleStart() {
       </Button>
     </div>
 
-    <!-- Walk-In Quick Callout -->
-    <div
-      v-else-if="isBookable"
-      class="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 p-3"
-    >
-      <div class="flex items-center gap-2.5">
-        <Info class="size-4 text-primary shrink-0" />
-        <div class="text-xs">
-          <span class="font-semibold text-foreground">{{ t('radiology.walk_in_notice_title', 'Walk-in Study:') }}</span>
-          <span class="text-muted-foreground ml-1">{{ t('radiology.walk_in_notice_desc', 'If the patient is already at the department, you can proceed directly to the Examination tab without scheduling.') }}</span>
-        </div>
-      </div>
-      <Button
-        type="button"
-        size="sm"
-        class="h-7 text-xs font-semibold gap-1 px-3 cursor-pointer shrink-0"
-        :disabled="props.radiology.isUpdatingOrder.value"
-        @click="handleStart"
-      >
-        <Zap class="size-3.5" />
-        <span>{{ t('radiology.start_now', 'Start Now') }}</span>
-      </Button>
-    </div>
-
     <!-- Booking Form & Presets Grid -->
     <div v-if="isBookable || isBooked" class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <!-- Left: Slot Picker & Quick Presets -->

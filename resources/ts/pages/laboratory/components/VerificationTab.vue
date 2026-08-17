@@ -45,7 +45,7 @@ import {
   type LaboratoryOrder,
   type UseLaboratoryOrders,
 } from "../composables/useLaboratoryOrders";
-import { printLaboratoryReport } from "../laboratoryReportPrint";
+import { printLaboratoryReport, printConsolidatedLaboratoryReport } from "../laboratoryReportPrint";
 
 const props = defineProps<{
   order: LaboratoryOrder;
@@ -53,6 +53,10 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n({ useScope: "global" });
+
+const patientOrders = computed(() =>
+  props.laboratory.orders.value.filter((o) => o.patientId === props.order.patientId),
+);
 
 const supervisorComments = ref(props.order.interpretation || "");
 
@@ -144,6 +148,10 @@ async function handleRelease() {
 function handlePrintReport() {
   printLaboratoryReport(props.order);
 }
+
+function handlePrintAllPatientTests() {
+  printConsolidatedLaboratoryReport(patientOrders.value);
+}
 </script>
 
 <template>
@@ -166,15 +174,28 @@ function handlePrintReport() {
         </div>
       </div>
 
-      <Button
-        variant="outline"
-        size="sm"
-        class="h-7 text-xs font-semibold gap-1.5 px-3 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15 cursor-pointer shrink-0"
-        @click="handlePrintReport"
-      >
-        <Printer class="size-3.5" />
-        <span>{{ t('laboratory.print_report', 'Print Lab Report') }}</span>
-      </Button>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <Button
+          variant="outline"
+          size="sm"
+          class="h-7 text-xs font-semibold gap-1.5 px-2.5 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15 cursor-pointer shrink-0"
+          @click="handlePrintReport"
+        >
+          <Printer class="size-3.5" />
+          <span>{{ t('laboratory.print_report', 'Print Test') }}</span>
+        </Button>
+
+        <Button
+          v-if="patientOrders.length > 1"
+          variant="outline"
+          size="sm"
+          class="h-7 text-xs font-semibold gap-1.5 px-2.5 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15 cursor-pointer shrink-0"
+          @click="handlePrintAllPatientTests"
+        >
+          <FileText class="size-3.5" />
+          <span>{{ t('laboratory.print_all_tests', 'Print All ({count})', { count: patientOrders.length }) }}</span>
+        </Button>
+      </div>
     </div>
 
     <!-- Diagnostic Report Card -->
@@ -203,7 +224,19 @@ function handlePrintReport() {
             @click="handlePrintReport"
           >
             <Printer class="size-3.5 text-primary" />
-            <span>{{ t('laboratory.print_report', 'Print Report') }}</span>
+            <span>{{ t('laboratory.print_report', 'Print') }}</span>
+          </Button>
+
+          <Button
+            v-if="patientOrders.length > 1"
+            variant="outline"
+            size="sm"
+            class="h-7 text-xs font-semibold gap-1.5 px-2.5 border-border hover:bg-muted cursor-pointer"
+            :title="t('laboratory.print_all_tests_tooltip', 'Print consolidated encounter report with all patient tests')"
+            @click="handlePrintAllPatientTests"
+          >
+            <FileText class="size-3.5 text-primary" />
+            <span>{{ t('laboratory.print_all_short', 'All Tests ({count})', { count: patientOrders.length }) }}</span>
           </Button>
 
           <Badge

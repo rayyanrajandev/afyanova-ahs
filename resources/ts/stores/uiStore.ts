@@ -84,10 +84,11 @@ export const useUiStore = defineStore('ui', () => {
     // is never silently overridden on their next visit. A first-ever visit
     // from a touch device gets `spacious` as its real starting density,
     // not merely available as a manual option they'd have to know to pick.
-    const storedDensity = localStorage.getItem(DENSITY_KEY) as DensityName | null;
+    const storedDensity = typeof window !== 'undefined' ? (localStorage.getItem(DENSITY_KEY) as DensityName | null) : null;
     const density = ref<DensityName>(storedDensity || (isCoarsePointerDevice() ? 'spacious' : 'comfortable'));
-    const locale = ref<string>(localStorage.getItem(LOCALE_KEY) || 'en');
-    const navCollapsed = ref(localStorage.getItem('afyanova:nav-collapsed') === 'true');
+    const locale = ref<string>(typeof window !== 'undefined' ? (localStorage.getItem(LOCALE_KEY) || 'en') : 'en');
+    const storedNavCollapsed = typeof window !== 'undefined' ? localStorage.getItem('afyanova:nav-collapsed') : null;
+    const navCollapsed = ref(storedNavCollapsed !== null ? storedNavCollapsed === 'true' : true);
     const commandPaletteOpen = ref(false);
 
     // ---- Actions ----

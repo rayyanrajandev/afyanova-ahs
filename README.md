@@ -174,16 +174,6 @@ This platform handles clinical and sensitive personal health data. Follow these 
 - Keep `.env` files protected and never commit secrets or API tokens.
 - Ensure `APP_DEBUG=false` in all staging and production environments.
 - Enforce HTTPS and secure session cookies across all deployment environments.
-- See [`documents/AfyaNova_Security_Architecture_2027.md`](./documents/AfyaNova_Security_Architecture_2027.md) for full security controls.
-
----
-
-## 📚 Documentation & Architecture Guides
-
-- **Engineering Codex**: [`documents/codex/README.md`](./documents/codex/README.md)
-- **UX & Design Foundations**: [`documents/codex/00-foundations/01-philosophy-and-2027-ux-principles.md`](./documents/codex/00-foundations/01-philosophy-and-2027-ux-principles.md)
-- **Architecture Decision Records (ADRs)**: [`documents/codex/adr/`](./documents/codex/adr/)
-- **Multi-Tenant Isolation Architecture**: [`documents/Afyanova_Multi_Tenant_Isolation_2027_Plan.md`](./documents/Afyanova_Multi_Tenant_Isolation_2027_Plan.md)
 
 ---
 

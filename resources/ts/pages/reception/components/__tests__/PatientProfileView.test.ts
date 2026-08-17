@@ -107,6 +107,8 @@ describe("PatientProfileView — state-aware primary action", () => {
       id: "apt-1",
       appointmentNumber: "APT001",
       status: "waiting_triage",
+      // Server-resolved step; the badge reads this, not `status`.
+      visitStage: "waiting_triage",
       scheduledAt: "2026-08-12T10:00:00Z",
       department: "Emergency",
     };
@@ -139,5 +141,59 @@ describe("PatientProfileView — state-aware primary action", () => {
     expect(button).toBeTruthy();
     expect(button?.attributes("disabled")).toBeUndefined();
     expect(wrapper.text()).toContain("Visit Completed");
+  });
+});
+
+/**
+ * The journey badge beside the patient's name must show the server-resolved
+ * flow step, not a status-derived approximation of it.
+ *
+ * This regressed twice on 2026-08-16. First the badge derived from
+ * `activeAppointment.status`, which cannot express a nursing pickup. Then the
+ * fix went to the wrong computed — the "Current visit" card lower down — while
+ * the header badge kept reading the coarse `visitState`, so a patient the
+ * reception queue showed as "With Nurse" still read "Waiting for Triage" here.
+ * These assert the rendered text, at the layer that was actually wrong.
+ */
+describe("PatientProfileView — journey stage badge", () => {
+  function summaryWithStage(status: string, visitStage: string | null): PatientSummary {
+    const summary = baseSummary();
+    summary.activeAppointment = {
+      id: "apt-1",
+      appointmentNumber: "APT001",
+      status,
+      visitStage,
+      scheduledAt: "2026-08-16T10:00:00Z",
+      department: "Emergency",
+    };
+
+    return summary;
+  }
+
+  it("shows With Nurse while a nurse has the patient, though the status is still waiting_triage", () => {
+    const wrapper = mountView(summaryWithStage("waiting_triage", "with_nurse"));
+
+    expect(wrapper.text()).toContain("With Nurse");
+    expect(wrapper.text()).not.toContain("Waiting for Triage");
+  });
+
+  it("distinguishes waiting for triage from being in triage", () => {
+    expect(mountView(summaryWithStage("waiting_triage", "waiting_triage")).text())
+      .toContain("Waiting for Triage");
+
+    expect(mountView(summaryWithStage("waiting_triage", "in_triage")).text())
+      .toContain("In Triage");
+  });
+
+  it("shows With Doctor once the consultation has started", () => {
+    expect(mountView(summaryWithStage("in_consultation", "with_clinician")).text())
+      .toContain("With Doctor");
+  });
+
+  it("falls back to the status-derived label when no step is resolved", () => {
+    // An older visit predating the flow log has no recorded step; the badge
+    // degrades rather than going blank.
+    expect(mountView(summaryWithStage("waiting_provider", null)).text())
+      .toContain("Triaged · Waiting Doctor");
   });
 });

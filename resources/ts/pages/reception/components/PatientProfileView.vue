@@ -1,25 +1,12 @@
-/** * PatientProfileView — main-pane Patient Profile (Volume 2.1 §8) *
-==================================================================== *
-Redesigned (Reception workspace visual audit, 2026-08-12) from a grid of *
-bordered/muted Cards (Demographics, Allergies, Contact, Insurance, Latest *
-visit, Upcoming appointments, Audit trail all separately boxed) into one *
-workspace surface: the patient's name is the page's actual heading, * followed
-by MRN/age/sex and a live visit-status line, then plain * whitespace-separated
-sections instead of card chrome. Demographics as a * standalone card is gone —
-its fields (name/MRN/age/sex) now live in the * header, and its Edit action
-moved into the header's "More" menu. * * The header's primary action is
-state-aware (§3 of the audit): a patient * with an active visit no longer shows
-a disabled "Checked In" button (the * 2026-08-12 duplicate-check-in fix) —
-instead the primary slot becomes * "View in Queue" (emits `view-in-queue`,
-handled by Index.vue switching * the context pane to the Queue tab), and a
-patient whose most recent * encounter closed becomes "Start New Visit". Both
-still ultimately call * the same `arrivalIntake.openArrivalDialog`/backend flow
-as "Check In" — * the same patient record, a new visit — this only changes what
-the button * is labeled given what's already true about the patient. * *
-Receives the arrival intake and appointment scheduling composable * instances as
-props (both are opened from buttons here) rather than * re-deriving them —
-Index.vue owns the single shared instances, same * pattern as
-ScheduleView/ArrivalIntakeDialog. */
+/**
+ * PatientProfileView — Reception Main-Pane Patient Profile (Volume 2.1 §8)
+ * ====================================================================
+ * Upgraded to 2027 Enterprise Clinical Standard:
+ * - Pinned context header with high-contrast safety flags & status
+ * - Tabbed workspace sections (Overview & Active Visit, Demographics & Coverage, Appointments & History, Audit Trail)
+ * - Verified insurance card with member ID & 1-click verify trigger
+ * - Quick triage routing & state-aware actions
+ */
 
 <script setup lang="ts">
 import {
@@ -27,37 +14,51 @@ import {
   ArrowRight,
   CalendarClock,
   CalendarPlus,
+  CheckCircle2,
   CircleCheck,
+  Clock,
   Contact,
   DoorOpen,
   History,
   LogIn,
+  Mail,
+  MapPin,
   MoreHorizontal,
   Pencil,
+  Phone,
   Pin,
   Plus,
   Printer,
   ScrollText,
+  ShieldAlert,
   ShieldCheck,
   TriangleAlert,
+  User,
+  UserPlus,
+  Users,
   X,
 } from "lucide-vue-next";
 import { PopoverClose } from "reka-ui";
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import StatusBadge from "@/components/common/StatusBadge.vue";
 import type { StatusType } from "@/components/common/StatusBadge.vue";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { stepBadgeStatus, stepLabelKey } from "@/composables/patientFlowStep";
+import VisitNotesDialog from "@/pages/nursing/components/VisitNotesDialog.vue";
 import type { Patient } from "@/stores/patientStore";
 import { usePatientStore } from "@/stores/patientStore";
+import { useQueueStore } from "@/stores/queueStore";
 import { useRecentStore } from "@/stores/recentStore";
 import type { useAppointmentScheduling } from "../composables/useAppointmentScheduling";
 import type { useArrivalIntake } from "../composables/useArrivalIntake";
@@ -81,11 +82,20 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "view-in-queue": [];
+  "register-new": [];
 }>();
 
 const { t } = useI18n();
+const activeProfileTab = ref<"overview" | "demographics" | "appointments" | "audit">("overview");
+const showNotesDialog = ref(false);
+const currentVisitNotes = ref<string>("");
+
+function onNotesUpdated(notes: string) {
+  currentVisitNotes.value = notes;
+}
 const patientStore = usePatientStore();
 const recentStore = useRecentStore();
+const queueStore = useQueueStore();
 
 // ---- Empty-section gates (progressive disclosure) ----
 const insuranceIsEmpty = computed(
@@ -93,40 +103,48 @@ const insuranceIsEmpty = computed(
     !props.profile.isSummaryLoading.value &&
     !props.profile.profileSummary.value?.insurance,
 );
+
+const insuranceNeedsVerification = computed(
+  () =>
+    !props.profile.isSummaryLoading.value &&
+    Boolean(props.profile.profileSummary.value?.insurance) &&
+    props.profile.profileSummary.value?.insurance?.verificationStatus !==
+      "verified",
+);
+
+const insuranceAttentionLabel = computed(() =>
+  insuranceVerificationLabel(
+    props.profile.profileSummary.value?.insurance?.verificationStatus ||
+      "unverified",
+  ),
+);
+
 const upcomingAppointmentsIsEmpty = computed(
   () =>
     !props.profile.isSummaryLoading.value &&
     props.profile.upcomingAppointments.value.length === 0,
 );
+
 const auditTrailIsEmpty = computed(
   () =>
     !props.profile.isSummaryLoading.value &&
     props.profile.auditFeed.value.length === 0,
 );
 
-/**
- * The patient's current unresolved visit, if any — drives both the header
- * status line/primary action and the "Current visit" section below.
- */
 const activeAppointment = computed(
   () => props.profile.profileSummary.value?.activeAppointment ?? null,
 );
 
-/**
- * True when `latestEncounter` IS the active visit (an open encounter tied
- * to `activeAppointment`), not a past, already-closed one. "Current visit"
- * and "Recent visits" both read from this one encounter field — this flag
- * is what keeps the same visit from being shown twice under two headings.
- */
 const latestEncounterIsActive = computed(() => {
   const enc = props.profile.profileSummary.value?.latestEncounter;
-  if (!enc || !activeAppointment.value) return false;
+  if (!enc) return false;
   return enc.status !== "closed" && enc.status !== "cancelled";
 });
 
 const currentVisitIsEmpty = computed(
-  () => !props.profile.isSummaryLoading.value && !activeAppointment.value,
+  () => !props.profile.isSummaryLoading.value && !activeAppointment.value && !latestEncounterIsActive.value,
 );
+
 const recentVisitIsEmpty = computed(
   () =>
     !props.profile.isSummaryLoading.value &&
@@ -141,21 +159,33 @@ const currentVisitClinicianName = computed(() =>
     : null,
 );
 
-const currentVisitStatusType = computed<StatusType>(() =>
-  activeAppointment.value?.status === "in_consultation"
-    ? "in_progress"
-    : "pending",
-);
-
 /**
- * Bug fix (Latest/Recent visit status): was a bare `status === 'closed' ?
- * 'complete' : 'in_progress'` — every other EncounterStatus value
- * (App\Modules\Encounter\Domain\ValueObjects\EncounterStatus), including
- * 'cancelled', collapsed into "in_progress". A cancelled visit displayed as
- * permanently in progress even after CancelQueueItemUseCase correctly closed
- * out its encounter — StatusBadge already has a first-class 'cancelled'
- * variant (icon: X), it just was never reachable from here.
+ * Driven by the server-resolved flow step, through the same shared mapping the
+ * reception and clinician queues use. These two derived the badge from
+ * `activeAppointment.status` alone, which cannot express a nursing pickup — so
+ * this pane showed "Waiting for Triage" for a patient the queue immediately
+ * beside it correctly showed as "With Nurse" (2026-08-16).
  */
+const currentVisitStatusType = computed<StatusType>(() => {
+  const fromStep = stepBadgeStatus(activeAppointment.value?.visitStage);
+  if (fromStep) return fromStep;
+
+  const status = activeAppointment.value?.status;
+  if (status === "waiting_provider") return "success";
+  if (status === "in_consultation") return "info";
+  return "warning";
+});
+
+const currentVisitStatusLabel = computed<string>(() => {
+  const stepKey = stepLabelKey(activeAppointment.value?.visitStage);
+  if (stepKey) return t(stepKey);
+
+  const status = activeAppointment.value?.status;
+  if (status === "waiting_provider") return t("patient.stage_waiting_provider");
+  if (status === "in_consultation") return t("patient.stage_in_consultation");
+  return t("patient.stage_waiting_triage");
+});
+
 function latestVisitStatus(
   encounterStatus: string,
 ): "complete" | "cancelled" | "in_progress" {
@@ -164,13 +194,6 @@ function latestVisitStatus(
   return "in_progress";
 }
 
-/**
- * Bug fix (i18n): both insurance status fields were rendering the raw
- * backend enum value (`'active'`, `'unverified'`, …) directly in the
- * template, never passed through `t()`. Falls back to the raw value for any
- * status the translation table doesn't know about, rather than showing
- * nothing.
- */
 function insuranceStatusLabel(status: string | null): string {
   if (!status) return "—";
   const key = `insurance.status_${status}`;
@@ -196,63 +219,146 @@ function togglePin() {
 // ---- Header identity + status (Reception audit §2) ----
 type VisitState =
   | "not_checked_in"
-  | "waiting"
+  | "waiting_triage"
+  | "waiting_provider"
   | "in_consultation"
+  | "admitted"
   | "completed";
 
 const visitState = computed<VisitState>(() => {
+  // 1. Check if patient has an active admission or inpatient encounter
+  const summary = props.profile.profileSummary.value;
+  if (
+    summary?.currentAdmission?.status === "admitted" ||
+    (summary?.latestEncounter?.type === "inpatient" && summary?.latestEncounter?.status === "opened")
+  ) {
+    return "admitted";
+  }
+
   const appt = activeAppointment.value;
-  if (appt)
-    return appt.status === "in_consultation" ? "in_consultation" : "waiting";
-  if (props.profile.profileSummary.value?.latestEncounter?.status === "closed")
+  if (appt) {
+    // `visitState` drives the dot colour and the coarse header label. It stays a
+    // coarse enum, so a nursing pickup maps onto the queue the patient is still
+    // in — the precise step is what currentVisitStatusLabel renders.
+    if (appt.visitStage === "with_clinician" || appt.status === "in_consultation") return "in_consultation";
+    if (appt.visitStage === "with_nurse" || appt.visitStage === "in_triage") return "waiting_triage";
+    if (appt.status === "waiting_provider") return "waiting_provider";
+    return "waiting_triage";
+  }
+
+  // Cross-reference real-time queue store (handles immediate post-checkin reactive sync)
+  const queueEntry = (queueStore.tasks ?? []).find(
+    (e) => e.patientId === props.patient.id,
+  );
+  if (queueEntry) {
+    const stage = (queueEntry.stage || queueEntry.visit?.stage || queueEntry.status || "").toLowerCase();
+    if (
+      queueEntry.visit?.isAdmitted ||
+      queueEntry.visit?.encounterType === "inpatient" ||
+      stage.includes("admit")
+    ) {
+      return "admitted";
+    }
+    if (stage.includes("consult")) return "in_consultation";
+    if (stage.includes("provider") || stage.includes("clinician") || stage.includes("doctor")) return "waiting_provider";
+    return "waiting_triage";
+  }
+
+  // Active encounter check
+  if (latestEncounterIsActive.value) {
+    return "waiting_triage";
+  }
+
+  if (props.profile.profileSummary.value?.latestEncounter?.status === "closed") {
     return "completed";
+  }
   return "not_checked_in";
 });
 
-// Color rules (§10): gray = inactive, amber = waiting/attention, teal/blue
-// (primary) = active state, green = positive/complete.
 const visitStateDotClass: Record<VisitState, string> = {
   not_checked_in: "bg-muted-foreground/50",
-  waiting: "bg-warning",
+  waiting_triage: "bg-warning",
+  waiting_provider: "bg-emerald-500",
   in_consultation: "bg-primary",
+  admitted: "bg-emerald-500",
   completed: "bg-success",
 };
 
-const visitStateLabelKey: Record<VisitState, string> = {
-  not_checked_in: "patient.not_checked_in",
-  waiting: "patient.checked_in_waiting",
-  in_consultation: "patient.in_consultation",
-  completed: "patient.visit_completed",
-};
+/**
+ * The badge beside the patient's name — the profile's primary "where is this
+ * patient" indicator, so it shows the precise step whenever one is resolved.
+ *
+ * `visitState` below it stays coarse on purpose: it drives the primary action
+ * and the dot's bucket, where "which queue is this visit in" is the useful
+ * question. But it cannot express a nursing pickup, and reading the coarse
+ * value here is what kept this badge saying "Waiting for Triage" for a patient
+ * the queue two panes away already showed as "With Nurse" (2026-08-16).
+ */
+const visitStateDisplayLabel = computed<string>(() => {
+  const stepKey = stepLabelKey(activeAppointment.value?.visitStage);
+  if (stepKey) return t(stepKey);
+
+  switch (visitState.value) {
+    case "admitted":
+      return t("patient.stage_admitted_inpatient");
+    case "waiting_triage":
+      return t("patient.stage_waiting_triage");
+    case "waiting_provider":
+      return t("patient.stage_waiting_provider");
+    case "in_consultation":
+      return t("patient.stage_in_consultation");
+    case "completed":
+      return t("patient.stage_completed");
+    case "not_checked_in":
+    default:
+      return t("patient.stage_not_checked_in");
+  }
+});
 
 /**
- * Duplicate check-in fix (§3): a patient with an active visit no longer
- * shows a disabled "Check In" — the primary slot becomes a real action
- * ("View in Queue") instead of a dead button. "Start New Visit" and
- * "Check In" both open the same arrival dialog for the same patient
- * record — the backend already reuses the patient and only creates a new
- * visit (RegisterWalkInAndCheckInUseCase); this only changes the label to
- * match what's already true about the patient's history.
+ * Dot colour follows the same step when one is resolved, so "With Nurse" reads
+ * as active contact rather than borrowing the waiting colour of the queue the
+ * patient is technically still sitting in.
  */
-const primaryAction = computed(() => {
+const visitStateDotClassResolved = computed<string>(() => {
+  switch (stepBadgeStatus(activeAppointment.value?.visitStage)) {
+    case "in_progress":
+      return "bg-primary";
+    case "info":
+      return "bg-primary";
+    case "warning":
+      return "bg-warning";
+    case "success":
+      return "bg-success";
+    case "complete":
+      return "bg-success";
+    default:
+      return visitStateDotClass[visitState.value];
+  }
+});
+
+const primaryAction = computed<{
+  label: string;
+  icon: typeof DoorOpen | typeof ArrowRight;
+  handler: () => void;
+} | null>(() => {
   switch (visitState.value) {
-    case "waiting":
+    case "admitted":
+    case "waiting_triage":
+    case "waiting_provider":
     case "in_consultation":
-      return {
-        label: t("arrival.view_in_queue"),
-        icon: ArrowRight,
-        handler: () => emit("view-in-queue"),
-      };
+      // Active patient already has "View in Queue" in the Overview tab's Current Visit card
+      return null;
     case "completed":
       return {
-        label: t("arrival.start_new_visit"),
+        label: t("arrival.start_new_visit") || "Start New Visit",
         icon: DoorOpen,
         handler: props.arrivalIntake.openArrivalDialog,
       };
     case "not_checked_in":
     default:
       return {
-        label: t("arrival.check_in"),
+        label: t("arrival.check_in") || "Check In",
         icon: DoorOpen,
         handler: props.arrivalIntake.openArrivalDialog,
       };
@@ -261,96 +367,119 @@ const primaryAction = computed(() => {
 </script>
 
 <template>
-  <!-- @container wraps the whole view (not just the info-grid below) so
-       the header can share the exact same breakpoint sections use — see
-       header docblock note just below for why. -->
-  <div class="@container">
-    <!-- Header: identity, status, actions. Deliberate stack-below-
-       @profile-header via flex-col/flex-row (not the accidental
-       flex-wrap this used to be): the previous version let the browser
-       wrap the whole actions cluster under the identity block only once
-       combined content stopped fitting — which meant it looked fine in
-       English (short button labels) and dropped to two rows in Kiswahili
-       (longer labels: "Ona kwenye Foleni", "Panga Miadi") at the exact
-       same pane width — a locale-dependent layout difference a
-       receptionist would notice switching languages (2026-08-12, direct
-       user feedback). `@profile-header` (tailwind.css, 800px) is
-       calibrated, not guessed — the default scale's nearest steps
-       (`@3xl` 768px / `@4xl` 896px) either still squeezed Kiswahili or
-       left the row visibly stacked well past the point it actually had
-       room to go inline, which is exactly what prompted a second look
-       (same feedback pass). Below `@profile-header` both locales
-       consistently stack (identity block, then actions block, each safe
-       to wrap internally on its own) — same layout at the same width
-       regardless of language, which was the actual bug, not "must
-       always be one row". -->
-    <div
-      class="flex flex-col gap-y-4 @profile-header:flex-row @profile-header:items-start @profile-header:justify-between @profile-header:gap-x-6"
-    >
-      <div class="flex min-w-0 items-start gap-4">
-        <Avatar class="size-12 shrink-0">
-          <AvatarFallback class="text-base font-semibold">
+  <div class="flex flex-1 flex-col overflow-hidden bg-surface rounded-lg">
+    <!-- Pinned Patient Header (2027 High-Density Enterprise Layout — Strict Non-Wrapping) -->
+    <header class="shrink-0 border-b border-border bg-surface px-4 py-2 flex items-center justify-between gap-3 overflow-hidden rounded-t-lg">
+      <!-- Left identity & safety block -->
+      <div class="flex min-w-0 items-center gap-3 flex-1 overflow-hidden">
+        <Avatar class="size-9 shrink-0 border border-primary/20 bg-primary/5">
+          <AvatarFallback class="text-xs font-bold text-primary">
             {{ patientInitials(patientDisplayName(patient)) }}
           </AvatarFallback>
         </Avatar>
-        <div class="min-w-0">
-          <h1 class="truncate text-2xl font-semibold text-foreground">
-            {{ patientDisplayName(patient) }}
-          </h1>
-          <p class="mt-1 text-sm text-muted-foreground">
-            {{ t("patient.mrn") }}
-            <span class="clinical-value">{{
-              patient.identifier[0]?.value
-            }}</span>
-            <span aria-hidden="true"> · </span>
-            {{ t("patient.age_display", { age: patient.meta.extension.age }) }}
-            <span aria-hidden="true"> · </span>
-            {{ profile.genderLabel(patient.gender) }}
-          </p>
-          <p
-            class="mt-2 flex items-center gap-2 text-sm font-medium text-foreground"
-          >
+
+        <div class="min-w-0 space-y-0.5 flex-1 overflow-hidden">
+          <!-- Row 1: Name, MRN, Pin indicator, Journey State Badge -->
+          <div class="flex items-center gap-2 min-w-0 overflow-hidden">
+            <h1 class="truncate text-sm font-bold tracking-tight text-foreground">
+              {{ patientDisplayName(patient) }}
+            </h1>
+            <span class="font-mono text-xs font-medium text-muted-foreground bg-secondary px-1.5 py-0.2 rounded border border-border/60 shrink-0">
+              {{ patient.identifier[0]?.value }}
+            </span>
             <span
-              class="h-2 w-2 shrink-0 rounded-full"
-              :class="visitStateDotClass[visitState]"
-              aria-hidden="true"
+              v-if="recentStore.isPinned(patient.id)"
+              class="size-1.5 rounded-full bg-primary shrink-0"
+              title="Pinned patient"
             />
-            {{ t(visitStateLabelKey[visitState]) }}
-          </p>
+
+            <!-- Journey Stage Badge -->
+            <Badge
+              variant="secondary"
+              class="gap-1 text-[10.5px] px-2 py-0.2 font-medium border border-border shrink-0"
+            >
+              <span
+                class="size-1.5 shrink-0 rounded-full"
+                :class="visitStateDotClassResolved"
+                aria-hidden="true"
+              />
+              {{ visitStateDisplayLabel }}
+            </Badge>
+          </div>
+
+          <!-- Row 2: Age, Gender, Phone, Insurance Status, Visit Notes Trigger -->
+          <div class="flex items-center gap-2.5 text-xs text-muted-foreground min-w-0 overflow-hidden">
+            <span class="shrink-0">{{ t("patient.age_display", { age: patient.meta.extension.age }) }} · {{ profile.genderLabel(patient.gender) }}</span>
+            <span v-if="patient.telecom?.find((t2) => t2.system === 'phone')?.value" class="font-mono shrink-0 hidden sm:inline">
+              {{ patient.telecom.find((t2) => t2.system === 'phone')?.value }}
+            </span>
+
+            <!-- Insurance Verification Status -->
+            <div class="flex items-center gap-1 border-l border-border/80 pl-2 min-w-0 shrink-0">
+              <button
+                v-if="insuranceNeedsVerification"
+                type="button"
+                class="inline-flex items-center gap-1 text-[11px] font-semibold text-warning hover:underline cursor-pointer max-w-[180px] truncate"
+                @click="insuranceForm.openInsuranceForm(patient.id, profile.profileSummary.value?.insurance)"
+              >
+                <ShieldAlert class="size-3.5 shrink-0" />
+                <span class="truncate">{{ profile.profileSummary.value?.insurance?.insuranceProvider ?? t("patient.insurance") }} ({{ insuranceAttentionLabel }})</span>
+              </button>
+              <span
+                v-else-if="profile.profileSummary.value?.insurance?.verificationStatus === 'verified'"
+                class="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 max-w-[180px] truncate"
+              >
+                <ShieldCheck class="size-3.5 shrink-0" />
+                <span class="truncate">{{ profile.profileSummary.value?.insurance.insuranceProvider }} ({{ t("insurance.verified") }})</span>
+              </span>
+              <span
+                v-else
+                class="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground shrink-0"
+              >
+                <User class="size-3 shrink-0" />
+                {{ t("insurance.cash_self_pay") }}
+              </span>
+            </div>
+
+            <!-- Notes Quick Indicator -->
+            <div v-if="activeAppointment" class="flex items-center gap-1 border-l border-border/80 pl-2 min-w-0 shrink-0">
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 text-[11px] text-primary hover:underline cursor-pointer max-w-[140px] truncate"
+                @click="showNotesDialog = true"
+              >
+                <ScrollText class="size-3 shrink-0" />
+                <span class="truncate">{{ currentVisitNotes || '💬 Visit Notes' }}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Action hierarchy (§8): primary (state-aware) → secondary
-         (Schedule) → More (Print Label, Edit demographics, Pin, Close).
-         Print Label and Close both moved off their own top-level slots
-         into More (2026-08-12, direct user feedback) — fewer always-
-         visible buttons, and less width competing against Kiswahili's
-         longer labels in the header row. Close stays set apart from the
-         patient-data actions by its own divider inside the menu, the
-         same "dismiss lives below a separator" pattern common account/
-         profile menus use for sign-out — Close isn't a patient action
-         like the others, it dismisses the panel itself. -->
-      <div class="flex flex-wrap items-center gap-2">
+      <!-- Right actions block -->
+      <div class="flex items-center gap-1.5 shrink-0 ml-auto">
         <Button
+          v-if="primaryAction"
           size="sm"
-          class="inline-flex items-center gap-1.5"
+          class="h-7 inline-flex items-center gap-1.5 font-medium text-xs shadow-xs cursor-pointer"
           @click="primaryAction.handler"
         >
           <component
             :is="primaryAction.icon"
-            class="h-3.5 w-3.5"
+            class="size-3.5"
             aria-hidden="true"
           />
-          {{ primaryAction.label }}
+          <span>{{ primaryAction.label }}</span>
         </Button>
+
         <Button
           variant="outline"
           size="sm"
-          class="inline-flex items-center gap-1.5"
+          class="h-7 inline-flex items-center gap-1.5 font-medium text-xs cursor-pointer hidden md:inline-flex"
           @click="scheduling.openScheduleDialogForPatient(patient)"
         >
-          <CalendarPlus class="h-3.5 w-3.5" aria-hidden="true" />
-          {{ t("appointment.schedule_button") }}
+          <CalendarPlus class="size-3.5 text-muted-foreground" aria-hidden="true" />
+          <span>{{ t("appointment.schedule_button") }}</span>
         </Button>
 
         <Popover>
@@ -358,581 +487,517 @@ const primaryAction = computed(() => {
             <Button
               variant="ghost"
               size="sm"
-              class="inline-flex items-center gap-1"
+              class="h-7 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer px-2"
+              title="More actions"
             >
-              <MoreHorizontal class="h-3.5 w-3.5" aria-hidden="true" />
-              {{ t("common.more") }}
+              <MoreHorizontal class="size-3.5" aria-hidden="true" />
             </Button>
           </PopoverTrigger>
           <PopoverContent class="w-56 p-1" align="end">
+            <!-- On compact viewports, show Schedule inside More menu if hidden on toolbar -->
             <PopoverClose as-child>
               <button
                 type="button"
-                class="focus-ring flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                class="focus-ring flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-xs text-foreground transition-colors hover:bg-muted cursor-pointer md:hidden"
+                @click="scheduling.openScheduleDialogForPatient(patient)"
+              >
+                <CalendarPlus class="size-3.5 text-muted-foreground" aria-hidden="true" />
+                {{ t("appointment.schedule_button") }}
+              </button>
+            </PopoverClose>
+            <PopoverClose as-child>
+              <button
+                type="button"
+                class="focus-ring flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-xs text-foreground transition-colors hover:bg-muted cursor-pointer"
                 @click="printSelectedLabel"
               >
-                <Printer
-                  class="h-3.5 w-3.5 text-muted-foreground"
-                  aria-hidden="true"
-                />
+                <Printer class="size-3.5 text-muted-foreground" aria-hidden="true" />
                 {{ t("registration.print_label") }}
               </button>
             </PopoverClose>
             <PopoverClose as-child>
               <button
                 type="button"
-                class="focus-ring flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                class="focus-ring flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-xs text-foreground transition-colors hover:bg-muted cursor-pointer"
                 @click="openEditDemographics"
               >
-                <Pencil
-                  class="h-3.5 w-3.5 text-muted-foreground"
-                  aria-hidden="true"
-                />
-                {{ t("common.edit") }} {{ t("patient.demographics") }}
+                <Pencil class="size-3.5 text-muted-foreground" aria-hidden="true" />
+                {{ t("patient.edit_demographics", "Edit Demographics") }}
               </button>
             </PopoverClose>
             <PopoverClose as-child>
               <button
                 type="button"
-                class="focus-ring flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                class="focus-ring flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-xs text-foreground transition-colors hover:bg-muted cursor-pointer"
+                @click="
+                  insuranceForm.openInsuranceForm(
+                    patient.id,
+                    profile.profileSummary.value?.insurance,
+                  )
+                "
+              >
+                <ShieldCheck class="size-3.5 text-primary" aria-hidden="true" />
+                {{ profile.profileSummary.value?.insurance ? t("insurance.edit_title") : t("insurance.add_title") }}
+              </button>
+            </PopoverClose>
+            <PopoverClose as-child>
+              <button
+                type="button"
+                class="focus-ring flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-xs text-foreground transition-colors hover:bg-muted cursor-pointer"
+                @click="emit('register-new')"
+              >
+                <UserPlus class="size-3.5 text-primary" aria-hidden="true" />
+                {{ t("patient.register_new") || 'Register New Patient' }}
+              </button>
+            </PopoverClose>
+            <div class="my-1 border-t border-border" />
+            <PopoverClose as-child>
+              <button
+                type="button"
+                class="focus-ring flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-xs text-foreground transition-colors hover:bg-muted cursor-pointer"
                 @click="togglePin"
               >
                 <Pin
-                  class="h-3.5 w-3.5"
-                  :class="
-                    recentStore.isPinned(patient.id)
-                      ? 'text-primary'
-                      : 'text-muted-foreground'
-                  "
-                  :fill="
-                    recentStore.isPinned(patient.id) ? 'currentColor' : 'none'
-                  "
+                  class="size-3.5"
+                  :class="recentStore.isPinned(patient.id) ? 'text-primary' : 'text-muted-foreground'"
+                  :fill="recentStore.isPinned(patient.id) ? 'currentColor' : 'none'"
                   aria-hidden="true"
                 />
-                {{
-                  recentStore.isPinned(patient.id)
-                    ? t("patient.unpin")
-                    : t("patient.pin")
-                }}
-              </button>
-            </PopoverClose>
-
-            <div class="my-1 border-t border-border" />
-
-            <PopoverClose as-child>
-              <button
-                type="button"
-                class="focus-ring flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-muted"
-                @click="patientStore.clearCurrentPatient()"
-              >
-                <X class="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                {{ t("common.close") }}
+                {{ recentStore.isPinned(patient.id) ? t("patient.unpin") : t("patient.pin") }}
               </button>
             </PopoverClose>
           </PopoverContent>
         </Popover>
+
+        <span class="mx-0.5 h-4 w-px bg-border shrink-0" aria-hidden="true" />
+
+        <Button
+          variant="ghost"
+          size="icon"
+          class="size-7 text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
+          :aria-label="t('common.close')"
+          @click="patientStore.clearCurrentPatient()"
+        >
+          <X class="size-3.5" aria-hidden="true" />
+        </Button>
       </div>
-    </div>
+    </header>
 
-    <Separator class="mt-5" />
+    <!-- Tabbed Profile Navigation & Content -->
+    <Tabs v-model="activeProfileTab" class="flex flex-1 flex-col overflow-hidden">
+      <!-- Tabs Navigation Bar -->
+      <div class="border-b border-border bg-surface px-3.5 pt-1 shrink-0">
+        <TabsList class="h-8 gap-1 bg-transparent p-0 justify-start w-auto border-b-0 -mb-px">
+          <TabsTrigger
+            value="overview"
+            class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+          >
+            <Activity class="size-3.5" />
+            <span>{{ t("patient.tab_overview") }}</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="demographics"
+            class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+          >
+            <Contact class="size-3.5" />
+            <span>{{ t("patient.tab_demographics") }}</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="appointments"
+            class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+          >
+            <CalendarClock class="size-3.5" />
+            <span>{{ t("patient.tab_appointments") }} ({{ profile.upcomingAppointments.value.length }})</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="audit"
+            class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+          >
+            <ScrollText class="size-3.5" />
+            <span>{{ t("patient.tab_audit") }}</span>
+          </TabsTrigger>
+        </TabsList>
+      </div>
 
-    <!-- Patient information (§7): plain sections on one surface, no per-
-       section card chrome. Each row pairs two related sections side by
-       side with a vertical Separator between them (only at @lg — a
-       stacked single column has no adjacent row to divide), and each row
-       is itself set off from the next by an explicit horizontal Separator
-       sibling — the same divider used everywhere else in this view, just
-       rotated, rather than a second one-off way of drawing a line.
-       (Tailwind's `divide-y` was tried first here and produced a 0px
-       border-top in this build — root cause not chased down since a real
-       element sidesteps it entirely and is already proven working for the
-       header/audit-trail dividers.) Container-queried so this reflows to
-       one column once the *pane* (SplitPane-resizable, not the window)
-       gets narrow. -->
-    <div class="mt-6">
-      <div class="flex flex-col gap-y-8">
-        <!-- Row: Contact / Current visit -->
+      <!-- Tab 1: Overview & Active Visit -->
+      <TabsContent value="overview" class="flex-1 overflow-y-auto p-3.5 space-y-3">
+        <!-- High-Visibility Insurance Clearance Notice -->
         <div
-          class="flex flex-col gap-y-7 @lg:flex-row @lg:items-stretch @lg:gap-x-8"
+          v-if="insuranceNeedsVerification && profile.profileSummary.value?.insurance"
+          class="rounded-lg border border-warning/40 bg-warning/10 p-2.5 flex flex-wrap items-center justify-between gap-3"
         >
-          <section class="@lg:flex-1">
-            <h2
-              class="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-            >
-              <Contact class="h-3.5 w-3.5" aria-hidden="true" />
-              {{ t("patient.contact") }}
-            </h2>
-            <div
-              v-if="profile.isSummaryLoading.value"
-              class="space-y-2.5"
-              role="status"
-              :aria-label="t('common.loading')"
-            >
-              <div class="flex justify-between gap-4" aria-hidden="true">
-                <div class="h-3 w-12 animate-pulse rounded bg-muted" />
-                <div class="h-3 w-32 animate-pulse rounded bg-muted" />
-              </div>
-              <div class="flex justify-between gap-4" aria-hidden="true">
-                <div class="h-3 w-12 animate-pulse rounded bg-muted" />
-                <div class="h-3 w-40 animate-pulse rounded bg-muted" />
-              </div>
-              <div class="flex justify-between gap-4" aria-hidden="true">
-                <div class="h-3 w-14 animate-pulse rounded bg-muted" />
-                <div class="h-3 w-28 animate-pulse rounded bg-muted" />
-              </div>
+          <div class="flex items-start gap-2.5">
+            <TriangleAlert class="size-4 text-warning shrink-0 mt-0.5" />
+            <div>
+              <p class="text-xs font-bold text-foreground">
+                {{ t("insurance.unverified_warning_title") }}
+              </p>
+              <p class="text-[11.5px] text-muted-foreground mt-0.5">
+                {{ profile.profileSummary.value.insurance.insuranceProvider }} · Member ID:
+                <strong class="text-foreground font-mono">{{ profile.profileSummary.value.insurance.memberId }}</strong>
+                · {{ t("insurance.unverified_warning_desc") }}
+              </p>
             </div>
-            <dl v-else class="space-y-1.5 text-sm">
-              <div class="flex justify-between gap-4">
-                <dt class="text-muted-foreground">{{ t("patient.phone") }}</dt>
-                <dd class="font-medium text-foreground">
-                  {{
-                    patient.telecom.find((t2) => t2.system === "phone")
-                      ?.value ?? "—"
-                  }}
-                </dd>
-              </div>
-              <div class="flex justify-between gap-4">
-                <dt class="text-muted-foreground">{{ t("patient.email") }}</dt>
-                <dd class="font-medium text-foreground">
-                  {{ profile.profileSummary.value?.contact.email ?? "—" }}
-                </dd>
-              </div>
-              <div class="flex justify-between gap-4">
-                <dt class="shrink-0 text-muted-foreground">
-                  {{ t("patient.address") }}
-                </dt>
-                <dd
-                  class="min-w-0 flex-1 text-right font-medium text-foreground"
-                >
-                  {{ profile.contactAddress.value ?? "—" }}
-                </dd>
-              </div>
-              <div
-                v-if="profile.profileSummary.value?.contact.nextOfKinName"
-                class="flex justify-between gap-4"
-              >
-                <dt class="text-muted-foreground">
-                  {{ t("patient.next_of_kin") }}
-                </dt>
-                <dd class="font-medium text-foreground">
-                  {{ profile.profileSummary.value.contact.nextOfKinName }}
-                  <span
-                    v-if="profile.profileSummary.value.contact.nextOfKinPhone"
-                    class="block text-xs text-muted-foreground"
-                    >{{
-                      profile.profileSummary.value.contact.nextOfKinPhone
-                    }}</span
-                  >
-                </dd>
-              </div>
-            </dl>
-          </section>
-
-          <Separator
-            orientation="vertical"
-            class="hidden self-stretch @lg:block data-[orientation=vertical]:h-auto"
-          />
-
-          <section class="@lg:flex-1">
-            <h2
-              class="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+          </div>
+          <div class="flex items-center gap-2">
+            <Button
+              v-if="profile.profileSummary.value.insurance.id"
+              size="sm"
+              class="h-7 text-xs px-2.5 gap-1 shadow-xs cursor-pointer"
+              @click="insuranceForm.verifyInsurance(patient.id, profile.profileSummary.value.insurance.id!)"
             >
-              <Activity class="h-3.5 w-3.5" aria-hidden="true" />
-              {{ t("patient.current_visit") }}
-            </h2>
-            <div
-              v-if="profile.isSummaryLoading.value"
-              class="flex items-center justify-between gap-3"
-              role="status"
-              :aria-label="t('common.loading')"
+              <ShieldCheck class="size-3.5" />
+              {{ t("insurance.verify_clearance") }}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-7 text-xs px-2.5 gap-1 cursor-pointer"
+              @click="insuranceForm.openInsuranceForm(patient.id, profile.profileSummary.value.insurance)"
             >
-              <div class="space-y-1.5" aria-hidden="true">
-                <div class="h-3 w-24 animate-pulse rounded bg-muted" />
-                <div class="h-2.5 w-32 animate-pulse rounded bg-muted" />
-              </div>
-              <div class="h-5 w-16 shrink-0 animate-pulse rounded-full bg-muted" aria-hidden="true" />
-            </div>
-            <p
-              v-else-if="currentVisitIsEmpty"
-              class="text-sm text-muted-foreground/70"
-            >
-              {{ t("patient.no_active_visit") }}
-            </p>
-            <div v-else class="flex items-center justify-between gap-3 text-sm">
-              <div class="min-w-0">
-                <p class="font-medium text-foreground">
-                  {{ activeAppointment!.department ?? "—" }}
-                </p>
-                <p class="text-xs text-muted-foreground">
-                  {{ formatClinicalDate(activeAppointment!.scheduledAt) }}
-                  <template v-if="currentVisitClinicianName">
-                    — {{ currentVisitClinicianName }}</template
-                  >
-                </p>
-              </div>
-              <StatusBadge :status="currentVisitStatusType" class="shrink-0" />
-            </div>
-          </section>
+              <Pencil class="size-3" />
+              {{ t("insurance.edit_coverage") }}
+            </Button>
+          </div>
         </div>
 
-        <Separator />
-
-        <!-- Row: Allergies / Upcoming appointments -->
-        <div
-          class="flex flex-col gap-y-7 @lg:flex-row @lg:items-stretch @lg:gap-x-8"
-        >
-          <section class="@lg:flex-1">
-            <h2
-              class="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-            >
-              <TriangleAlert class="h-3.5 w-3.5" aria-hidden="true" />
-              {{ t("patient.allergies") }}
-            </h2>
-            <div
-              v-if="profile.isSummaryLoading.value"
-              role="status"
-              :aria-label="t('common.loading')"
-            >
-              <div class="h-5 w-32 animate-pulse rounded-full bg-muted" aria-hidden="true" />
-            </div>
-            <div
-              v-else-if="(profile.profileSummary.value?.alerts.length ?? 0) > 0"
-            >
-              <Badge
-                v-for="allergy in profile.profileSummary.value?.alerts"
-                :key="allergy.id"
-                :variant="
-                  allergy.severity === 'severe' ? 'critical' : 'warning'
-                "
-                class="mr-2 mb-2 inline-flex items-center gap-1"
-              >
-                <TriangleAlert class="h-3 w-3" aria-hidden="true" />
-                {{ allergy.substanceName }}
-              </Badge>
-            </div>
-            <div v-else>
-              <Badge variant="success" class="inline-flex items-center gap-1">
-                <CircleCheck class="h-3 w-3" aria-hidden="true" />
-                {{ t("patient.no_allergies") }}
-              </Badge>
-            </div>
-          </section>
-
-          <Separator
-            orientation="vertical"
-            class="hidden self-stretch @lg:block data-[orientation=vertical]:h-auto"
-          />
-
-          <section class="@lg:flex-1">
-            <h2
-              class="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-            >
-              <CalendarClock class="h-3.5 w-3.5" aria-hidden="true" />
-              {{ t("patient.upcoming_appointments") }}
-            </h2>
-            <div
-              v-if="profile.isSummaryLoading.value"
-              class="space-y-2.5"
-              role="status"
-              :aria-label="t('common.loading')"
-            >
-              <div class="flex items-center justify-between gap-2" aria-hidden="true">
-                <div class="space-y-1.5">
-                  <div class="h-3 w-28 animate-pulse rounded bg-muted" />
-                  <div class="h-2.5 w-20 animate-pulse rounded bg-muted" />
-                </div>
-                <div class="h-6 w-16 shrink-0 animate-pulse rounded bg-muted" />
-              </div>
-            </div>
-            <p
-              v-else-if="upcomingAppointmentsIsEmpty"
-              class="text-sm text-muted-foreground/70"
-            >
-              {{ t("patient.no_upcoming_appointments") }}
-            </p>
-            <ul v-else class="space-y-2 text-sm">
-              <li
-                v-for="appt in profile.upcomingAppointments.value"
-                :key="appt.id"
-                class="flex items-center justify-between gap-2"
-              >
-                <span class="min-w-0">
-                  <span class="block font-medium text-foreground">{{
-                    formatClinicalDate(appt.scheduledAt)
-                  }}</span>
-                  <span class="block truncate text-xs text-muted-foreground">{{
-                    appt.department ?? appt.reason ?? "—"
-                  }}</span>
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="h-6 shrink-0 gap-1 px-2 text-xs"
-                  :aria-label="t('arrival.checkin_appointment')"
-                  @click="arrivalIntake.checkInAppointment(appt.id)"
-                >
-                  <LogIn class="h-3 w-3" aria-hidden="true" />
-                  {{ t("arrival.check_in") }}
-                </Button>
-              </li>
-            </ul>
-          </section>
-        </div>
-
-        <Separator />
-
-        <!-- Row: Insurance / Recent visits -->
-        <div
-          class="flex flex-col gap-y-7 @lg:flex-row @lg:items-stretch @lg:gap-x-8"
-        >
-          <section class="@lg:flex-1">
-            <div class="mb-2 flex items-center justify-between gap-2">
-              <h2
-                class="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-              >
-                <ShieldCheck class="h-3.5 w-3.5" aria-hidden="true" />
-                {{ t("patient.insurance") }}
-              </h2>
-              <button
-                v-if="!profile.isSummaryLoading.value && !insuranceIsEmpty"
-                type="button"
-                class="focus-ring inline-flex shrink-0 items-center gap-1 rounded-sm text-xs font-medium text-primary hover:underline"
-                @click="
-                  insuranceForm.openInsuranceForm(
-                    patient.id,
-                    profile.profileSummary.value?.insurance,
-                  )
-                "
-              >
-                <Pencil class="h-3 w-3" aria-hidden="true" />
-                {{ t("common.edit") }}
-              </button>
-            </div>
-            <div
-              v-if="profile.isSummaryLoading.value"
-              class="space-y-2.5"
-              role="status"
-              :aria-label="t('common.loading')"
-            >
-              <div class="flex justify-between gap-4" aria-hidden="true">
-                <div class="h-3 w-14 animate-pulse rounded bg-muted" />
-                <div class="h-3 w-24 animate-pulse rounded bg-muted" />
-              </div>
-              <div class="flex justify-between gap-4" aria-hidden="true">
-                <div class="h-3 w-20 animate-pulse rounded bg-muted" />
-                <div class="h-3 w-28 animate-pulse rounded bg-muted" />
-              </div>
-              <div class="flex justify-between gap-4" aria-hidden="true">
-                <div class="h-3 w-12 animate-pulse rounded bg-muted" />
-                <div class="h-3 w-16 animate-pulse rounded bg-muted" />
-              </div>
-              <div class="flex justify-between gap-4" aria-hidden="true">
-                <div class="h-3 w-16 animate-pulse rounded bg-muted" />
-                <div class="h-3 w-20 animate-pulse rounded bg-muted" />
-              </div>
-            </div>
-            <p
-              v-else-if="insuranceIsEmpty"
-              class="text-sm text-muted-foreground/70"
-            >
-              {{ t("patient.no_insurance") }}
-              <button
-                type="button"
-                class="focus-ring ml-1 inline-flex items-center gap-1 rounded-sm font-medium text-primary hover:underline"
-                @click="
-                  insuranceForm.openInsuranceForm(
-                    patient.id,
-                    profile.profileSummary.value?.insurance,
-                  )
-                "
-              >
-                <Plus class="h-3 w-3" aria-hidden="true" />
-                {{ t("insurance.add_title") }}
-              </button>
-            </p>
-            <dl v-else class="space-y-1.5 text-sm">
-              <div class="flex justify-between">
-                <dt class="text-muted-foreground">
-                  {{ t("patient.insurance_provider") }}
-                </dt>
-                <dd class="font-medium text-foreground">
-                  {{
-                    profile.profileSummary.value!.insurance!
-                      .insuranceProvider ?? "—"
-                  }}
-                </dd>
-              </div>
-              <div class="flex justify-between">
-                <dt class="text-muted-foreground">
-                  {{ t("patient.insurance_member_id") }}
-                </dt>
-                <dd class="clinical-value font-medium text-foreground">
-                  {{ profile.profileSummary.value!.insurance!.memberId ?? "—" }}
-                </dd>
-              </div>
-              <div class="flex justify-between">
-                <dt class="text-muted-foreground">
-                  {{ t("patient.insurance_status") }}
-                </dt>
-                <dd class="font-medium text-foreground">
-                  {{
-                    insuranceStatusLabel(
-                      profile.profileSummary.value!.insurance!.status,
-                    )
-                  }}
-                </dd>
-              </div>
-              <div class="flex items-center justify-between">
-                <dt class="text-muted-foreground">
-                  {{ t("insurance.verification_status") }}
-                </dt>
-                <dd
-                  class="flex items-center gap-1.5 font-medium text-foreground"
-                >
-                  {{
-                    insuranceVerificationLabel(
-                      profile.profileSummary.value!.insurance!
-                        .verificationStatus,
-                    )
-                  }}
-                  <Button
-                    v-if="
-                      profile.profileSummary.value!.insurance!
-                        .verificationStatus !== 'verified' &&
-                      profile.profileSummary.value!.insurance!.id
-                    "
-                    variant="ghost"
-                    size="sm"
-                    class="h-6 gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground"
-                    @click="
-                      insuranceForm.verifyInsurance(
-                        patient.id,
-                        profile.profileSummary.value!.insurance!.id!,
-                      )
-                    "
-                  >
-                    <CircleCheck class="h-3 w-3" aria-hidden="true" />
-                    {{ t("insurance.verify") }}
-                  </Button>
-                </dd>
-              </div>
-            </dl>
-          </section>
-
-          <Separator
-            orientation="vertical"
-            class="hidden self-stretch @lg:block data-[orientation=vertical]:h-auto"
-          />
-
-          <!-- Recent visits (reception's `patients.read` permission doesn't
-             include `medical.records.read`, required by GET /encounters, so
-             a full "last 5" Timeline isn't safely buildable without a
-             permission/product decision — this shows the one closed
-             encounter the summary endpoint already includes). -->
-          <section class="@lg:flex-1">
-            <h2
-              class="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-            >
-              <History class="h-3.5 w-3.5" aria-hidden="true" />
-              {{ t("patient.recent_visits") }}
-            </h2>
-            <div
-              v-if="profile.isSummaryLoading.value"
-              class="flex items-center justify-between gap-3"
-              role="status"
-              :aria-label="t('common.loading')"
-            >
-              <div class="space-y-1.5" aria-hidden="true">
-                <div class="h-3 w-24 animate-pulse rounded bg-muted" />
-                <div class="h-2.5 w-32 animate-pulse rounded bg-muted" />
-              </div>
-              <div class="h-5 w-16 shrink-0 animate-pulse rounded-full bg-muted" aria-hidden="true" />
-            </div>
-            <p
-              v-else-if="recentVisitIsEmpty"
-              class="text-sm text-muted-foreground/70"
-            >
-              {{ t("patient.no_visits") }}
-            </p>
-            <div v-else class="flex items-center justify-between text-sm">
-              <div>
-                <p class="font-medium text-foreground">
-                  {{
-                    formatClinicalDate(
-                      profile.profileSummary.value!.latestEncounter!.openedAt,
-                    )
-                  }}
-                </p>
-                <p
-                  v-if="
-                    profile.profileSummary.value!.latestEncounter!
-                      .primaryClinicianName
-                  "
-                  class="text-xs text-muted-foreground"
-                >
-                  {{
-                    profile.profileSummary.value!.latestEncounter!
-                      .primaryClinicianName
-                  }}
-                </p>
-              </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          <!-- Active Visit Section -->
+          <div class="rounded-lg border border-border/70 bg-card/60 p-3 space-y-2">
+            <div class="flex flex-row items-center justify-between pb-1.5 border-b border-border/50">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                <Activity class="size-3.5 text-primary" />
+                <span>{{ t("patient.current_visit") }}</span>
+              </span>
               <StatusBadge
-                v-if="profile.profileSummary.value!.latestEncounter!.status"
-                :status="
-                  latestVisitStatus(
-                    profile.profileSummary.value!.latestEncounter!.status,
-                  )
-                "
+                v-if="activeAppointment"
+                :status="currentVisitStatusType"
+                :label="currentVisitStatusLabel"
+                class="shrink-0"
               />
             </div>
-          </section>
-        </div>
-      </div>
-    </div>
+            <div class="space-y-1.5">
+              <div v-if="profile.isSummaryLoading.value" class="space-y-2 animate-pulse">
+                <div class="h-4 w-32 rounded bg-secondary/80" />
+                <div class="h-3 w-48 rounded bg-secondary/60" />
+              </div>
+              <div v-else-if="currentVisitIsEmpty" class="text-xs text-muted-foreground/70 py-2">
+                {{ t("patient.no_active_visit") }}
+              </div>
+              <div v-else class="space-y-1.5 text-xs">
+                <div class="flex items-center justify-between py-0.5">
+                  <span class="text-muted-foreground">{{ t("appointment.department") }}:</span>
+                  <span class="font-medium text-foreground">{{ activeAppointment!.department ?? "General OPD" }}</span>
+                </div>
+                <div class="flex items-center justify-between py-0.5">
+                  <span class="text-muted-foreground">{{ t("appointment.scheduled") }}:</span>
+                  <span class="font-mono text-foreground">{{ formatClinicalDate(activeAppointment!.scheduledAt) }}</span>
+                </div>
+                <div v-if="currentVisitClinicianName" class="flex items-center justify-between py-0.5">
+                  <span class="text-muted-foreground">{{ t("appointment.attending") }}:</span>
+                  <span class="font-medium text-foreground">{{ currentVisitClinicianName }}</span>
+                </div>
+                <div class="pt-2">
+                  <Button size="sm" variant="outline" class="w-full text-xs gap-1 h-7 font-medium" @click="emit('view-in-queue')">
+                    <ArrowRight class="size-3.5" />
+                    {{ t("arrival.view_in_queue") }}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
 
-    <!-- Audit trail (§7): kept, but visually secondary — smaller text, set
-       off by its own divider, at the bottom of the workspace rather than
-       competing with the clinical/administrative sections above it. -->
-    <Separator class="mt-9" />
-    <div class="pt-4">
-      <h2
-        class="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground/70 uppercase"
-      >
-        <ScrollText class="h-3.5 w-3.5" aria-hidden="true" />
-        {{ t("patient.audit_trail") }}
-      </h2>
-      <div
-        v-if="profile.isSummaryLoading.value"
-        class="space-y-2"
-        role="status"
-        :aria-label="t('common.loading')"
-      >
-        <div
-          v-for="n in 3"
-          :key="n"
-          class="flex items-center justify-between"
-          aria-hidden="true"
-        >
-          <div class="h-2.5 w-40 animate-pulse rounded bg-muted" />
-          <div class="h-2.5 w-16 animate-pulse rounded bg-muted" />
+          <!-- Allergies & Safety Alerts Section -->
+          <div class="rounded-lg border border-border/70 bg-card/60 p-3 space-y-2">
+            <div class="flex items-center justify-between pb-1.5 border-b border-border/50">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                <TriangleAlert class="size-3.5 text-amber-500" />
+                <span>{{ t("patient.allergies") }}</span>
+              </span>
+            </div>
+            <div>
+              <div v-if="profile.isSummaryLoading.value" class="h-6 w-32 rounded bg-secondary/60 animate-pulse" />
+              <div v-else-if="(profile.profileSummary.value?.alerts.length ?? 0) > 0" class="flex flex-wrap gap-1.5">
+                <Badge
+                  v-for="allergy in profile.profileSummary.value?.alerts"
+                  :key="allergy.id"
+                  :variant="allergy.severity === 'severe' ? 'critical' : 'warning'"
+                  class="inline-flex items-center gap-1 text-xs"
+                >
+                  <TriangleAlert class="size-3" aria-hidden="true" />
+                  {{ allergy.substanceName }}
+                </Badge>
+              </div>
+              <div v-else class="flex items-center gap-1.5 py-1">
+                <Badge variant="success" class="inline-flex items-center gap-1 text-xs">
+                  <CircleCheck class="size-3" aria-hidden="true" />
+                  {{ t("patient.no_allergies") }}
+                </Badge>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-      <p v-else-if="auditTrailIsEmpty" class="text-xs text-muted-foreground/70">
-        {{ t("patient.no_audit_activity") }}
-      </p>
-      <ul v-else class="space-y-1.5 text-xs text-muted-foreground">
-        <li
-          v-for="entry in profile.auditFeed.value"
-          :key="entry.id"
-          class="flex items-center justify-between"
-        >
-          <span>
-            {{ profile.auditActionLabel(entry) }}
-            <span v-if="entry.actor?.name">— {{ entry.actor.name }}</span>
-          </span>
-          <span>{{ formatClinicalDate(entry.occurredAt) }}</span>
-        </li>
-      </ul>
-    </div>
+
+        <!-- Quick Summary Strip: Next Upcoming Appointment -->
+        <div v-if="!upcomingAppointmentsIsEmpty && profile.upcomingAppointments.value[0]" class="rounded-lg border border-primary/25 bg-primary/5 p-3 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/20 text-primary">
+              <CalendarClock class="size-4.5" />
+            </div>
+            <div>
+              <p class="text-[11px] font-semibold text-primary uppercase tracking-wider">{{ t("appointment.next_upcoming") }}</p>
+              <p class="text-xs font-medium text-foreground mt-0.5">
+                {{ formatClinicalDate(profile.upcomingAppointments.value[0].scheduledAt) }} · {{ profile.upcomingAppointments.value[0].department ?? profile.upcomingAppointments.value[0].reason ?? "General Follow-up" }}
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            class="h-7 gap-1 text-xs px-2.5"
+            @click="arrivalIntake.checkInAppointment(profile.upcomingAppointments.value[0].id, patient.id)"
+          >
+            <LogIn class="size-3.5" />
+            {{ t("arrival.check_in") }}
+          </Button>
+        </div>
+      </TabsContent>
+
+      <!-- Tab 2: Demographics & Payer Coverage -->
+      <TabsContent value="demographics" class="flex-1 overflow-y-auto p-3.5 space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          <!-- Contact Details Section -->
+          <div class="rounded-lg border border-border/70 bg-card/60 p-3 space-y-2">
+            <div class="flex flex-row items-center justify-between pb-1.5 border-b border-border/50">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                <Contact class="size-3.5 text-primary" />
+                <span>{{ t("patient.contact_and_identity") }}</span>
+              </span>
+              <Button variant="ghost" size="sm" class="h-6 px-2 text-xs gap-1 text-primary cursor-pointer" @click="openEditDemographics">
+                <Pencil class="size-3" />
+                {{ t("common.edit") }}
+              </Button>
+            </div>
+            <div class="space-y-1.5 text-xs">
+              <div class="flex items-center justify-between py-0.5">
+                <span class="text-muted-foreground flex items-center gap-1.5"><Phone class="size-3 text-muted-foreground" /> {{ t("patient.phone") }}</span>
+                <span class="font-medium text-foreground">{{ patient.telecom.find((t2) => t2.system === "phone")?.value ?? "—" }}</span>
+              </div>
+              <div class="flex items-center justify-between py-0.5">
+                <span class="text-muted-foreground flex items-center gap-1.5"><Mail class="size-3 text-muted-foreground" /> {{ t("patient.email") }}</span>
+                <span class="font-medium text-foreground">{{ profile.profileSummary.value?.contact.email ?? "—" }}</span>
+              </div>
+              <div class="flex items-center justify-between py-0.5">
+                <span class="text-muted-foreground flex items-center gap-1.5"><MapPin class="size-3 text-muted-foreground" /> {{ t("patient.address") }}</span>
+                <span class="font-medium text-foreground truncate max-w-[200px]">{{ profile.contactAddress.value ?? "—" }}</span>
+              </div>
+              <div v-if="profile.profileSummary.value?.contact.nextOfKinName" class="flex items-center justify-between py-0.5">
+                <span class="text-muted-foreground flex items-center gap-1.5"><Users class="size-3 text-muted-foreground" /> {{ t("patient.next_of_kin") }}</span>
+                <span class="font-medium text-foreground text-right">
+                  {{ profile.profileSummary.value.contact.nextOfKinName }}
+                  <span v-if="profile.profileSummary.value.contact.nextOfKinPhone" class="block text-[11px] font-mono text-muted-foreground">
+                    {{ profile.profileSummary.value.contact.nextOfKinPhone }}
+                  </span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Insurance & Payer Section -->
+          <div class="rounded-lg border border-border/70 bg-card/60 p-3 space-y-2">
+            <div class="flex flex-row items-center justify-between pb-1.5 border-b border-border/50">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                <ShieldCheck class="size-3.5 text-emerald-500" />
+                <span>{{ t("patient.insurance") }}</span>
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-6 px-2 text-xs gap-1 text-primary cursor-pointer"
+                @click="insuranceForm.openInsuranceForm(patient.id, profile.profileSummary.value?.insurance)"
+              >
+                <Pencil v-if="!insuranceIsEmpty" class="size-3" />
+                <Plus v-else class="size-3" />
+                {{ insuranceIsEmpty ? t("insurance.add_title") : t("common.edit") }}
+              </Button>
+            </div>
+            <div>
+              <div v-if="profile.isSummaryLoading.value" class="space-y-2 animate-pulse">
+                <div class="h-4 w-32 rounded bg-secondary/80" />
+                <div class="h-4 w-40 rounded bg-secondary/60" />
+              </div>
+              <div v-else-if="insuranceIsEmpty" class="text-xs text-muted-foreground/70 py-3 text-center">
+                <p>{{ t("patient.no_insurance") }}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="mt-2 text-xs gap-1 h-7"
+                  @click="insuranceForm.openInsuranceForm(patient.id, profile.profileSummary.value?.insurance)"
+                >
+                  <Plus class="size-3" />
+                  {{ t("insurance.add_title") }}
+                </Button>
+              </div>
+              <div v-else class="space-y-1.5 text-xs">
+                <div class="flex items-center justify-between py-0.5">
+                  <span class="text-muted-foreground">{{ t("patient.insurance_provider") }}</span>
+                  <span class="font-medium text-foreground">{{ profile.profileSummary.value!.insurance!.insuranceProvider ?? "—" }}</span>
+                </div>
+                <div class="flex items-center justify-between py-0.5">
+                  <span class="text-muted-foreground">{{ t("patient.insurance_member_id") }}</span>
+                  <span class="font-mono font-medium text-foreground">{{ profile.profileSummary.value!.insurance!.memberId ?? "—" }}</span>
+                </div>
+                <div class="flex items-center justify-between py-0.5">
+                  <span class="text-muted-foreground">{{ t("patient.insurance_status") }}</span>
+                  <span class="font-medium text-foreground">{{ insuranceStatusLabel(profile.profileSummary.value!.insurance!.status) }}</span>
+                </div>
+                <div class="flex items-center justify-between py-0.5">
+                  <span class="text-muted-foreground">{{ t("insurance.verification_status") }}</span>
+                  <div class="flex items-center gap-1.5">
+                    <Badge
+                      :variant="profile.profileSummary.value!.insurance!.verificationStatus === 'verified' ? 'success' : 'warning'"
+                      class="text-[11px]"
+                    >
+                      {{ insuranceVerificationLabel(profile.profileSummary.value!.insurance!.verificationStatus) }}
+                    </Badge>
+                    <Button
+                      v-if="profile.profileSummary.value!.insurance!.verificationStatus !== 'verified' && profile.profileSummary.value!.insurance!.id"
+                      size="sm"
+                      variant="outline"
+                      class="h-6 text-[10.5px] px-2 gap-1 text-primary cursor-pointer"
+                      @click="insuranceForm.verifyInsurance(patient.id, profile.profileSummary.value!.insurance!.id!)"
+                    >
+                      <CircleCheck class="size-3" />
+                      {{ t("insurance.verify") }}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </TabsContent>
+
+      <!-- Tab 3: Appointments & History -->
+      <TabsContent value="appointments" class="flex-1 overflow-y-auto p-3.5 space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          <!-- Upcoming Appointments List -->
+          <div class="rounded-lg border border-border/70 bg-card/60 p-3 space-y-2">
+            <div class="flex flex-row items-center justify-between pb-1.5 border-b border-border/50">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                <CalendarClock class="size-3.5 text-primary" />
+                <span>{{ t("patient.upcoming_appointments") }}</span>
+              </span>
+              <Button size="sm" variant="ghost" class="h-6 px-2 text-xs gap-1 text-primary" @click="scheduling.openScheduleDialogForPatient(patient)">
+                <Plus class="size-3" />
+                {{ t("appointment.book") }}
+              </Button>
+            </div>
+            <div>
+              <div v-if="profile.isSummaryLoading.value" class="space-y-2 animate-pulse">
+                <div class="h-10 w-full rounded bg-secondary/60" />
+              </div>
+              <p v-else-if="upcomingAppointmentsIsEmpty" class="text-xs text-muted-foreground/70 py-2">
+                {{ t("patient.no_upcoming_appointments") }}
+              </p>
+              <ul v-else class="space-y-1.5 text-xs">
+                <li
+                  v-for="appt in profile.upcomingAppointments.value"
+                  :key="appt.id"
+                  class="flex items-center justify-between gap-2 p-2 rounded-md border border-border/60 bg-surface/50"
+                >
+                  <div class="min-w-0">
+                    <span class="block font-semibold text-foreground text-xs">{{ formatClinicalDate(appt.scheduledAt) }}</span>
+                    <span class="block truncate text-[11px] text-muted-foreground">{{ appt.department ?? appt.reason ?? "Consultation" }}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    class="h-7 shrink-0 gap-1 px-2.5 text-xs"
+                    @click="arrivalIntake.checkInAppointment(appt.id, patient.id)"
+                  >
+                    <LogIn class="size-3" aria-hidden="true" />
+                    {{ t("arrival.check_in") }}
+                  </Button>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Recent Past Visits -->
+          <div class="rounded-lg border border-border/70 bg-card/60 p-3 space-y-2">
+            <div class="flex items-center justify-between pb-1.5 border-b border-border/50">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                <History class="size-3.5 text-muted-foreground" />
+                <span>{{ t("patient.recent_visits") }}</span>
+              </span>
+            </div>
+            <div>
+              <div v-if="profile.isSummaryLoading.value" class="space-y-2 animate-pulse">
+                <div class="h-10 w-full rounded bg-secondary/60" />
+              </div>
+              <p v-else-if="recentVisitIsEmpty" class="text-xs text-muted-foreground/70 py-2">
+                {{ t("patient.no_visits") }}
+              </p>
+              <div v-else class="p-2.5 rounded-md border border-border/60 bg-surface/50 flex items-center justify-between text-xs">
+                <div>
+                  <p class="font-semibold text-foreground text-xs">
+                    {{ formatClinicalDate(profile.profileSummary.value!.latestEncounter!.openedAt) }}
+                  </p>
+                  <p v-if="profile.profileSummary.value!.latestEncounter!.primaryClinicianName" class="text-xs text-muted-foreground">
+                    {{ profile.profileSummary.value!.latestEncounter!.primaryClinicianName }}
+                  </p>
+                </div>
+                <StatusBadge
+                  v-if="profile.profileSummary.value!.latestEncounter!.status"
+                  :status="latestVisitStatus(profile.profileSummary.value!.latestEncounter!.status)"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </TabsContent>
+
+      <!-- Tab 4: Audit Trail -->
+      <TabsContent value="audit" class="flex-1 overflow-y-auto p-3.5">
+        <div class="rounded-lg border border-border/70 bg-card/60 p-3 space-y-2">
+          <div class="flex items-center justify-between pb-1.5 border-b border-border/50">
+            <span class="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+              <ScrollText class="size-3.5 text-muted-foreground" />
+              <span>{{ t("patient.audit_trail") }}</span>
+            </span>
+          </div>
+          <div>
+            <div v-if="profile.isSummaryLoading.value" class="space-y-2 animate-pulse">
+              <div v-for="n in 3" :key="n" class="h-6 w-full rounded bg-secondary/60" />
+            </div>
+            <p v-else-if="auditTrailIsEmpty" class="text-xs text-muted-foreground/70 py-2">
+              {{ t("patient.no_audit_activity") }}
+            </p>
+            <ul v-else class="space-y-1.5 text-xs text-muted-foreground divide-y divide-border/40">
+              <li
+                v-for="entry in profile.auditFeed.value"
+                :key="entry.id"
+                class="flex items-center justify-between pt-1.5 first:pt-0"
+              >
+                <span class="font-medium text-foreground">
+                  {{ profile.auditActionLabel(entry) }}
+                </span>
+                <span class="font-mono text-muted-foreground text-[11px]">
+                  {{ formatClinicalDate(entry.timestamp) }}
+                </span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </TabsContent>
+    </Tabs>
+
+    <!-- Visit Communication Notes Dialog -->
+    <VisitNotesDialog
+      v-if="activeAppointment"
+      v-model:open="showNotesDialog"
+      :appointment-id="activeAppointment.id"
+      :initial-notes="currentVisitNotes"
+      @saved="onNotesUpdated"
+    />
   </div>
 </template>

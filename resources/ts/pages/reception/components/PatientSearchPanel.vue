@@ -32,7 +32,7 @@
 
 <script setup lang="ts">
 /* eslint-disable vue/no-mutating-props -- v-model="search.searchQuery.value", see file header docblock */
-import { History, Pin } from "lucide-vue-next";
+import { History, Pin, UserPlus } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import DataTable from "@/components/common/DataTable.vue";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -53,77 +53,70 @@ const syncStore = useSyncStore();
 </script>
 
 <template>
-  <!-- Search input -->
-  <div class="border-b border-border p-3">
-    <Input
-      id="reception-patient-search"
-      v-model="search.searchQuery.value"
-      type="search"
-      :placeholder="t('patient.search')"
-      :aria-label="t('patient.search')"
-      @input="search.onSearchInput"
-    />
+  <!-- Search input + Quick Register Action -->
+  <div class="border-b border-border p-2.5 flex items-center gap-2">
+    <div class="relative flex-1">
+      <Input
+        id="reception-patient-search"
+        v-model="search.searchQuery.value"
+        type="search"
+        :placeholder="t('patient.search')"
+        :aria-label="t('patient.search')"
+        class="h-8 text-xs"
+        @input="search.onSearchInput"
+      />
+    </div>
+    <Button
+      size="sm"
+      class="h-8 shrink-0 gap-1.5 px-2.5 text-xs font-medium cursor-pointer shadow-xs"
+      :title="t('registration.title') || 'Register New Patient'"
+      @click="openRegistration"
+    >
+      <UserPlus class="size-3.5" aria-hidden="true" />
+      <span>{{ t("common.add") }}</span>
+    </Button>
   </div>
 
-  <!-- Recent patients (Volume 1.3 §9.1 — Volume 3.7 T2.8). Now hidden
-       once a search query is typed (2026-08-11, direct user feedback) —
-       it used to stay put regardless, so it sat above/alongside live
-       search results the moment you started typing something else,
-       competing for space and still showing an unrelated patient while
-       you were mid-search. This is a "quick access before you've
-       decided what to search for" list, not a permanent fixture — it
-       should get out of the way the instant there's an actual query. -->
+  <!-- Recent & Pinned Patients Quick Bar (Volume 1.3 §9.1) -->
   <div
-    v-if="search.recentItems.value.length > 0 && !search.searchQuery.value.trim()"
-    class="max-h-40 overflow-y-auto border-b border-border p-3"
+    v-if="search.recentItems.value.length > 0 && !search.searchQuery.value.trim() && search.patientRows.value.length > 0"
+    class="flex items-center gap-1.5 border-b border-border px-3 py-2 overflow-x-auto no-scrollbar bg-surface/60"
     :aria-label="t('recent.label')"
   >
-    <h3
-      class="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-    >
-      <History class="h-3.5 w-3.5" aria-hidden="true" />
-      {{ t("recent.label") }}
-    </h3>
-    <ul class="space-y-1">
-      <li
+    <div class="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0 pr-2 border-r border-border">
+      <History class="size-3.5 text-muted-foreground" aria-hidden="true" />
+      <span>{{ t("recent.label") }}</span>
+    </div>
+    <div class="flex items-center gap-1.5 shrink-0">
+      <div
         v-for="item in search.recentItems.value"
         :key="item.id"
-        class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-surface-hover"
+        class="group inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-all select-none"
+        :class="
+          item.id === search.currentPatientId.value
+            ? 'bg-accent border-primary/40 font-medium text-accent-foreground shadow-xs'
+            : 'bg-card border-border hover:border-primary/40 hover:bg-secondary/60 text-foreground'
+        "
         @click="search.openRecentPatient(item.id)"
       >
-        <Avatar class="size-6 shrink-0">
-          <AvatarFallback class="text-[10px]">
+        <Avatar class="size-4.5 shrink-0">
+          <AvatarFallback class="text-[9px] font-semibold bg-primary/10 text-primary">
             {{ patientInitials(item.name) }}
           </AvatarFallback>
         </Avatar>
-        <span class="min-w-0 flex-1">
-          <span class="block truncate font-medium text-foreground">{{
-            item.name
-          }}</span>
-          <span class="clinical-value block truncate text-xs text-muted-foreground">
-            {{ item.mrn }}
-          </span>
-        </span>
-        <!-- Icon-only here (unlike its labeled sibling in PatientProfileView's
-             header — this compact row has no room for the text), so it gets
-             a Tooltip to compensate (workspace tooltip audit, 2026-08-11). -->
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <Button
-              variant="ghost"
-              size="sm"
-              class="h-6 w-6 shrink-0 p-0"
-              :class="item.pinned ? 'text-primary' : 'text-muted-foreground'"
-              @click.stop="search.togglePin(item.id)"
-              :aria-label="item.pinned ? t('patient.unpin') : t('patient.pin')"
-            >
-              <Pin class="h-3.5 w-3.5" :fill="item.pinned ? 'currentColor' : 'none'" aria-hidden="true" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{{ item.pinned ? t("patient.unpin") : t("patient.pin") }}</TooltipContent>
-        </Tooltip>
-      </li>
-    </ul>
+        <span class="truncate max-w-[100px] text-[11.5px]">{{ item.name }}</span>
+        <span class="text-[10px] font-mono text-muted-foreground">{{ item.mrn }}</span>
+        <button
+          type="button"
+          class="p-0.5 text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+          :class="item.pinned ? 'text-primary' : 'opacity-40 group-hover:opacity-100'"
+          @click.stop="search.togglePin(item.id)"
+          :aria-label="item.pinned ? t('patient.unpin') : t('patient.pin')"
+        >
+          <Pin class="size-3" :fill="item.pinned ? 'currentColor' : 'none'" aria-hidden="true" />
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- Results (Volume 1.2 §6 — DataTable with the four states) -->
@@ -132,6 +125,7 @@ const syncStore = useSyncStore();
       :rows="search.patientRows.value"
       :columns="search.patientColumns.value"
       :row-key="(r) => r.id"
+      :active-row-key="search.currentPatientId.value"
       :loading="search.isSearching.value"
       :error="search.searchError.value"
       :offline="!syncStore.isOnline"
@@ -147,21 +141,17 @@ const syncStore = useSyncStore();
       @retry="search.handlePatientRetry"
     >
       <template #patient-name="{ row }">
-        <!-- `size-6` (component-library audit, 2026-08-10): this row sits
-             inside DataTable's own fixed row height, tightened the same
-             day (32px comfortable, was 36px) — the previous 28px avatar
-             left only ~2px total top/bottom margin, visibly touching the
-             row border. The recent-patients list above uses the same
-             `size-6` now too, not because its own `py-1`-padded row needed
-             it, but so a patient avatar is the same size everywhere in
-             this tab, not smaller in one list and bigger in the other. -->
-        <div class="flex items-center gap-2">
-          <Avatar class="size-6 shrink-0">
-            <AvatarFallback class="text-[10px]">
+        <div class="flex items-center gap-2 py-0.5 min-w-0">
+          <Avatar class="size-6.5 shrink-0">
+            <AvatarFallback class="text-[10px] font-semibold bg-primary/10 text-primary">
               {{ patientInitials(row.name) }}
             </AvatarFallback>
           </Avatar>
-          <span class="truncate font-medium text-foreground">{{ row.name }}</span>
+          <div class="min-w-0 flex-1 leading-tight">
+            <span class="truncate font-medium text-foreground text-[12.5px] block">
+              {{ row.name }}
+            </span>
+          </div>
         </div>
       </template>
     </DataTable>

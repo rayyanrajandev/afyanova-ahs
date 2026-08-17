@@ -10,6 +10,7 @@
  */
 
 <script setup lang="ts">
+import { X } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import Form from "@/components/common/Form.vue";
 import PatientRegistrationFields from "@/components/common/PatientRegistrationFields.vue";
@@ -30,8 +31,17 @@ const { t } = useI18n();
       <h2 class="text-lg font-semibold text-foreground">
         {{ t("common.edit") }} — {{ t("patient.demographics") }}
       </h2>
-      <Button variant="ghost" size="sm" @click="edit.closeEditDemographics">
-        {{ t("common.close") }}
+      <!-- Icon-only (2026-08-13, cross-workspace consistency pass) — matches
+           RegistrationForm.vue's and PatientProfileView.vue's header close,
+           see their docblocks. The bottom "Cancel" button is a separate,
+           end-of-form affordance and is untouched. -->
+      <Button
+        variant="ghost"
+        size="icon"
+        :aria-label="t('common.close')"
+        @click="edit.closeEditDemographics"
+      >
+        <X class="h-3.5 w-3.5" aria-hidden="true" />
       </Button>
     </div>
 
@@ -41,15 +51,12 @@ const { t } = useI18n();
       <Form
         :schema="registrationSchema"
         :initial-values="edit.editInitialValues.value"
-        class="grid grid-cols-1 gap-3 @lg:grid-cols-3"
+        class="space-y-4"
         @submit="edit.submitEditDemographics"
       >
         <PatientRegistrationFields :autosave-draft="false" />
 
-        <!-- Button hierarchy matches RegistrationForm.vue's own (2026-08-12,
-             direct user feedback) — Save stays the strongest action, Cancel
-             drops to ghost since it discards nothing destructive. -->
-        <div class="@lg:col-span-3 mt-2 flex gap-3">
+        <div class="mt-4 flex items-center gap-3 border-t border-border pt-3.5">
           <Button type="submit">
             {{ t("common.save") }}
           </Button>

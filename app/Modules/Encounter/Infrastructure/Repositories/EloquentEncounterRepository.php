@@ -37,6 +37,12 @@ class EloquentEncounterRepository implements EncounterRepositoryInterface
         $queryBuilder = EncounterModel::query()->with([
             'patient:id,patient_number,first_name,middle_name,last_name',
             'primaryClinician:id,name',
+            // triage_owner_user_id/nursing_contact_* are selected because
+            // EncounterListItemResponseTransformer resolves `visitStage` through
+            // PatientFlowStep, which reads them. Omitting them here would not
+            // error — it would silently make every visit look unclaimed, so the
+            // clinician queue could never show "In Triage" or "With Nurse".
+            'appointment:id,status,triaged_at,consultation_started_at,department,queue_position,triage_vitals_summary,triage_owner_user_id,nursing_contact_user_id,nursing_contact_started_at',
         ]);
         $this->applyPlatformScopeIfEnabled($queryBuilder);
         $this->applyFilters($queryBuilder, $query, $patientId, $status, $primaryClinicianUserId, $fromDateTime, $toDateTime);

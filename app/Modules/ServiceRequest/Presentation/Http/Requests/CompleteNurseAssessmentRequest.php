@@ -20,7 +20,16 @@ class CompleteNurseAssessmentRequest extends FormRequest
     {
         return [
             'clinicalNote' => ['required', 'string', 'max:5000'],
-            'items' => ['required', 'array', 'max:50'],
+            // `present`, not `required` (2026-08-13, Volume 3.8 Phase 5): a
+            // nurse who reviews a patient and decides no downstream orders
+            // are needed must still be able to complete the assessment — an
+            // empty `items` array is a valid, real outcome, not a missing
+            // field. This is also what makes the never-implemented
+            // `nursing/tasks/{id}/complete` route/method (found dead —
+            // no controller method, never called by the frontend) properly
+            // redundant rather than a missing feature: assessing with zero
+            // items already covers what that route was meant to do.
+            'items' => ['present', 'array', 'max:50'],
             'items.*.catalogItemId' => ['nullable', 'uuid'],
             'items.*.itemName' => ['required', 'string', 'max:255'],
             'items.*.itemCode' => ['nullable', 'string', 'max:50'],
@@ -36,7 +45,7 @@ class CompleteNurseAssessmentRequest extends FormRequest
     {
         return [
             'clinicalNote.required' => 'A clinical note describing the patient\'s condition is required.',
-            'items.required' => 'At least one service item is required.',
+            'items.present' => 'The items field must be present, even if empty.',
             'items.*.serviceType.in' => 'Invalid service type. Must be one of: laboratory, pharmacy, radiology, clinical_procedure.',
         ];
     }

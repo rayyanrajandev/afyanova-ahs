@@ -37,20 +37,60 @@ import {
   CalendarPlus,
   ChevronLeft,
   ChevronRight,
+  LogIn,
 } from "lucide-vue-next";
+import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import EmptyState from "@/components/common/EmptyState.vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { useAppointmentScheduling } from "../composables/useAppointmentScheduling";
+import type { ScheduleAppointment, useAppointmentScheduling } from "../composables/useAppointmentScheduling";
+import type { useArrivalIntake } from "../composables/useArrivalIntake";
+import { isToday, patientInitials } from "../receptionFormatters";
 
-defineProps<{
+const props = defineProps<{
   scheduling: ReturnType<typeof useAppointmentScheduling>;
+  arrivalIntake: ReturnType<typeof useArrivalIntake>;
 }>();
 
 const { t } = useI18n();
+
+/**
+ * One-click Check In on today's rows (Volume 3.7 T4.6 follow-up, 2026-08-13).
+ * T4.6 as originally scoped ("auto check-in the patient into the queue on
+ * the appointment date") was deliberately not built — it would create a
+ * "waiting" queue entry, with wait-time math already running, for a patient
+ * who hasn't actually arrived (or may never show — that's what the real
+ * No-show status is for). Every queue entry's `arrivalMode` is meant to be
+ * recorded by a real action, not inferred from a booking existing. The
+ * actual friction T4.6 was chasing was real, though: checking in a same-day
+ * scheduled patient took 4 steps (open Schedule → click their row → wait
+ * for the profile to load → find Check In on the Upcoming Appointments
+ * card). This closes that gap without the data-integrity problem — same
+ * explicit action (`checkInAppointment`), one click instead of four,
+ * restricted to today's rows only (checking in a future date makes no more
+ * sense here than it would from the profile card).
+ *
+ * `checkingInId` (not `scheduling.isScheduleLoading`) tracks in-flight
+ * state per-row — this list refetches on check-in (see
+ * `refreshScheduleIfLoaded`/`onCheckedIn`'s `scheduling.refreshScheduleIfLoaded()`
+ * in Index.vue), so without a local guard a slow connection would let a
+ * second click on the same row fire a second check-in before the list
+ * re-render removed it.
+ */
+const checkingInId = ref<string | null>(null);
+
+async function handleCheckIn(appt: ScheduleAppointment) {
+  checkingInId.value = appt.id;
+  try {
+    await props.arrivalIntake.checkInAppointment(appt.id, appt.patientId);
+  } finally {
+    checkingInId.value = null;
+  }
+}
 </script>
 
 <template>
@@ -170,19 +210,32 @@ const { t } = useI18n();
   </div>
 
   <div class="flex-1 overflow-y-auto p-2">
-    <p v-if="scheduling.isScheduleLoading.value" class="p-3 text-sm text-muted-foreground">
-      {{ t("common.loading") }}
-    </p>
+    <!-- Skeleton loader (3 animated cards) -->
+    <div v-if="scheduling.isScheduleLoading.value" class="space-y-2 p-1">
+      <div
+        v-for="n in 3"
+        :key="n"
+        class="rounded-lg border border-border bg-card p-3 space-y-2.5 animate-pulse"
+      >
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div class="h-5 w-14 rounded bg-secondary/80" />
+            <div class="h-4 w-28 rounded bg-secondary/80" />
+          </div>
+          <div class="h-4 w-16 rounded bg-secondary/80" />
+        </div>
+        <div class="flex items-center justify-between">
+          <div class="h-3.5 w-20 rounded bg-secondary/60" />
+          <div class="h-3.5 w-24 rounded bg-secondary/60" />
+        </div>
+      </div>
+    </div>
+
     <p v-else-if="scheduling.scheduleError.value" class="p-3 text-sm text-critical">
       {{ scheduling.scheduleError.value }}
     </p>
-    <!-- Empty state — shared EmptyState.vue (component-library audit,
-         2026-08-11); was plain, icon-less text, the least-developed of
-         the three empty states in this pane (Search/Queue/Schedule).
-         The action only appears when the clinician filter is actually
-         the reason the list is empty — showing "Show all appointments"
-         when nothing is filtered would offer an action that changes
-         nothing. -->
+
+    <!-- Empty state -->
     <EmptyState
       v-else-if="scheduling.scheduleAppointments.value.length === 0"
       illustration="clipboard"
@@ -191,42 +244,70 @@ const { t } = useI18n();
       :action-label="scheduling.scheduleNeedsClinicianOnly.value ? t('appointment.schedule_empty_action') : undefined"
       @action="scheduling.scheduleNeedsClinicianOnly.value = false"
     />
+
+    <!-- Appointment Cards List -->
     <ul v-else class="space-y-2">
       <li
         v-for="appt in scheduling.scheduleAppointments.value"
         :key="appt.id"
-        class="focus-ring cursor-pointer rounded-md border border-border p-3 text-sm hover:bg-accent"
+        class="group focus-ring cursor-pointer rounded-lg border border-border bg-card p-2.5 text-sm transition-all hover:bg-accent/60 hover:shadow-xs border-l-3"
+        :class="appt.clinicianUserId ? 'border-l-primary/70' : 'border-l-warning'"
         tabindex="0"
         role="button"
         @click="scheduling.openScheduleAppointmentPatient(appt)"
         @keydown.enter="scheduling.openScheduleAppointmentPatient(appt)"
       >
-        <!-- Time + patient name share a line now that there's room — the
-             time no longer needs its own full-width row above the name. -->
-        <div class="flex items-baseline justify-between gap-2">
-          <div class="flex min-w-0 items-baseline gap-2">
-            <span class="clinical-value shrink-0 font-semibold text-foreground">{{
-              scheduling.formatClinicalTime(appt.scheduledAt)
-            }}</span>
-            <span class="truncate font-medium text-foreground">
+        <!-- Time + Avatar + Patient Name + Consultation Type Badge -->
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="clinical-value shrink-0 font-mono text-[11px] font-semibold text-foreground px-1.5 py-0.5 rounded bg-secondary border border-border/60">
+              {{ scheduling.formatClinicalTime(appt.scheduledAt) }}
+            </span>
+            <Avatar class="size-5 shrink-0">
+              <AvatarFallback class="text-[9px] font-semibold bg-primary/10 text-primary">
+                {{ patientInitials(appt.patientName ?? "PT") }}
+              </AvatarFallback>
+            </Avatar>
+            <span class="truncate font-semibold text-[12.5px] text-foreground">
               {{ appt.patientName ?? t("common.no_data") }}
             </span>
           </div>
-          <Badge :variant="appt.consultationType === 'review' ? 'info' : 'success'" class="shrink-0">
+          <Badge
+            :variant="appt.consultationType === 'review' ? 'info' : 'success'"
+            class="shrink-0 text-[10px] px-1.5 py-0 font-mono"
+          >
             {{ scheduling.consultationTypeLabel(appt.consultationType) }}
           </Badge>
         </div>
-        <!-- Department + clinician — the clinician's name now shows when
-             one is assigned (component-library audit, 2026-08-10); only an
-             "Unassigned" badge used to render, nothing at all otherwise. -->
-        <div class="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span class="min-w-0 truncate">{{ appt.department ?? "—" }}</span>
-          <span v-if="appt.clinicianUserId" class="min-w-0 truncate">
+
+        <!-- Department + Clinician assignment -->
+        <div class="mt-1.5 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span class="min-w-0 truncate text-[11.5px]">{{ appt.department ?? "—" }}</span>
+          <span v-if="appt.clinicianUserId" class="min-w-0 truncate text-[11.5px] font-medium text-foreground/80">
             {{ scheduling.clinicianName(appt.clinicianUserId) }}
           </span>
-          <Badge v-else variant="warning" class="shrink-0">
+          <Badge v-else variant="warning" class="shrink-0 text-[9.5px] px-1.5 py-0">
             {{ t("appointment.unassigned") }}
           </Badge>
+        </div>
+
+        <!-- One-click Check In for today's rows -->
+        <div
+          v-if="isToday(appt.scheduledAt)"
+          class="mt-2 flex items-center justify-between border-t border-border/70 pt-1.5"
+          @click.stop
+        >
+          <span class="text-[10.5px] text-muted-foreground font-mono">{{ t("appointment.today_visit") }}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-6 gap-1 px-2 text-[11px] text-primary hover:bg-primary/10 font-medium cursor-pointer"
+            :disabled="checkingInId === appt.id"
+            @click="handleCheckIn(appt)"
+          >
+            <LogIn class="size-3" aria-hidden="true" />
+            {{ checkingInId === appt.id ? t("common.loading") : t("arrival.check_in") }}
+          </Button>
         </div>
       </li>
     </ul>

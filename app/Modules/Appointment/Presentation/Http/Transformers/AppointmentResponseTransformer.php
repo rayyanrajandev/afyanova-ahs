@@ -2,6 +2,7 @@
 
 namespace App\Modules\Appointment\Presentation\Http\Transformers;
 
+use App\Modules\PatientFlow\Application\UseCases\ResolveVisitStagesUseCase;
 use App\Support\FinancialCoverage;
 
 class AppointmentResponseTransformer
@@ -31,6 +32,20 @@ class AppointmentResponseTransformer
             'consultationTypeOverrideReason' => $appointment['consultation_type_override_reason'] ?? null,
             'priorCompletedAppointmentId' => $appointment['prior_completed_appointment_id'] ?? null,
             'status' => $appointment['status'] ?? null,
+            // The flow step, alongside the raw status. Every action that changes
+            // a visit returns this shape, and the badge on a patient's profile
+            // reads the *step*, not the status — so without this the client had
+            // nothing to update it with and the badge went stale until a page
+            // reload re-fetched the patient summary. Resolved through
+            // PatientFlowStep::forAppointment(), the same single mapping
+            // PatientSummaryResponseTransformer and
+            // EncounterListItemResponseTransformer already use, rather than
+            // letting the client re-derive a step from the status it was handed.
+            // Resolved through ResolveVisitStagesUseCase rather than
+            // PatientFlowStep::forAppointment() directly, so an open lab order is
+            // reflected here too — a doctor who orders a test and sends the
+            // patient out must not keep reading "With Doctor".
+            'visitStage' => app(ResolveVisitStagesUseCase::class)->forAppointment($appointment),
             'statusReason' => $appointment['status_reason'] ?? null,
             'checkedInAt' => $appointment['checked_in_at'] ?? null,
             'triageVitalsSummary' => $appointment['triage_vitals_summary'] ?? null,

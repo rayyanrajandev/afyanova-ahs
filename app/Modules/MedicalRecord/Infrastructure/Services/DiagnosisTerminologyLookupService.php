@@ -37,6 +37,7 @@ class DiagnosisTerminologyLookupService implements DiagnosisTerminologyLookupSer
             status: 'active',
             departmentId: null,
             category: null,
+            dosageForm: null,
             page: 1,
             perPage: 100,
             sortBy: 'code',

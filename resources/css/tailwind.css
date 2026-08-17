@@ -46,6 +46,8 @@
   --color-surface-foreground: var(--surface-foreground);
   --color-surface-raised: var(--surface-raised);
   --color-surface-raised-foreground: var(--surface-raised-foreground);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--surface-foreground);
   /* shadcn-vue popover/dropdown convention — elevated surface */
   --color-popover: var(--surface-raised);
   --color-popover-foreground: var(--surface-raised-foreground);
@@ -79,6 +81,7 @@
 
   /* ---- Borders & inputs ---- */
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-input-background: var(--input-background);
   --color-ring: var(--ring);

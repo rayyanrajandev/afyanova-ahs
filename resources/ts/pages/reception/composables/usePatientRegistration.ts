@@ -2,30 +2,10 @@
  * Patient registration + duplicate-check (Volume 2.1 §6, §6.2/§7.3,
  * Volume 3.7 T2.4/T7.4)
  * =========================================================================
- * Extracted from reception/Index.vue (2026-08-10, component-library audit)
- * — pure extraction, no behavior change.
- *
- * The duplicate-check dialog lives here rather than in its own composable:
- * it only exists as a branch of `submitRegistration` (a 409 response from
- * the backend).
- *
- * Bug found and fixed 2026-08-11 (§16 #7 follow-up): this dialog only ever
- * appears for a *hard* duplicate (409 — same National ID/patient number) —
- * `PatientDuplicateDetectionService::evaluate()` only throws for that case;
- * a *soft* match (name+DOB fuzzy score) is returned as a non-blocking
- * `warnings` array on an otherwise-successful 201, which this file
- * previously read nowhere and silently dropped. The dialog's old "Proceed
- * anyway" button sent `X-Confirm-Duplicate: 1`, a header the backend reads
- * nowhere (`grep`-confirmed) — clicking it just resubmitted the identical
- * payload, which hit the exact same hard duplicate and 409'd again, every
- * time. No override flag was added (a deliberate choice, not an oversight
- * — see the plan doc's §16 #7: a duplicate medical record under the same
- * National ID is a patient-safety issue, not just registration friction,
- * and adding a bypass needs real security review this session doesn't
- * substitute for). Instead: the dead "Proceed" is replaced with "Open
- * existing patient" (the actually-correct action for a real hard
- * duplicate), and soft-match warnings that were always being computed but
- * never shown now surface as a toast.
+ * 2027 Enterprise Enhancements:
+ * - Real-time progressive duplicate checking against /api/v1/patients/duplicate-check
+ * - Integrated financial coverage creation (Self-Pay vs Insurance)
+ * - 1-Click "Save & Check-In" high-velocity intake workflow
  */
 
 import { ref } from "vue";
@@ -37,10 +17,11 @@ import {
   usePatientStore,
   type BackendPatientRow,
 } from "@/stores/patientStore";
+import { useQueueStore } from "@/stores/queueStore";
 import { useRecentStore } from "@/stores/recentStore";
 import { useSyncStore } from "@/stores/syncStore";
 
-interface DuplicateMatch {
+export interface DuplicateMatch {
   id: string | null;
   patientNumber: string | null;
   firstName: string | null;
@@ -48,54 +29,119 @@ interface DuplicateMatch {
   dateOfBirth: string | null;
   phone: string | null;
   duplicateMatchType?: string;
-}
-
-interface DuplicateWarning {
-  id: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  dateOfBirth: string | null;
+  duplicateConfidenceScore?: number;
   duplicateConfidenceLabel?: "strong" | "possible";
 }
 
-export function usePatientRegistration() {
+export interface LiveDuplicateState {
+  severity: "none" | "possible_warning" | "strong_warning" | "hard_block";
+  duplicates: DuplicateMatch[];
+}
+
+export interface UsePatientRegistrationOptions {
+  onRegistered?: (patientId: string, andCheckedIn: boolean) => void;
+}
+
+export function usePatientRegistration(registrationOptions: UsePatientRegistrationOptions = {}) {
   const { t } = useI18n();
   const toast = useToast();
   const patientStore = usePatientStore();
   const syncStore = useSyncStore();
   const recentStore = useRecentStore();
+  const queueStore = useQueueStore();
 
-  // ---- Registration form (Volume 2.1 §6) ----
+  // ---- Registration form state ----
   const showRegistration = ref(false);
   const registrationInitialValues = ref<Record<string, unknown>>({});
   const draftSavedAt = ref<string | null>(null);
-  // Bumped after a "Save & Add Another" (2026-08-12): forces <Form> to
-  // remount via :key, which is what actually resets every vee-validate
-  // field to fresh empty state — mutating registrationInitialValues alone
-  // wouldn't touch fields the receptionist already typed into, since
-  // vee-validate only reads initial-values once per mount.
   const formKey = ref(0);
+  const isSubmitting = ref(false);
+
+  // ---- Real-time progressive duplicate check ----
+  const liveDuplicates = ref<LiveDuplicateState>({
+    severity: "none",
+    duplicates: [],
+  });
+  const isCheckingDuplicates = ref(false);
+  let liveCheckTimer: ReturnType<typeof setTimeout> | undefined;
 
   function openRegistration() {
     const draft = loadDraft();
-    registrationInitialValues.value = draft?.values ?? {};
+    registrationInitialValues.value = draft?.values ?? {
+      countryCode: "TZ",
+      coverageType: "self_pay",
+    };
     draftSavedAt.value = draft?.savedAt ?? null;
+    liveDuplicates.value = { severity: "none", duplicates: [] };
     showRegistration.value = true;
     patientStore.clearCurrentPatient();
   }
 
   function closeRegistration() {
     showRegistration.value = false;
+    liveDuplicates.value = { severity: "none", duplicates: [] };
   }
 
   function handleDraftSaved(savedAt: string) {
     draftSavedAt.value = savedAt;
   }
 
-  // ---- Duplicate-check dialog (Volume 2.1 §6.2 / §7.3, Volume 3.7 T2.4) ----
-  // Only ever populated for a *hard* duplicate (409) — see file header. No
-  // pendingValues/proceed path any more: there is nothing to "proceed"
-  // with, the correct action is opening the existing record.
+  // Debounced live duplicate query
+  function checkLiveDuplicates(payload: {
+    firstName?: string;
+    lastName?: string;
+    dateOfBirth?: string;
+    phone?: string;
+    nationalId?: string;
+    gender?: string;
+  }) {
+    if (liveCheckTimer) clearTimeout(liveCheckTimer);
+
+    // Only query if we have meaningful identifying criteria
+    const hasIdentifier =
+      (payload.firstName && payload.lastName && payload.dateOfBirth) ||
+      (payload.phone && payload.phone.length >= 9) ||
+      (payload.nationalId && payload.nationalId.length >= 5);
+
+    if (!hasIdentifier || !syncStore.isOnline) {
+      liveDuplicates.value = { severity: "none", duplicates: [] };
+      return;
+    }
+
+    liveCheckTimer = setTimeout(async () => {
+      isCheckingDuplicates.value = true;
+      try {
+        const res = await fetch("/api/v1/patients/duplicate-check", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const body = (await res.json()) as {
+            data?: {
+              severity: LiveDuplicateState["severity"];
+              duplicates: DuplicateMatch[];
+            };
+          };
+          if (body.data) {
+            liveDuplicates.value = {
+              severity: body.data.severity,
+              duplicates: body.data.duplicates ?? [],
+            };
+          }
+        }
+      } catch {
+        // Non-blocking background check
+      } finally {
+        isCheckingDuplicates.value = false;
+      }
+    }, 350);
+  }
+
+  // ---- Hard duplicate modal dialog (on 409) ----
   const showDuplicateDialog = ref(false);
   const duplicateMatches = ref<DuplicateMatch[]>([]);
 
@@ -104,21 +150,6 @@ export function usePatientRegistration() {
     duplicateMatches.value = [];
   }
 
-  /**
-   * Opens the already-registered patient this hard duplicate matched,
-   * instead of the dead-end "Proceed anyway" this replaced (see file
-   * header). Fetches first (not just setCurrentPatient(id)) since a
-   * duplicate match from this response isn't necessarily already in
-   * patientStore's cache — `currentPatient` requires the id to resolve
-   * against that map, same reasoning as everywhere else in this workspace
-   * that opens a patient by id from something other than the main list.
-   *
-   * Also clears the abandoned registration draft: leaving it would just
-   * resurface the exact same doomed submission next time "Register
-   * Patient" is opened (same National ID/patient number → the same 409),
-   * which is a smaller version of the same "offers an action that leads
-   * nowhere" problem this whole fix is closing.
-   */
   async function openExistingDuplicate(patientId: string | null) {
     if (!patientId) return;
     showDuplicateDialog.value = false;
@@ -133,12 +164,6 @@ export function usePatientRegistration() {
     }
   }
 
-  // Offline registration (Volume 2.1 §12.3, Volume 1.4 §7, Volume 3.7 T7.4).
-  // syncStore already auto-replays the queue FIFO on the browser's `online`
-  // event (see syncStore.ts) — nothing further to wire here for the reconnect
-  // side. The draft (registrationDraft.ts) is deliberately *not* cleared: it's
-  // a separate, independent copy, kept in case the queued write ever fails
-  // permanently and the receptionist needs to re-enter it.
   function queueRegistrationOffline(values: Record<string, unknown>) {
     syncStore.enqueue({
       method: "POST",
@@ -149,13 +174,7 @@ export function usePatientRegistration() {
     toast.critical(t("registration.queued_offline"));
   }
 
-  /**
-   * Builds a short, human-readable summary for the soft-duplicate warning
-   * toast — deliberately not the same detailed match list the hard-block
-   * Dialog shows (this is a non-blocking heads-up, not a decision the
-   * receptionist has to act on before continuing).
-   */
-  function duplicateWarningSummary(warnings: DuplicateWarning[]): string {
+  function duplicateWarningSummary(warnings: DuplicateMatch[]): string {
     const first = warnings[0];
     const name = [first?.firstName, first?.lastName].filter(Boolean).join(" ") || "—";
     return warnings.length === 1
@@ -163,17 +182,54 @@ export function usePatientRegistration() {
       : t("registration.duplicate_warning_multiple", { name, count: warnings.length });
   }
 
+  /**
+   * Turns a failed POST /reception/walk-ins into something a receptionist can
+   * act on.
+   *
+   * The endpoint already returns good, specific messages — "patient already has
+   * an active appointment", an active-admission conflict, a validation error —
+   * and they were all being thrown away. A 403 is called out separately because
+   * it is the one failure the receptionist cannot fix from this screen: walk-in
+   * check-in requires BOTH `appointments.create` and `appointment.check-in`, and
+   * a role holding only the first registers the patient and then silently fails
+   * the second half.
+   */
+  async function checkInFailureMessage(res: Response, patientName: string): Promise<string> {
+    if (res.status === 403 || res.status === 401) {
+      return t("registration.check_in_forbidden", { name: patientName });
+    }
+
+    const body = (await res.json().catch(() => null)) as
+      | { message?: string; errors?: Record<string, string[]> }
+      | null;
+
+    const firstFieldError = body?.errors
+      ? Object.values(body.errors).flat().find((m) => typeof m === "string" && m.trim() !== "")
+      : undefined;
+    const reason = body?.message ?? firstFieldError;
+
+    return reason
+      ? t("registration.check_in_failed_because", { name: patientName, reason })
+      : t("registration.check_in_failed", { name: patientName });
+  }
+
   async function submitRegistration(
     values: Record<string, unknown>,
-    options: { andAddAnother?: boolean } = {},
+    options: {
+      andAddAnother?: boolean;
+      andCheckIn?: boolean;
+      arrivalMode?: "walk_in" | "emergency";
+    } = {},
   ) {
-    // POST /api/v1/reception/patients (Volume 2.1 §12.2)
-    // Payload matches StorePatientRequest exactly (firstName, lastName, dateOfBirth,
-    // countryCode, region, district, addressLine — all required by the backend).
     if (!syncStore.isOnline) {
       queueRegistrationOffline(values);
       return;
     }
+
+    isSubmitting.value = true;
+
+    // Extract insurance fields before posting demographics to /patients
+    const { coverageType, insuranceProvider, memberNumber, policyType, ...demographics } = values;
 
     try {
       const res = await fetch("/api/v1/reception/patients", {
@@ -182,12 +238,13 @@ export function usePatientRegistration() {
           "Content-Type": "application/json",
           "X-Requested-With": "XMLHttpRequest",
         },
-        body: JSON.stringify(values),
+        body: JSON.stringify(demographics),
       });
+
       if (res.ok) {
         const body = (await res.json()) as {
           data?: BackendPatientRow;
-          warnings?: DuplicateWarning[];
+          warnings?: DuplicateMatch[];
         };
         const patient = patientFromBackend(body.data ?? {});
         patientStore.cachePatient(patient);
@@ -195,41 +252,124 @@ export function usePatientRegistration() {
         clearDraft();
         draftSavedAt.value = null;
 
-        // "Save & Add Another" (2026-08-12): stay on the registration
-        // panel instead of navigating to the patient just created — a
-        // receptionist registering several patients back-to-back (e.g. a
-        // family arriving together) shouldn't have to reopen "Register
-        // Patient" from scratch after every single save. Remounting via
-        // formKey is what actually clears the fields; see that ref's own
-        // comment for why reassigning registrationInitialValues alone
-        // isn't enough.
-        if (options.andAddAnother) {
-          registrationInitialValues.value = {};
+        // 1. Create insurance record if insurance coverage was entered
+        if (coverageType === "insurance" && insuranceProvider && memberNumber) {
+          try {
+            await fetch(`/api/v1/reception/patients/${encodeURIComponent(patient.id)}/insurance`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+              },
+              body: JSON.stringify({
+                insuranceProvider: String(insuranceProvider).trim(),
+                memberId: String(memberNumber).trim(),
+                cardNumber: String(memberNumber).trim(),
+                planName: policyType ? String(policyType).trim() : undefined,
+                insuranceType: "insurance",
+                status: "active",
+                verificationStatus: "unverified",
+              }),
+            });
+          } catch {
+            // Insurance creation warning
+            toast.warning("Patient registered, but insurance record could not be saved. You can add it in profile.");
+          }
+        }
+
+        // 2. High-Velocity Intake: Auto Check-In Flow (Walk-in or Emergency)
+        if (options.andCheckIn) {
+          const isEmergency = options.arrivalMode === "emergency";
+          const patientName = patient.name[0]?.given?.join(" ") ?? "";
+
+          // The registration response must carry the new patient's id for
+          // check-in to reference. Without this guard a malformed payload sent
+          // `patientId: ""` and the endpoint answered with a validation error
+          // about a required field — technically correct, and useless to a
+          // receptionist who just filled the form in.
+          if (!patient.id) {
+            patientStore.setCurrentPatient(patient.id);
+            showRegistration.value = false;
+            registrationOptions.onRegistered?.(patient.id, false);
+            toast.critical(t("registration.check_in_failed", { name: patientName }), {
+              description: t("registration.check_in_failed_next_step"),
+            });
+            await patientStore.fetchPatients();
+            return;
+          }
+
+          try {
+            const walkInRes = await fetch("/api/v1/reception/walk-ins", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+              },
+              body: JSON.stringify({
+                patientId: patient.id,
+                arrivalMode: isEmergency ? "emergency" : "walk_in",
+                reason: isEmergency
+                  ? "Emergency arrival & immediate intake"
+                  : "Walk-in registration & check-in",
+              }),
+            });
+
+            if (walkInRes.ok) {
+              patientStore.setCurrentPatient(patient.id);
+              showRegistration.value = false;
+              await queueStore.fetchReceptionQueue();
+              await queueStore.fetchStageCounts();
+              registrationOptions.onRegistered?.(patient.id, true);
+              if (isEmergency) {
+                toast.critical(
+                  `🚨 ${patientName} registered & dispatched to EMERGENCY queue (CRITICAL)!`,
+                );
+              } else {
+                toast.success(
+                  `⚡ ${patientName} registered & checked in to Triage queue!`,
+                );
+              }
+            } else {
+              // Registration succeeded, check-in did not. This branch used to
+              // show the plain "patient registered" *success* toast and discard
+              // the response entirely, so "Save & Check In" silently behaved as
+              // "Save" — the patient never reached the queue and nobody was told
+              // why. Report the half that failed, with the backend's own reason.
+              patientStore.setCurrentPatient(patient.id);
+              showRegistration.value = false;
+              registrationOptions.onRegistered?.(patient.id, false);
+              toast.critical(
+                await checkInFailureMessage(walkInRes, patientName),
+                { description: t("registration.check_in_failed_next_step") },
+              );
+            }
+          } catch {
+            patientStore.setCurrentPatient(patient.id);
+            showRegistration.value = false;
+            registrationOptions.onRegistered?.(patient.id, false);
+            // Previously this swallowed the failure with no message at all.
+            toast.critical(
+              t("registration.check_in_failed", { name: patientName }),
+              { description: t("registration.check_in_failed_next_step") },
+            );
+          }
+        } else if (options.andAddAnother) {
+          registrationInitialValues.value = {
+            countryCode: "TZ",
+            coverageType: "self_pay",
+          };
           formKey.value += 1;
-          // Two-line title+description (2026-08-12, direct user feedback:
-          // "Patient saved / Ready to register another patient" as two
-          // distinct lines) — useToast's `description` option renders as a
-          // visually secondary line under the title, which is exactly this
-          // shape; the single-sentence version this replaced ran both
-          // ideas together as one line.
           toast.success(t("registration.saved_title"), {
             description: t("registration.saved_add_another_description"),
           });
         } else {
           patientStore.setCurrentPatient(patient.id);
           showRegistration.value = false;
+          registrationOptions.onRegistered?.(patient.id, false);
           const mrn = patient.identifier[0]?.value ?? "";
-          toast.success(t("toast.patient_registered", { mrn })); // §6.3 step 2
+          toast.success(t("toast.patient_registered", { mrn }));
         }
 
-        // Soft-match warnings (bug fix 2026-08-11): the backend always
-        // computed these (PatientDuplicateDetectionService's scored,
-        // non-blocking candidates) but this response field was never read
-        // before — registration succeeded silently with zero visibility
-        // into a possible match. Non-blocking by design (the backend
-        // already decided this doesn't warrant stopping registration);
-        // `warning` (8s, not persistent) matches that — enough to notice,
-        // not enough to demand a dismiss click before continuing work.
         if (body.warnings && body.warnings.length > 0) {
           toast.warning(duplicateWarningSummary(body.warnings));
         }
@@ -237,22 +377,18 @@ export function usePatientRegistration() {
         // Refresh the patient list so the new patient appears immediately
         await patientStore.fetchPatients();
       } else if (res.status === 409) {
-        // Server found a hard duplicate (same National ID / patient number) —
-        // show the match(es); the only valid action is opening the existing
-        // record (openExistingDuplicate), not retrying this submission.
         const body = await res.json().catch(() => null);
         duplicateMatches.value = (body?.duplicates ?? []) as DuplicateMatch[];
         showDuplicateDialog.value = true;
       } else {
-        // Surface the backend validation error so the form isn't "dormant"
         const body = await res.json().catch(() => null);
         const message = body?.message ?? t("toast.registration_failed");
         toast.critical(message);
       }
     } catch {
-      // Network failed mid-request (went offline between the isOnline check
-      // above and now, or a transient blip) — queue the same way.
       queueRegistrationOffline(values);
+    } finally {
+      isSubmitting.value = false;
     }
   }
 
@@ -261,6 +397,10 @@ export function usePatientRegistration() {
     registrationInitialValues,
     draftSavedAt,
     formKey,
+    isSubmitting,
+    liveDuplicates,
+    isCheckingDuplicates,
+    checkLiveDuplicates,
     openRegistration,
     closeRegistration,
     handleDraftSaved,

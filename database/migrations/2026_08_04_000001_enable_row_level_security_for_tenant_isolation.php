@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -132,6 +133,10 @@ return new class extends Migration
         }
 
         foreach ($this->tenantScopedTables as $table) {
+            if (!Schema::hasTable($table) || !Schema::hasColumn($table, 'tenant_id')) {
+                continue;
+            }
+
             $policyName = "tenant_isolation_policy_{$table}";
             $bypassPolicyName = "tenant_isolation_bypass_{$table}";
 
@@ -168,6 +173,10 @@ return new class extends Migration
         }
 
         foreach ($this->tenantScopedTables as $table) {
+            if (!Schema::hasTable($table)) {
+                continue;
+            }
+
             $policyName = "tenant_isolation_policy_{$table}";
             $bypassPolicyName = "tenant_isolation_bypass_{$table}";
 

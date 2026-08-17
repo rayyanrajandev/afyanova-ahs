@@ -1,11 +1,3 @@
-/**
- * vue-i18n setup (Volume 0.4 §3)
- * ================================
- * Locale detection: user profile > localStorage > Accept-Language > en.
- * Fallback chain: sw → en → key (Volume 0.4 §2.3).
- * Locale switching is reactive — no page reload.
- */
-
 import { createI18n } from 'vue-i18n';
 import en from './locales/en/common.json';
 import sw from './locales/sw/common.json';
@@ -31,10 +23,19 @@ export const i18n = createI18n({
     locale: detectLocale(),
     fallbackLocale: 'en',
     messages,
+    globalInjection: true,
+    allowComposition: true,
+    sync: true,
 });
 
 export function setLocale(locale: 'en' | 'sw') {
-    i18n.global.locale.value = locale;
+    if (typeof i18n.global.locale === 'object' && 'value' in i18n.global.locale) {
+        (i18n.global.locale as any).value = locale;
+    } else {
+        (i18n.global as any).locale = locale;
+    }
     localStorage.setItem('afyanova:locale', locale);
-    document.documentElement.setAttribute('lang', locale);
+    if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute('lang', locale);
+    }
 }

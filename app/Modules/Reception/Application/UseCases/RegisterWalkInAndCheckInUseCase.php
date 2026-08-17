@@ -7,6 +7,7 @@ use App\Modules\Appointment\Application\Support\AppointmentConflictMessageFormat
 use App\Modules\Appointment\Application\UseCases\CreateAppointmentUseCase;
 use App\Modules\Appointment\Domain\Repositories\AppointmentRepositoryInterface;
 use App\Modules\Patient\Infrastructure\Models\PatientModel;
+use App\Modules\Department\Domain\Repositories\DepartmentRepositoryInterface;
 use App\Modules\Reception\Domain\ValueObjects\ArrivalMode;
 use Illuminate\Support\Facades\DB;
 
@@ -28,6 +29,7 @@ class RegisterWalkInAndCheckInUseCase
         private readonly CreateAppointmentUseCase $createAppointmentUseCase,
         private readonly CheckInUseCase $checkInUseCase,
         private readonly AppointmentRepositoryInterface $appointmentRepository,
+        private readonly DepartmentRepositoryInterface $departmentRepository,
     ) {}
 
     /**
@@ -39,7 +41,14 @@ class RegisterWalkInAndCheckInUseCase
         ?string $reason,
         ?int $actorId,
     ): ?array {
-        return DB::transaction(function () use ($patientId, $arrivalMode, $reason, $actorId): ?array {
+        // Emergency arrivals go to the emergency department; everyone else lands
+        // in general outpatients. Both are real rows now, so no arrival mode
+        // produces an unrouted visit.
+        $defaultDepartment = $arrivalMode === ArrivalMode::EMERGENCY->value
+            ? $this->departmentRepository->findEmergencyDepartment()
+            : $this->departmentRepository->findDefaultWalkInDepartment();
+
+        return DB::transaction(function () use ($patientId, $arrivalMode, $reason, $actorId, $defaultDepartment): ?array {
             // Duplicate check-in guard (2026-08-12, bug fix): this is the
             // only caller of the walk-in/emergency arrival path, so the
             // "does this patient already have an unresolved visit" check
@@ -81,7 +90,22 @@ class RegisterWalkInAndCheckInUseCase
                     // string — set it here so an emergency walk-in's encounter is
                     // correctly typed from the moment it's created, not left to
                     // whatever the default department heuristic would guess.
-                    'department' => $arrivalMode === ArrivalMode::EMERGENCY->value ? 'Emergency' : null,
+                    // The department name doubles as the signal
+                    // EncounterResolverService::deriveEncounterType() matches on
+                    // (`str_contains(..., 'emergency')`) to type the encounter.
+                    // "Emergency Department" satisfies that, so routing to the
+                    // real row preserves typing. The literal 'Emergency' remains
+                    // the fallback for a facility that has no emergency
+                    // department yet, so typing never silently regresses.
+                    'department' => $defaultDepartment['name']
+                        ?? ($arrivalMode === ArrivalMode::EMERGENCY->value ? 'Emergency' : null),
+                    // Ordinary walk-ins land in general outpatients by default, so
+                    // no visit is ever unrouted. Previously this was null and
+                    // nothing downstream ever asked for a department, so walk-ins
+                    // reached the provider queue belonging to no clinic. A nurse
+                    // re-routes at triage when the patient needs another clinic —
+                    // routing is a change, not a step someone must remember.
+                    'department_id' => $defaultDepartment['id'] ?? null,
                 ],
                 actorId: $actorId,
             );

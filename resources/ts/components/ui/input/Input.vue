@@ -30,12 +30,18 @@ import { cn } from '@/lib/utils';
 
 const props = defineProps<{
   defaultValue?: string | number;
-  modelValue?: string | number;
+  /**
+   * `null` is accepted, not just undefined: a numeric clinical field that has
+   * not been entered is genuinely null (see the nursing vitals form, where
+   * every field starts null so a placeholder shows instead of a value). Without
+   * it those bindings are a type error at every call site.
+   */
+  modelValue?: string | number | null;
   class?: HTMLAttributes['class'];
 }>();
 
 const emits = defineEmits<{
-  (e: 'update:modelValue', payload: string | number): void;
+  (e: 'update:modelValue', payload: string | number | null): void;
 }>();
 
 const modelValue = useVModel(props, 'modelValue', emits, {

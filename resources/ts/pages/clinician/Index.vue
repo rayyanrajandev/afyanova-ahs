@@ -1,550 +1,816 @@
 /**
- * Clinician Workspace (Volume 2.2)
- * =================================
- * The primary workspace for physicians, clinical officers, and providers.
- * Uses the split-3 layout (context + main + detail) composed entirely from
- * Tier 1 components — no new tokens, primitives, or components.
- *
- * Panes (Volume 2.2 §4):
- *   - Context: patient list (DataTable) or queue (Queue) via tabs
- *   - Main: patient chart with tabs (Summary, Notes, Results, Orders, Timeline)
- *   - Detail: contextual (order entry, result detail)
- *
- * Principles: P1 (safety), P2 (one system), P3 (cognitive load), P4 (interruption),
- * P5 (keyboard), P6 (real-time), P7 (privacy)
+ * Clinician Workspace (Volume 2.2 §4)
+ * ====================================
+ * The primary workstation for Physicians, Medical Officers, and Clinical Providers.
+ * Built on SplitPane architecture with Live Consultation Queue, SOAP Documentation,
+ * ICD-10 Diagnostic Coding, Diagnostic & Prescription Order Entry, and Inpatient Ward Actions.
  */
 
 <script setup lang="ts">
-import { CircleCheck, TriangleAlert } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
-import { useI18n } from 'vue-i18n';
-import Alert from '@/components/common/Alert.vue';
-import DataTable, { type DataTableColumn } from '@/components/common/DataTable.vue';
-import EmptyState from '@/components/common/EmptyState.vue';
-import Queue, { type QueueItem } from '@/components/common/Queue.vue';
-import StatusBadge from '@/components/common/StatusBadge.vue';
-import Timeline, { type TimelineEvent } from '@/components/common/Timeline.vue';
-import AppShell from '@/components/shell/AppShell.vue';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
-import { useEncounterStore } from '@/stores/encounterStore';
-import { useOrdersStore } from '@/stores/ordersStore';
-import { useQueueStore } from '@/stores/queueStore';
-import { useResultsStore } from '@/stores/resultsStore';
+import {
+  Activity,
+  BedDouble,
+  FileCheck,
+  FileText,
+  FlaskConical,
+  HeartPulse,
+  History,
+  Pill,
+  Radio,
+  Save,
+  Search,
+  Stethoscope,
+  Users,
+} from "lucide-vue-next";
+import { computed, ref, watch, type Ref } from "vue";
+import { useI18n } from "vue-i18n";
+import EmptyState from "@/components/common/EmptyState.vue";
+import PatientFlowTimeline from "@/components/common/PatientFlowTimeline.vue";
+import SplitPane from "@/components/common/SplitPane.vue";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePatientFlowLiveSync } from "@/composables/usePatientFlowLiveSync";
+import { useToast } from "@/composables/useToast";
+import { useWorkspaceUrlSync } from "@/composables/useWorkspaceUrlSync";
+import { usePatientSearch } from "@/pages/reception/composables/usePatientSearch";
+import { usePatientStore, type Patient } from "@/stores/patientStore";
+import type { ReadinessContext, VisitContext } from "@/stores/queueStore";
 
-const { t } = useI18n();
-const encounterStore = useEncounterStore();
-const resultsStore = useResultsStore();
-const ordersStore = useOrdersStore();
-const queueStore = useQueueStore();
+// Clinician Components & Composables
+import ClinicianPatientHeader from "./components/ClinicianPatientHeader.vue";
+import ClinicianPatientListPanel from "./components/ClinicianPatientListPanel.vue";
+import ConsultationNoteTab from "./components/ConsultationNoteTab.vue";
+import ConsultationQueuePanel from "./components/ConsultationQueuePanel.vue";
+import DiagnosticOrdersTab from "./components/DiagnosticOrdersTab.vue";
+import ConsultationTakeoverDialog from "./components/ConsultationTakeoverDialog.vue";
+import InpatientAdmissionDialog from "./components/InpatientAdmissionDialog.vue";
+import PrescriptionsTab from "./components/PrescriptionsTab.vue";
+import ResultsReviewTab from "./components/ResultsReviewTab.vue";
+import VitalsHistoryTab from "./components/VitalsHistoryTab.vue";
+import { useClinicianEncounter } from "./composables/useClinicianEncounter";
+import { useClinicianOrders } from "./composables/useClinicianOrders";
+import { useClinicianQueue } from "./composables/useClinicianQueue";
+import { useClinicianResults } from "./composables/useClinicianResults";
 
-// ---- Types (Volume 2.2 §13) ----
-interface Patient {
-    id: string;
-    name: string;
-    mrn: string;
-    age: number;
-    sex: string;
-    allergies: string[];
-    status: string;
+const { t } = useI18n({ useScope: "global" });
+const toast = useToast();
+const patientStore = usePatientStore();
+
+const CLINICIAN_CONTEXT_TAB_KEY = "afyanova:clinician:context_tab";
+const CLINICIAN_CHART_TAB_KEY = "afyanova:clinician:chart_tab";
+
+function loadSavedContextTab(): "queue" | "patients" {
+  try {
+    const saved = localStorage.getItem(CLINICIAN_CONTEXT_TAB_KEY);
+    if (saved === "queue" || saved === "patients") return saved;
+  } catch {
+    // ignore
+  }
+  return "queue";
 }
 
-interface Note {
-    id: string;
-    title: string;
-    date: string;
-    status: 'draft' | 'signed';
-    subjective: string;
-    objective: string;
-    assessment: string;
-    plan: string;
+function loadSavedChartTab(): "consultation" | "vitals" | "orders" | "prescriptions" | "results" | "activity" {
+  try {
+    const saved = localStorage.getItem(CLINICIAN_CHART_TAB_KEY);
+    if (["consultation", "vitals", "orders", "prescriptions", "results", "activity"].includes(saved as string)) {
+      return saved as any;
+    }
+  } catch {
+    // ignore
+  }
+  return "consultation";
 }
 
-interface Result {
-    id: string;
-    test: string;
-    value: string;
-    reference: string;
-    flag: 'normal' | 'abnormal' | 'critical';
-    date: string;
-}
+// Left Context Pane active tab
+const contextTab = ref<"queue" | "patients">(loadSavedContextTab());
 
-interface Order {
-    id: string;
-    type: 'lab' | 'imaging' | 'medication' | 'referral';
-    name: string;
-    status: 'pending' | 'in_progress' | 'complete' | 'cancelled';
-    date: string;
-}
+// Main Pane chart active tab
+const activeChartTab = ref<"consultation" | "vitals" | "orders" | "prescriptions" | "results" | "activity">(loadSavedChartTab());
 
-// ---- Context pane: patient list (Volume 2.2 §4.1) ----
-const patients: Patient[] = [
-    { id: 'p1', name: 'John Mwangi', mrn: 'MRN-1001', age: 45, sex: 'M', allergies: ['Penicillin'], status: 'Admitted' },
-    { id: 'p2', name: 'Sarah Joseph', mrn: 'MRN-1002', age: 32, sex: 'F', allergies: [], status: 'Outpatient' },
-    { id: 'p3', name: 'Ali Hassan', mrn: 'MRN-1003', age: 58, sex: 'M', allergies: ['Sulfa'], status: 'Critical' },
-    { id: 'p4', name: 'Grace Kimaro', mrn: 'MRN-1004', age: 27, sex: 'F', allergies: [], status: 'Outpatient' },
-    { id: 'p5', name: 'Peter Mushi', mrn: 'MRN-1005', age: 61, sex: 'M', allergies: [], status: 'Admitted' },
-];
-
-const patientColumns: DataTableColumn<Patient>[] = [
-    { key: 'name', label: t('patient.name'), accessor: (r) => r.name, sticky: true },
-    { key: 'mrn', label: t('patient.mrn'), accessor: (r) => r.mrn, clinical: true },
-    { key: 'age', label: t('patient.age'), accessor: (r) => r.age, align: 'right' },
-];
-
-const selectedPatient = ref<Patient | null>(null);
-
-function selectPatient(patient: Patient) {
-    selectedPatient.value = patient;
-}
-
-// ---- Context pane: queue (Volume 2.2 §4.1) — fetched from /clinician/patients + /reception/queue ----
-const queue = computed<QueueItem[]>(() =>
-    queueStore.tasks.map((task) => ({
-        id: task.id,
-        name: task.patientName,
-        waitTime: task.dueTime,
-        waitMinutes: 0,
-        priority: task.priority,
-        status: task.status === 'complete' ? 'complete' : task.status === 'in_progress' ? 'in_progress' : 'pending',
-    })),
-);
-
-queueStore.fetchReceptionQueue();
-
-function handleQueueOpen(item: QueueItem) {
-    const patient = patients.find((p) => p.name === item.name);
-    if (patient) selectPatient(patient);
-}
-
-// ---- Main pane: patient chart (Volume 2.2 §4.2) ----
-const activeTab = ref<'summary' | 'notes' | 'results' | 'orders' | 'timeline'>('summary');
-
-// Summary data
-const activeProblems = ref([
-    { name: 'Type 2 Diabetes', type: 'chronic', status: 'active' },
-    { name: 'Hypertension', type: 'chronic', status: 'active' },
-]);
-
-const activeMedications = ref([
-    { name: 'Metformin 500mg', dose: 'BID', status: 'active' },
-    { name: 'Amlodipine 5mg', dose: 'OD', status: 'active' },
-]);
-
-// Notes (Volume 2.2 §7)
-const notes = ref<Note[]>([
-    {
-        id: 'n1',
-        title: 'Initial consultation',
-        date: '2026-08-04',
-        status: 'signed',
-        subjective: 'Patient reports fatigue and increased thirst over the past 2 weeks.',
-        objective: 'BP 145/90, HR 78, Temp 36.8C. Random glucose 11.2 mmol/L.',
-        assessment: 'Type 2 Diabetes Mellitus, likely new onset. Hypertension.',
-        plan: 'Start Metformin 500mg BID. Start Amlodipine 5mg OD. Fasting glucose + HbA1c. Review in 2 weeks.',
-    },
-    {
-        id: 'n2',
-        title: 'Follow-up',
-        date: '2026-08-08',
-        status: 'draft',
-        subjective: '',
-        objective: '',
-        assessment: '',
-        plan: '',
-    },
-]);
-
-const activeNote = ref<Note | null>(null);
-
-function openNote(note: Note) {
-    activeNote.value = note;
-}
-
-// Results (Volume 2.2 §9) — fetched from GET /clinician/results
-const results = computed(() => resultsStore.results);
-
-resultsStore.fetchResults();
-
-const resultColumns: DataTableColumn<Result>[] = [
-    { key: 'test', label: t('clinician.test'), accessor: (r) => r.test },
-    { key: 'value', label: t('clinician.value'), accessor: (r) => r.value, clinical: true },
-    { key: 'reference', label: t('clinician.reference'), accessor: (r) => r.reference, clinical: true },
-    { key: 'date', label: t('clinician.date'), accessor: (r) => r.date },
-];
-
-// Orders (Volume 2.2 §8) — fetched via /clinician/orders/* (ordersStore)
-const orders = computed(() => ordersStore.orders);
-
-const orderColumns: DataTableColumn<Order>[] = [
-    { key: 'type', label: t('clinician.type'), accessor: (r) => r.type },
-    { key: 'name', label: t('clinician.order_name'), accessor: (r) => r.name },
-    { key: 'date', label: t('clinician.date'), accessor: (r) => r.date },
-];
-
-// Timeline (Volume 2.2 §4.2)
-const timelineEvents = computed<TimelineEvent[]>(() => {
-    const events: TimelineEvent[] = [];
-    notes.value.forEach((n) => {
-        events.push({
-            id: `note-${n.id}`,
-            type: 'note',
-            title: n.title,
-            timestamp: `${n.date}T10:00:00`,
-            status: n.status === 'signed' ? 'complete' : 'warning',
-            summary: n.status === 'signed' ? 'Signed note' : 'Draft — not signed',
-        });
-    });
-    results.value.forEach((r) => {
-        events.push({
-            id: `result-${r.id}`,
-            type: 'lab',
-            title: r.test,
-            timestamp: `${r.date}T09:00:00`,
-            status: r.flag === 'critical' ? 'critical' : r.flag === 'abnormal' ? 'warning' : 'success',
-            summary: `${r.value} (${r.reference})`,
-        });
-    });
-    orders.value.forEach((o) => {
-        events.push({
-            id: `order-${o.id}`,
-            type: o.type === 'imaging' ? 'imaging' : o.type === 'medication' ? 'medication' : 'order',
-            title: o.name,
-            timestamp: `${o.date}T08:00:00`,
-            status: o.status === 'complete' ? 'complete' : o.status === 'cancelled' ? 'cancelled' : 'in_progress',
-        });
-    });
-    return events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+watch(contextTab, (tab) => {
+  try {
+    localStorage.setItem(CLINICIAN_CONTEXT_TAB_KEY, tab);
+  } catch {
+    // ignore
+  }
 });
 
-// ---- Detail pane: order entry (Volume 2.2 §4.3) ----
-const detailMode = ref<'none' | 'order' | 'result'>('none');
-const orderType = ref<'lab' | 'imaging' | 'medication' | 'referral'>('lab');
-const orderName = ref('');
-const orderPriority = ref<'routine' | 'urgent' | 'stat'>('routine');
+watch(activeChartTab, (tab) => {
+  try {
+    localStorage.setItem(CLINICIAN_CHART_TAB_KEY, tab);
+  } catch {
+    // ignore
+  }
+});
 
-function openOrderForm(type: 'lab' | 'imaging' | 'medication' | 'referral') {
-    orderType.value = type;
-    orderName.value = '';
-    orderPriority.value = 'routine';
-    detailMode.value = 'order';
-}
+// Active Patient Context
+const selectedPatient = ref<Patient | null>(null);
+const selectedEncounterId = ref<string | null>(null);
+const selectedVisit = ref<VisitContext | null>(null);
+const selectedReadiness = ref<ReadinessContext | null>(null);
+const selectedPatientAllergies = ref<string[]>([]);
+const isLoadingVisitContext = ref(false);
 
-async function submitOrder() {
-    if (!orderName.value.trim() || !selectedPatient.value) return;
-    await ordersStore.createOrder(orderType.value, {
-        patientId: selectedPatient.value.id,
-        name: orderName.value,
-        priority: orderPriority.value,
+// Modals
+const showAdmissionDialog = ref(false);
+
+// Composables
+const encounterManager = useClinicianEncounter();
+const ordersManager = useClinicianOrders();
+const resultsManager = useClinicianResults();
+const searchManager = usePatientSearch({ workspace: "clinician" });
+
+const queueManager = useClinicianQueue({
+  onSelectPatient: (patientId, encounterId, visit, readiness) => {
+    openPatientRecord(patientId, encounterId, visit, readiness);
+  },
+});
+
+async function openPatientRecord(
+  patientId: string,
+  encounterId: string | null = null,
+  visit: VisitContext | null = null,
+  readiness: ReadinessContext | null = null
+) {
+  // If visit was not directly provided, set loading flag so UI does not flash "Not Checked In"
+  isLoadingVisitContext.value = !visit;
+
+  // Load patient entity
+  let patient = patientStore.patients.get(patientId);
+  if (!patient) {
+    patient = await patientStore.fetchPatient(patientId);
+  }
+  if (!patient) {
+    // The patient does not exist — a deleted record, or a stale link/recent
+    // entry pointing at one. Clear the whole selection so the workspace falls
+    // back to its own empty state instead of holding a half-opened record,
+    // and drop the dead id from the URL so a reload does not retry it.
+    isLoadingVisitContext.value = false;
+    selectedPatient.value = null;
+    selectedEncounterId.value = null;
+    selectedVisit.value = null;
+    selectedReadiness.value = null;
+    selectedPatientAllergies.value = [];
+    encounterManager.resetNoteFields();
+    ordersManager.clearOrders();
+    urlSync.clearPatientSelectionFromUrl();
+    return;
+  }
+
+  selectedPatient.value = patient;
+  selectedEncounterId.value = encounterId;
+  selectedVisit.value = visit;
+  selectedReadiness.value = readiness;
+
+  // Load summary / alerts and derive visit context if needed
+  void patientStore
+    .fetchPatientSummary(patientId)
+    .then((summary) => {
+      if (selectedPatient.value?.id !== patientId) return;
+      selectedPatientAllergies.value = (summary?.alerts ?? []).map((a) => a.allergen || a.substance || "Allergy");
+
+      if (!selectedVisit.value && summary) {
+        if (summary.activeAppointment) {
+          selectedVisit.value = {
+            appointmentId: summary.activeAppointment.id,
+            appointmentStatus: summary.activeAppointment.status,
+            // Prefer the server-resolved step: `status` alone cannot express a
+            // nursing pickup, so a patient a nurse has picked up would read as
+            // whichever queue they are still sitting in.
+            stage: summary.activeAppointment.visitStage ?? summary.activeAppointment.status,
+            visitStage: summary.activeAppointment.visitStage ?? null,
+            isAdmitted: false,
+            encounterType: "ambulatory",
+            arrivalMode: null,
+            visitCategory: summary.activeAppointment.department ?? null,
+          };
+        } else if (summary.latestEncounter) {
+          selectedVisit.value = {
+            appointmentId: null,
+            appointmentStatus: summary.latestEncounter.status,
+            stage: summary.latestEncounter.status,
+            isAdmitted: false,
+            encounterType: "ambulatory",
+            arrivalMode: null,
+            visitCategory: null,
+          };
+        }
+      }
+    })
+    .finally(() => {
+      if (selectedPatient.value?.id === patientId) {
+        isLoadingVisitContext.value = false;
+      }
     });
-    detailMode.value = 'none';
+
+  // If encounter ID is provided, load encounter workspace
+  if (encounterId) {
+    await encounterManager.loadEncounterWorkspace(encounterId);
+    if (encounterManager.encounterWorkspace.value) {
+      ordersManager.hydrateOrdersFromWorkspace(encounterManager.encounterWorkspace.value);
+    }
+    if (!selectedVisit.value && encounterManager.encounterWorkspace.value?.appointment) {
+      const appt = encounterManager.encounterWorkspace.value.appointment;
+      selectedVisit.value = {
+        appointmentId: appt.id,
+        appointmentStatus: appt.status,
+        stage: appt.status,
+        isAdmitted: !!encounterManager.encounterWorkspace.value.admission,
+        encounterType: encounterManager.encounterWorkspace.value.admission ? "inpatient" : "ambulatory",
+        arrivalMode: (appt as any).arrival_mode ?? null,
+        visitCategory: appt.department ?? null,
+      };
+    }
+    resultsManager.fetchResults(patientId);
+  } else {
+    encounterManager.resetNoteFields();
+    ordersManager.clearOrders();
+  }
 }
 
-// ---- Keyboard shortcuts (Volume 2.2 §15) ----
-// Ctrl+N new encounter, Ctrl+L lab order, Ctrl+I imaging, Ctrl+M medication
-// (registered via useShortcuts in a real implementation; here we expose handlers)
+// Sync selected patient, encounter, and active tabs with URL query params (?patient=...&encounter=...&tab=...&chartTab=...)
+const urlSync = useWorkspaceUrlSync({
+  activeTab: contextTab as Ref<string>,
+  activeChartTab: activeChartTab as Ref<string>,
+  selectedPatientId: computed(() => selectedPatient.value?.id),
+  selectedEncounterId: selectedEncounterId,
+  onHydrateTab: (tab) => {
+    if (tab === "queue" || tab === "patients") {
+      contextTab.value = tab;
+    }
+  },
+  onHydrateChartTab: (tab) => {
+    if (["consultation", "vitals", "orders", "prescriptions", "results", "activity"].includes(tab)) {
+      activeChartTab.value = tab as any;
+    }
+  },
+  onHydratePatient: async (patientId, encounterId) => {
+    if (!patientId) return;
+    await openPatientRecord(patientId, encounterId || null, null, null);
+  },
+});
 
-// ---- Flag helpers ----
-function flagVariant(flag: Result['flag']): 'critical' | 'warning' | 'success' {
-    return flag === 'critical' ? 'critical' : flag === 'abnormal' ? 'warning' : 'success';
+function handleSelectPatientFromDirectory(patientId: string) {
+  openPatientRecord(patientId, null, null, null);
 }
+
+async function handleSaveDraft() {
+  await encounterManager.saveDraftNote(false);
+}
+
+async function handleSignComplete() {
+  const success = await encounterManager.signAndCompleteConsultation();
+  if (success) {
+    // Refresh queue & advance stage
+    await queueManager.refreshQueue();
+  }
+}
+
+function handleAdmittedSuccess() {
+  queueManager.refreshQueue();
+}
+
+/**
+ * What the doctor may do with this record right now.
+ *
+ * `waiting_provider` / `waiting_clinician` used to resolve to "active", which
+ * meant a patient who was merely *queued* for a doctor had a fully writable
+ * chart: notes editable, diagnoses addable, labs and prescriptions orderable,
+ * and "Admit to Ward" and "Sign & Complete" offered alongside "Call Patient In"
+ * with nothing saying which came first (2026-08-16).
+ *
+ * That is a clinical-safety problem, not a layout one: documenting or ordering
+ * on a patient nobody has called in produces a record of a consultation that
+ * never happened, attributed to a doctor who never started one — and it is
+ * exactly how the flow log ends up disagreeing with reality again.
+ *
+ * `awaiting_start` closes it. The chart is read-only and the header offers one
+ * action, "Call Patient In", which is a real server transition
+ * (PATCH clinician/visits/{id}/start-consultation) that takes ownership and
+ * records the step. Everything unlocks once the consultation is genuinely open.
+ */
+const clinicalMode = computed<"active" | "awaiting_start" | "triage_pending" | "read_only" | "completed">(() => {
+  if (isLoadingVisitContext.value && !selectedVisit.value) return "read_only";
+  if (selectedVisit.value?.isAdmitted || selectedVisit.value?.encounterType === "inpatient") return "active";
+  const stage = selectedVisit.value?.appointmentStatus ?? selectedVisit.value?.stage;
+  if (stage === "waiting_triage" || stage === "in_triage") return "triage_pending";
+  if (stage === "with_nurse") return "triage_pending";
+  if (
+    stage === "waiting_provider" ||
+    stage === "waiting_clinician" ||
+    stage === "waiting_clinician_review" ||
+    stage === "triaged"
+  ) {
+    return "awaiting_start";
+  }
+  if (
+    stage === "in_consultation" ||
+    stage === "with_clinician" ||
+    stage === "in_progress" ||
+    // Encounter-level statuses, reached when there is no appointment to claim
+    // against at all (a direct encounter) — there is no consultation to start,
+    // so these stay writable.
+    stage === "open" ||
+    stage === "opened"
+  ) {
+    return "active";
+  }
+  if (stage === "completed" || stage === "closed" || stage === "resolved") {
+    return "completed";
+  }
+  if (selectedEncounterId.value) return "active";
+  return "read_only";
+});
+
+const isStartingConsultation = ref(false);
+const flowTimeline = ref<{ refresh: () => void } | null>(null);
+const takeoverPrompt = ref<{ appointmentId: string; ownerUserId: number | null } | null>(null);
+
+/**
+ * Starts (or takes over) the consultation for the selected visit.
+ *
+ * This replaces the previous handleBypassTriage(), which resolved the encounter
+ * with a GET and then assigned `selectedVisit.value.stage = "in_consultation"`
+ * in local component state. Nothing was ever sent to the server: the badge
+ * flipped for the doctor who clicked it, reverted on refresh, and no other
+ * workspace ever saw that the patient was with a doctor — the exact bug this
+ * screen was reported for.
+ *
+ * The backend action has existed all along; the clinician workspace simply had
+ * no route to call and never called it (see routes/api-workspaces.php,
+ * `clinician/visits/{id}/start-consultation`). Ownership arbitration, takeover
+ * and the audit row are all handled there.
+ */
+async function handleStartConsultation(forceTakeover = false, takeoverReason?: string) {
+  const patientId = selectedPatient.value?.id;
+  const appointmentId = selectedVisit.value?.appointmentId;
+  if (!patientId || !appointmentId || isStartingConsultation.value) return;
+
+  isStartingConsultation.value = true;
+
+  try {
+    const res = await fetch(
+      `/api/v1/clinician/visits/${encodeURIComponent(appointmentId)}/start-consultation`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(
+          forceTakeover ? { forceTakeover: true, takeoverReason: takeoverReason ?? null } : {},
+        ),
+      },
+    );
+
+    // Another clinician owns this consultation. The backend refuses rather than
+    // silently stealing it, and records the blocked attempt — so surface the
+    // choice instead of retrying behind the doctor's back.
+    if (res.status === 409) {
+      const conflict = (await res.json()) as {
+        context?: { consultationOwnerUserId?: number };
+        message?: string;
+      };
+      takeoverPrompt.value = {
+        appointmentId,
+        ownerUserId: conflict.context?.consultationOwnerUserId ?? null,
+      };
+      toast.warning(
+        conflict.message ??
+          t("clinician.consultation_owned_by_other") ??
+          "Another clinician is already with this patient.",
+      );
+      return;
+    }
+
+    if (!res.ok) {
+      const failure = (await res.json().catch(() => ({}))) as { message?: string };
+      toast.critical(failure.message ?? "Could not start the consultation. Try again.");
+      return;
+    }
+
+    const body = (await res.json()) as { data?: { status?: string; visitStage?: string | null } };
+    takeoverPrompt.value = null;
+
+    // Drive local state from what the server actually stored, never from an
+    // assumption about what the call did.
+    if (selectedVisit.value && body.data?.status) {
+      selectedVisit.value.stage = body.data.status;
+      selectedVisit.value.appointmentStatus = body.data.status;
+      // The profile badge reads the flow step, not the status. Updating only
+      // the two status fields left it showing "Waiting for Clinician" after the
+      // doctor had already called the patient in, until a reload re-fetched the
+      // patient summary.
+      if (body.data.visitStage !== undefined) {
+        selectedVisit.value.visitStage = body.data.visitStage;
+      }
+    }
+
+    await openEncounterForAppointment(appointmentId);
+
+    toast.success(
+      forceTakeover
+        ? t("clinician.consultation_taken_over_toast") ?? "You have taken over this consultation."
+        : t("clinician.consultation_started_toast") ?? "Consultation started — the patient is now with you.",
+    );
+
+    await queueManager.refreshQueue();
+    flowTimeline.value?.refresh();
+  } catch {
+    toast.critical("Could not start the consultation. Check your connection and try again.");
+  } finally {
+    isStartingConsultation.value = false;
+  }
+}
+
+/** Resolves and opens the encounter workspace for a visit already in consultation. */
+async function openEncounterForAppointment(appointmentId: string) {
+  const res = await fetch(
+    `/api/v1/clinician/encounters/by-appointment/${encodeURIComponent(appointmentId)}?view=workspace`,
+    { headers: { "X-Requested-With": "XMLHttpRequest" } },
+  );
+  if (!res.ok) return;
+
+  const body = (await res.json()) as { data?: any };
+  const encounter = body.data?.encounter;
+  if (!encounter?.id) return;
+
+  selectedEncounterId.value = encounter.id;
+  await encounterManager.loadEncounterWorkspace(encounter.id);
+  if (encounterManager.encounterWorkspace.value) {
+    ordersManager.hydrateOrdersFromWorkspace(encounterManager.encounterWorkspace.value);
+  }
+}
+
+function handleConfirmTakeover(reason: string) {
+  void handleStartConsultation(true, reason);
+}
+
+const isSendingForDiagnostics = ref(false);
+
+/**
+ * True when this consultation has diagnostic work outstanding — the only case
+ * where "send the patient out" is a meaningful thing to offer. Prescriptions
+ * are excluded: a patient collecting medication is leaving, not coming back for
+ * the doctor to read a result.
+ */
+const hasOutstandingDiagnostics = computed<boolean>(() =>
+  ordersManager.activeOrders.value.some(
+    (order) =>
+      (order.type === "lab" || order.type === "imaging") &&
+      order.status !== "complete" &&
+      order.status !== "cancelled",
+  ),
+);
+
+/**
+ * Sends the patient out for the diagnostics just ordered, without ending the
+ * consultation.
+ *
+ * Ordering a test and sending the patient to the lab are two different acts,
+ * and only the doctor knows when the second one happens — they may order
+ * bloods and keep examining. So this is an explicit control rather than a side
+ * effect of placing an order.
+ *
+ * The doctor keeps the visit: the server preserves consultation_started_at, so
+ * the patient returns as "Waiting for Doctor Review" rather than re-joining the
+ * queue as though they had never been seen. What changes is the *room* — it is
+ * released, so the queue can route the doctor their next patient instead of
+ * showing them busy while the patient stands in the lab.
+ */
+async function handleSendForDiagnostics() {
+  const appointmentId = selectedVisit.value?.appointmentId;
+  if (!appointmentId || isSendingForDiagnostics.value) return;
+
+  isSendingForDiagnostics.value = true;
+
+  try {
+    const res = await fetch(
+      `/api/v1/clinician/visits/${encodeURIComponent(appointmentId)}/provider-workflow`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({ status: "waiting_provider" }),
+      },
+    );
+
+    if (!res.ok) {
+      const failure = (await res.json().catch(() => ({}))) as { message?: string };
+      toast.critical(
+        failure.message ??
+          t("clinician.send_for_diagnostics_failed") ??
+          "Could not send the patient out. Try again.",
+      );
+      return;
+    }
+
+    const body = (await res.json()) as { data?: { status?: string; visitStage?: string | null } };
+
+    // Same rule as starting a consultation: drive local state from what the
+    // server stored, never from an assumption about what the call did.
+    if (selectedVisit.value && body.data?.status) {
+      selectedVisit.value.stage = body.data.status;
+      selectedVisit.value.appointmentStatus = body.data.status;
+      if (body.data.visitStage !== undefined) {
+        selectedVisit.value.visitStage = body.data.visitStage;
+      }
+    }
+
+    toast.success(
+      t("clinician.sent_for_diagnostics_toast") ??
+        "Patient sent out. They will return for your review once results are ready.",
+    );
+
+    await queueManager.refreshQueue();
+    flowTimeline.value?.refresh();
+  } catch {
+    toast.critical("Could not send the patient out. Check your connection and try again.");
+  } finally {
+    isSendingForDiagnostics.value = false;
+  }
+}
+
+/**
+ * The clinician queue rows carry no owner identity, and the 409 body gives a
+ * user id rather than a name — so the dialog deliberately shows the unnamed
+ * warning. Naming the wrong colleague on a takeover record is worse than not
+ * naming one, and resolving the id would need a lookup this screen does not
+ * have.
+ */
+const takeoverPatientName = computed<string | null>(() => {
+  const name = selectedPatient.value?.name?.[0];
+  if (!name) return null;
+
+  return [...(name.given ?? []), name.family].filter(Boolean).join(" ") || null;
+});
+
+// Live board sync (2026-08-16 flow audit, finding 03) — until now the clinician
+// workspace never subscribed, so a transition made anywhere else (reception
+// checking a patient in, a nurse finishing triage, another doctor taking over)
+// never reached this screen without a manual reload.
+usePatientFlowLiveSync({
+  onBoardUpdated: () => {
+    void queueManager.refreshQueue();
+  },
+});
 </script>
 
 <template>
-    <AppShell>
-        <div class="flex h-full gap-4">
-            <!-- ============================================================
-                 CONTEXT PANE (Volume 2.2 §4.1)
-                 ============================================================ -->
-            <aside class="flex w-80 flex-col rounded-lg border border-border bg-surface">
-                <Tabs default-value="patients" class="flex flex-1 flex-col">
-                    <TabsList class="m-2 mb-0 w-auto justify-start">
-                        <TabsTrigger value="patients">{{ t('clinician.patients') }}</TabsTrigger>
-                        <TabsTrigger value="queue">{{ t('queue.label') }} ({{ queue.length }})</TabsTrigger>
-                    </TabsList>
+  <SplitPane
+    direction="horizontal"
+    :initial-ratio="0.28"
+    :min-size="280"
+    persist-key="afyanova:clinician:split"
+    class="h-full"
+  >
+    <!-- ============================================================
+         LEFT CONTEXT PANE: Queue & Patient Directory
+         ============================================================ -->
+    <template #start>
+      <aside class="flex h-full flex-col rounded-lg border border-border bg-surface overflow-hidden">
+        <Tabs v-model="contextTab" class="flex flex-1 flex-col overflow-hidden">
+          <!-- Context Header Tabs -->
+          <div class="border-b border-border bg-surface px-3 pt-1 shrink-0">
+            <TabsList class="h-8 gap-1 bg-transparent p-0 justify-start w-auto border-b-0 -mb-px">
+              <TabsTrigger
+                value="queue"
+                class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+              >
+                <Stethoscope class="size-3.5" aria-hidden="true" />
+                <span>{{ t("queue.label") }}</span>
+                <Badge
+                  v-if="queueManager.queueItems.value.length > 0"
+                  variant="secondary"
+                  class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
+                  :class="contextTab === 'queue' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+                >
+                  {{ queueManager.queueItems.value.length }}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger
+                value="patients"
+                class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+              >
+                <Users class="size-3.5" aria-hidden="true" />
+                <span>{{ t("clinician.patients") }}</span>
+                <Badge
+                  v-if="searchManager.totalPatients.value > 0"
+                  variant="secondary"
+                  class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
+                  :class="contextTab === 'patients' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+                >
+                  {{ searchManager.totalPatients.value }}
+                </Badge>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-                    <!-- Patients tab -->
-                    <TabsContent value="patients" class="flex flex-1 flex-col overflow-hidden">
-                        <div class="flex-1 overflow-auto">
-                            <DataTable
-                                :columns="patientColumns"
-                                :rows="patients"
-                                :row-key="(r) => r.id"
-                                :on-row-click="selectPatient"
-                                empty-title="No patients found"
-                            />
-                        </div>
-                    </TabsContent>
+          <!-- Tab 1: Live Consultation Queue -->
+          <TabsContent value="queue" class="flex-1 min-h-0 overflow-hidden m-0 data-[state=inactive]:hidden">
+            <ConsultationQueuePanel :queue-actions="queueManager" />
+          </TabsContent>
 
-                    <!-- Queue tab -->
-                    <TabsContent value="queue" class="flex flex-1 flex-col overflow-hidden">
-                        <Queue :items="queue" @open="handleQueueOpen" />
-                    </TabsContent>
-                </Tabs>
-            </aside>
+          <!-- Tab 2: Patients Directory Lookup -->
+          <TabsContent value="patients" class="flex-1 min-h-0 overflow-hidden m-0 data-[state=inactive]:hidden">
+            <ClinicianPatientListPanel
+              :search="searchManager"
+              :on-select-patient="handleSelectPatientFromDirectory"
+            />
+          </TabsContent>
+        </Tabs>
+      </aside>
+    </template>
 
-            <!-- ============================================================
-                 MAIN PANE (Volume 2.2 §4.2)
-                 ============================================================ -->
-            <main class="flex flex-1 flex-col rounded-lg border border-border bg-surface">
-                <!-- No patient selected -->
-                <div v-if="!selectedPatient" class="flex flex-1 items-center justify-center">
-                    <EmptyState
-                        title="Select a patient"
-                        description="Choose a patient from the list or queue to open their chart."
-                        illustration="users"
-                    />
-                </div>
+    <!-- ============================================================
+         RIGHT MAIN PANE: Clinical Workstation Chart & Tools
+         ============================================================ -->
+    <template #end>
+      <div class="flex h-full gap-4">
+        <main class="flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface">
+          <!-- Empty State: No Patient Selected -->
+          <div
+            v-if="!selectedPatient"
+            class="flex flex-1 items-center justify-center p-6"
+          >
+            <EmptyState
+              illustration="stethoscope"
+              :badge="t('clinician.workspace_badge')"
+              :title="t('clinician.no_patient_selected_title')"
+              :description="t('clinician.no_patient_selected_desc')"
+            />
+          </div>
 
-                <!-- Patient chart -->
-                <template v-else>
-                    <!-- Patient banner (Volume 1.1 §7) -->
-                    <div class="flex items-center gap-4 border-b border-border px-4 py-3">
-                        <div class="flex items-center gap-2">
-                            <span class="text-sm font-semibold text-foreground">{{ selectedPatient.name }}</span>
-                            <span class="text-xs text-muted-foreground">{{ t('patient.mrn') }}: {{ selectedPatient.mrn }}</span>
-                            <span class="text-xs text-muted-foreground">{{ selectedPatient.age }}y {{ selectedPatient.sex }}</span>
-                        </div>
-                        <div v-if="selectedPatient.allergies.length > 0" class="flex items-center gap-1.5">
-                            <Badge variant="critical" class="inline-flex items-center gap-1">
-                                <TriangleAlert class="h-3 w-3" aria-hidden="true" />
-                                {{ t('patient.allergies_count', { count: selectedPatient.allergies.length }) }}
-                            </Badge>
-                        </div>
-                        <div v-else>
-                            <Badge variant="success" class="inline-flex items-center gap-1">
-                                <CircleCheck class="h-3 w-3" aria-hidden="true" />
-                                {{ t('patient.no_allergies') }}
-                            </Badge>
-                        </div>
-                    </div>
+          <!-- Active Patient Clinical Workstation -->
+          <div v-else class="flex flex-1 flex-col overflow-hidden">
+            <!-- Patient Banner & Action Bar -->
+            <ClinicianPatientHeader
+              :patient="selectedPatient"
+              :encounter-id="selectedEncounterId"
+              :visit="selectedVisit"
+              :readiness="selectedReadiness"
+              :allergies="selectedPatientAllergies"
+              :is-loading-visit="isLoadingVisitContext"
+              :clinical-mode="clinicalMode"
+              :is-signing="encounterManager.isSigningNote.value"
+              :is-starting-consultation="isStartingConsultation"
+              :on-sign-complete="handleSignComplete"
+              :on-open-admission-dialog="() => (showAdmissionDialog = true)"
+              :on-start-consultation="() => handleStartConsultation()"
+              :on-send-for-diagnostics="hasOutstandingDiagnostics ? handleSendForDiagnostics : undefined"
+              :is-sending-for-diagnostics="isSendingForDiagnostics"
+            />
 
-                    <!-- Chart tabs -->
-                    <Tabs v-model="activeTab" class="flex flex-1 flex-col overflow-hidden">
-                        <TabsList class="m-2 mb-0 w-auto justify-start">
-                            <TabsTrigger value="summary">{{ t('clinician.summary') }}</TabsTrigger>
-                            <TabsTrigger value="notes">{{ t('clinician.notes') }}</TabsTrigger>
-                            <TabsTrigger value="results">{{ t('clinician.results') }}</TabsTrigger>
-                            <TabsTrigger value="orders">{{ t('clinician.orders') }}</TabsTrigger>
-                            <TabsTrigger value="timeline">{{ t('clinician.timeline') }}</TabsTrigger>
-                        </TabsList>
+            <!-- Workstation Tabs -->
+            <Tabs v-model="activeChartTab" class="flex flex-1 flex-col overflow-hidden">
+              <!-- Tab Navigation Bar -->
+              <div class="border-b border-border bg-surface px-3.5 pt-1 shrink-0">
+                <TabsList class="h-8 gap-1 bg-transparent p-0 justify-start w-auto border-b-0 -mb-px">
+                  <!-- 1. Consultation (SOAP & ICD-10) -->
+                  <TabsTrigger
+                    value="consultation"
+                    class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                  >
+                    <FileText class="size-3.5" />
+                    <span>{{ t("clinician.consultation") }}</span>
+                  </TabsTrigger>
 
-                        <!-- Summary tab (Volume 2.2 §6.1) -->
-                        <TabsContent value="summary" class="flex-1 overflow-auto p-4">
-                            <div class="grid grid-cols-2 gap-4">
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle class="text-sm text-muted-foreground">{{ t('clinician.active_problems') }}</CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <ul class="space-y-2">
-                                            <li v-for="problem in activeProblems" :key="problem.name" class="flex items-center justify-between text-sm">
-                                                <span class="text-foreground">{{ problem.name }}</span>
-                                                <StatusBadge :status="problem.type === 'chronic' ? 'info' : 'warning'" />
-                                            </li>
-                                        </ul>
-                                    </CardContent>
-                                </Card>
+                  <!-- 2. Vitals & Triage History -->
+                  <TabsTrigger
+                    value="vitals"
+                    class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                  >
+                    <Activity class="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>{{ t("clinician.vitals_and_triage") }}</span>
+                  </TabsTrigger>
 
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle class="text-sm text-muted-foreground">{{ t('clinician.active_medications') }}</CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <ul class="space-y-2">
-                                            <li v-for="med in activeMedications" :key="med.name" class="flex items-center justify-between text-sm">
-                                                <span class="text-foreground">{{ med.name }}</span>
-                                                <span class="clinical-value text-muted-foreground">{{ med.dose }}</span>
-                                            </li>
-                                        </ul>
-                                    </CardContent>
-                                </Card>
+                  <!-- 3. Diagnostic Orders (Lab & Radiology) -->
+                  <TabsTrigger
+                    value="orders"
+                    class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                  >
+                    <FlaskConical class="size-3.5 text-blue-600 dark:text-blue-400" />
+                    <span>{{ t("clinician.diagnostic_orders") }}</span>
+                    <span
+                      v-if="ordersManager.activeOrders.value.length > 0"
+                      class="rounded-full bg-blue-500/15 px-1.5 py-0 text-[10px] font-bold text-blue-600 dark:text-blue-400 font-mono"
+                    >
+                      {{ ordersManager.activeOrders.value.length }}
+                    </span>
+                  </TabsTrigger>
 
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle class="text-sm text-muted-foreground">{{ t('clinician.allergies') }}</CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div v-if="selectedPatient.allergies.length > 0">
-                                            <Badge
-                                                v-for="a in selectedPatient.allergies"
-                                                :key="a"
-                                                variant="critical"
-                                                class="mr-2 mb-2 inline-flex items-center gap-1"
-                                            >
-                                                <TriangleAlert class="h-3 w-3" aria-hidden="true" />
-                                                {{ a }}
-                                            </Badge>
-                                        </div>
-                                        <div v-else>
-                                            <Badge variant="success" class="inline-flex items-center gap-1">
-                                                <CircleCheck class="h-3 w-3" aria-hidden="true" />
-                                                {{ t('patient.no_allergies') }}
-                                            </Badge>
-                                        </div>
-                                    </CardContent>
-                                </Card>
+                  <!-- 4. Prescriptions (Medication Orders) -->
+                  <TabsTrigger
+                    value="prescriptions"
+                    class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                  >
+                    <Pill class="size-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>{{ t("clinician.prescriptions") }}</span>
+                    <span
+                      v-if="ordersManager.prescriptionDrafts.value.length > 0"
+                      class="rounded-full bg-purple-500/15 px-1.5 py-0 text-[10px] font-bold text-purple-600 dark:text-purple-400 font-mono"
+                    >
+                      {{ ordersManager.prescriptionDrafts.value.length }}
+                    </span>
+                  </TabsTrigger>
 
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle class="text-sm text-muted-foreground">{{ t('clinician.recent_results') }}</CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <ul class="space-y-2">
-                                            <li v-for="r in results.slice(0, 3)" :key="r.id" class="flex items-center justify-between text-sm">
-                                                <span class="text-foreground">{{ r.test }}</span>
-                                                <StatusBadge :status="flagVariant(r.flag)" />
-                                            </li>
-                                        </ul>
-                                    </CardContent>
-                                </Card>
-                            </div>
-                        </TabsContent>
+                  <!-- 5. Results Review -->
+                  <TabsTrigger
+                    value="results"
+                    class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                  >
+                    <Radio class="size-3.5 text-amber-600 dark:text-amber-400" />
+                    <span>{{ t("clinician.results_review") }}</span>
+                  </TabsTrigger>
 
-                        <!-- Notes tab (Volume 2.2 §7) -->
-                        <TabsContent value="notes" class="flex-1 overflow-auto p-4">
-                            <div class="mb-4 flex items-center justify-between">
-                                <h3 class="text-sm font-semibold text-foreground">{{ t('clinician.notes') }}</h3>
-                                <Button size="sm" @click="openNote({ id: 'new', title: 'New note', date: new Date().toISOString().slice(0,10), status: 'draft', subjective: '', objective: '', assessment: '', plan: '' })">
-                                    {{ t('clinician.new_note') }}
-                                </Button>
-                            </div>
+                  <!-- 6. Activity log — the recorded sequence of this visit -->
+                  <TabsTrigger
+                    value="activity"
+                    class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                  >
+                    <History class="size-3.5 text-teal-600 dark:text-teal-400" />
+                    <span>{{ t("flow_timeline.label") }}</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
 
-                            <div v-if="activeNote" class="space-y-4">
-                                <Alert v-if="activeNote.status === 'draft'" variant="warning" title="Draft — not signed" />
-                                <div class="grid gap-4">
-                                    <div>
-                                        <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('clinician.subjective') }}</label>
-                                        <Textarea v-model="activeNote.subjective" class="min-h-20" :placeholder="t('clinician.subjective_placeholder')" />
-                                    </div>
-                                    <div>
-                                        <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('clinician.objective') }}</label>
-                                        <Textarea v-model="activeNote.objective" class="min-h-20" :placeholder="t('clinician.objective_placeholder')" />
-                                    </div>
-                                    <div>
-                                        <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('clinician.assessment') }}</label>
-                                        <Textarea v-model="activeNote.assessment" class="min-h-20" :placeholder="t('clinician.assessment_placeholder')" />
-                                    </div>
-                                    <div>
-                                        <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('clinician.plan') }}</label>
-                                        <Textarea v-model="activeNote.plan" class="min-h-20" :placeholder="t('clinician.plan_placeholder')" />
-                                    </div>
-                                </div>
-                                <div class="flex gap-3">
-                                    <Button size="sm" @click="activeNote.status = 'signed'">{{ t('clinician.sign_note') }}</Button>
-                                    <Button size="sm" variant="secondary" @click="activeNote = null">{{ t('common.cancel') }}</Button>
-                                </div>
-                            </div>
+              <!-- Tab 1: Consultation Note (SOAP & ICD-10) -->
+              <TabsContent value="consultation" class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
+                <ConsultationNoteTab
+                  :encounter="encounterManager"
+                  :clinical-mode="clinicalMode"
+                />
+              </TabsContent>
 
-                            <div v-else class="space-y-2">
-                                <button
-                                    v-for="note in notes"
-                                    :key="note.id"
-                                    class="w-full rounded-md border border-border p-3 text-left transition-colors hover:bg-muted"
-                                    @click="openNote(note)"
-                                >
-                                    <div class="flex items-center justify-between">
-                                        <span class="text-sm font-medium text-foreground">{{ note.title }}</span>
-                                        <StatusBadge :status="note.status === 'signed' ? 'complete' : 'warning'" />
-                                    </div>
-                                    <span class="text-xs text-muted-foreground">{{ note.date }}</span>
-                                </button>
-                            </div>
-                        </TabsContent>
+              <!-- Tab 2: Vitals & Triage History -->
+              <TabsContent value="vitals" class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
+                <VitalsHistoryTab
+                  :patient="selectedPatient"
+                  :vitals="encounterManager.encounterWorkspace.value?.vitals"
+                />
+              </TabsContent>
 
-                        <!-- Results tab (Volume 2.2 §9) -->
-                        <TabsContent value="results" class="flex-1 overflow-auto p-4">
-                            <DataTable
-                                :columns="resultColumns"
-                                :rows="results"
-                                :row-key="(r) => r.id"
-                                empty-title="No results"
-                            >
-                                <template #flag="{ row }">
-                                    <StatusBadge :status="flagVariant(row.flag)" />
-                                </template>
-                            </DataTable>
-                        </TabsContent>
+              <!-- Tab 3: Diagnostic Orders (Lab & Radiology) -->
+              <TabsContent value="orders" class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
+                <DiagnosticOrdersTab
+                  :encounter-id="selectedEncounterId"
+                  :patient-id="selectedPatient.id"
+                  :orders="ordersManager"
+                  :clinical-mode="clinicalMode"
+                />
+              </TabsContent>
 
-                        <!-- Orders tab (Volume 2.2 §8) -->
-                        <TabsContent value="orders" class="flex-1 overflow-auto p-4">
-                            <div class="mb-4 flex flex-wrap gap-2">
-                                <Button size="sm" @click="openOrderForm('lab')">{{ t('clinician.new_lab_order') }}</Button>
-                                <Button size="sm" variant="secondary" @click="openOrderForm('imaging')">{{ t('clinician.new_imaging_order') }}</Button>
-                                <Button size="sm" variant="secondary" @click="openOrderForm('medication')">{{ t('clinician.new_medication_order') }}</Button>
-                                <Button size="sm" variant="secondary" @click="openOrderForm('referral')">{{ t('clinician.new_referral') }}</Button>
-                            </div>
-                            <DataTable
-                                :columns="orderColumns"
-                                :rows="orders"
-                                :row-key="(r) => r.id"
-                                empty-title="No orders"
-                            />
-                        </TabsContent>
+              <!-- Tab 4: Prescriptions -->
+              <TabsContent value="prescriptions" class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
+                <PrescriptionsTab
+                  :encounter-id="selectedEncounterId"
+                  :patient-id="selectedPatient.id"
+                  :orders="ordersManager"
+                  :clinical-mode="clinicalMode"
+                />
+              </TabsContent>
 
-                        <!-- Timeline tab (Volume 2.2 §4.2) -->
-                        <TabsContent value="timeline" class="flex-1 overflow-auto p-4">
-                            <Timeline :events="timelineEvents" />
-                        </TabsContent>
-                    </Tabs>
-                </template>
-            </main>
+              <!-- Tab 5: Results Review -->
+              <TabsContent value="results" class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
+                <ResultsReviewTab
+                  :patient-id="selectedPatient.id"
+                  :results-manager="resultsManager"
+                />
+              </TabsContent>
 
-            <!-- ============================================================
-                 DETAIL PANE (Volume 2.2 §4.3)
-                 ============================================================ -->
-            <aside class="flex w-80 flex-col rounded-lg border border-border bg-surface">
-                <!-- Order entry form -->
-                <div v-if="detailMode === 'order'" class="flex flex-1 flex-col p-4">
-                    <h3 class="mb-4 text-sm font-semibold text-foreground">
-                        {{ t(`clinician.new_${orderType}_order`) }}
-                    </h3>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('clinician.order_name') }}</label>
-                            <Input v-model="orderName" type="text" :placeholder="t('clinician.order_name_placeholder')" />
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('clinician.priority') }}</label>
-                            <div class="flex gap-2">
-                                <Button
-                                    v-for="p in ['routine', 'urgent', 'stat'] as const"
-                                    :key="p"
-                                    size="sm"
-                                    :variant="orderPriority === p ? 'default' : 'outline'"
-                                    @click="orderPriority = p"
-                                >
-                                    {{ t(`clinician.priority_${p}`) }}
-                                </Button>
-                            </div>
-                        </div>
-                        <Alert v-if="orderType === 'medication'" variant="warning" title="Allergy check" description="Verify no allergies before prescribing." />
-                        <div class="flex gap-3">
-                            <Button size="sm" @click="submitOrder">{{ t('common.save') }}</Button>
-                            <Button size="sm" variant="secondary" @click="detailMode = 'none'">{{ t('common.cancel') }}</Button>
-                        </div>
-                    </div>
-                </div>
+              <!-- Tab 6: Activity Log -->
+              <TabsContent value="activity" class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
+                <PatientFlowTimeline
+                  ref="flowTimeline"
+                  :patient-id="selectedPatient.id"
+                  workspace="clinician"
+                />
+              </TabsContent>
+            </Tabs>
+          </div>
+        </main>
+      </div>
+    </template>
+  </SplitPane>
 
-                <!-- Result detail -->
-                <div v-else-if="detailMode === 'result'" class="flex flex-1 flex-col p-4">
-                    <h3 class="mb-4 text-sm font-semibold text-foreground">{{ t('clinician.result_detail') }}</h3>
-                    <p class="text-sm text-muted-foreground">{{ t('clinician.select_result_hint') }}</p>
-                </div>
+  <!-- Consultation Takeover Confirmation -->
+  <ConsultationTakeoverDialog
+    :open="takeoverPrompt !== null"
+    :patient-name="takeoverPatientName"
+    :is-submitting="isStartingConsultation"
+    @update:open="(value: boolean) => { if (!value) takeoverPrompt = null; }"
+    @confirm="handleConfirmTakeover"
+  />
 
-                <!-- Empty detail -->
-                <div v-else class="flex flex-1 items-center justify-center p-4">
-                    <EmptyState
-                        title="No detail selected"
-                        description="Select an order or result to view details here."
-                        illustration="clipboard"
-                    />
-                </div>
-            </aside>
-        </div>
-    </AppShell>
+  <!-- Inpatient Ward Admission Dialog -->
+  <InpatientAdmissionDialog
+    v-model:open="showAdmissionDialog"
+    :patient="selectedPatient"
+    :encounter-id="selectedEncounterId"
+    @admitted="handleAdmittedSuccess"
+  />
 </template>

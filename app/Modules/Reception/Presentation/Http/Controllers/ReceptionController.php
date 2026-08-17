@@ -272,6 +272,7 @@ class ReceptionController extends Controller
                     AppointmentStatus::WAITING_TRIAGE->value,
                     AppointmentStatus::WAITING_PROVIDER->value,
                     AppointmentStatus::IN_CONSULTATION->value,
+                    'admitted',
                 ]),
             ],
         ]);

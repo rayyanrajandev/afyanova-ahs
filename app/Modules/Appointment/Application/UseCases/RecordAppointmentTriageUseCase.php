@@ -6,6 +6,9 @@ use App\Modules\Appointment\Domain\Events\AppointmentStatusChanged;
 use App\Modules\Appointment\Domain\Repositories\AppointmentAuditLogRepositoryInterface;
 use App\Modules\Appointment\Domain\Repositories\AppointmentRepositoryInterface;
 use App\Modules\Appointment\Domain\ValueObjects\AppointmentStatus;
+use App\Modules\Department\Domain\Repositories\DepartmentRepositoryInterface;
+use App\Modules\PatientFlow\Application\Services\RecordPatientFlowTransitionService;
+use App\Modules\PatientFlow\Domain\ValueObjects\PatientFlowStep;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -24,8 +27,20 @@ class RecordAppointmentTriageUseCase
         private readonly AppointmentRepositoryInterface $appointmentRepository,
         private readonly AppointmentAuditLogRepositoryInterface $auditLogRepository,
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
+        private readonly RecordPatientFlowTransitionService $recordPatientFlowTransition,
+        private readonly DepartmentRepositoryInterface $departmentRepository,
     ) {}
 
+    /**
+     * @param  bool  $requireRouting  Whether a department or named provider must be
+     *   chosen to complete triage. True for the triage handoff form, where routing
+     *   IS the decision being made. False for the vitals-driven completion
+     *   (PatientVitalSetController): recording observations is not the moment a
+     *   nurse routes a patient, and ordinary walk-ins are created with no
+     *   department at all by design (RegisterWalkInAndCheckInUseCase). Demanding
+     *   routing there stalled every walk-in in waiting_triage after its vitals
+     *   were taken — the visit simply never left triage (2026-08-16).
+     */
     public function execute(
         string $id,
         string $triageVitalsSummary,
@@ -33,6 +48,7 @@ class RecordAppointmentTriageUseCase
         ?string $triageCategory = null,
         array $routing = [],
         ?int $actorId = null,
+        bool $requireRouting = true,
     ): ?array
     {
         $this->tenantIsolationWriteGuard->assertTenantScopeForWrite();
@@ -68,7 +84,34 @@ class RecordAppointmentTriageUseCase
             ? $this->normalizeNullableInt($routing['clinician_user_id'] ?? null)
             : $currentClinicianUserId;
 
-        if ($nextDepartment === null && $nextClinicianUserId === null) {
+        // department_id is the relationship form of the routing target
+        // (2026_08_16_000004). Resolved here so the name string and the id can
+        // never disagree: whichever the caller supplies, both are written from
+        // the same department row.
+        $currentDepartmentId = $this->normalizeNullableString($existing['department_id'] ?? null);
+        $nextDepartmentId = array_key_exists('department_id', $routing)
+            ? $this->normalizeNullableString($routing['department_id'] ?? null)
+            : $currentDepartmentId;
+
+        if ($nextDepartmentId !== null) {
+            $department = $this->departmentRepository->findById($nextDepartmentId);
+
+            if ($department === null || ($department['status'] ?? null) !== 'active') {
+                throw ValidationException::withMessages([
+                    'departmentId' => ['Choose an active department to route this visit to.'],
+                ]);
+            }
+
+            $nextDepartment = $this->normalizeNullableString($department['name'] ?? null);
+        } elseif ($nextDepartment !== null && $nextDepartment !== $currentDepartment) {
+            // A caller that still routes by name (the scheduling form) gets the
+            // id resolved for it, so new writes are never id-less.
+            $nextDepartmentId = $this->normalizeNullableString(
+                $this->departmentRepository->findActiveByName($nextDepartment)['id'] ?? null,
+            );
+        }
+
+        if ($requireRouting && $nextDepartmentId === null && $nextDepartment === null && $nextClinicianUserId === null) {
             throw ValidationException::withMessages([
                 'department' => ['Choose a clinic/department or route the visit to a named provider before completing triage.'],
                 'clinicianUserId' => ['Assign a provider or select a clinic/department pool before completing triage.'],
@@ -78,6 +121,7 @@ class RecordAppointmentTriageUseCase
         $updated = $this->appointmentRepository->update($id, [
             'clinician_user_id' => $nextClinicianUserId,
             'department' => $nextDepartment,
+            'department_id' => $nextDepartmentId,
             'triage_vitals_summary' => $triageVitalsSummary,
             'triage_notes' => $triageNotes,
             'triage_category' => $normalizedCategory,
@@ -108,6 +152,29 @@ class RecordAppointmentTriageUseCase
                 ],
             );
         }
+
+        // Flow log — this use case writes status directly (see
+        // AppointmentStatus::allowedForwardTransitions()'s note on why
+        // WAITING_TRIAGE -> WAITING_PROVIDER is excluded from the generic
+        // graph), so it records its own transition rather than inheriting
+        // UpdateAppointmentStatusUseCase's. Triage handoff always lands on
+        // WAITING_CLINICIAN: the patient has just been routed to a provider
+        // for the first time, so there is no earlier consultation to review.
+        $this->recordPatientFlowTransition->record(
+            toStep: PatientFlowStep::WAITING_CLINICIAN,
+            patientId: (string) $updated['patient_id'],
+            appointmentId: (string) $updated['id'],
+            actorId: $actorId,
+            source: 'triage.handoff_recorded',
+            metadata: array_filter([
+                'triageCategory' => $updated['triage_category'] ?? null,
+                'department' => $updated['department'] ?? null,
+                'clinicianUserId' => $updated['clinician_user_id'] ?? null,
+                'routingMode' => $nextClinicianUserId !== null ? 'specific_provider' : 'department_pool',
+            ], static fn ($value) => $value !== null),
+            facilityId: $updated['facility_id'] ?? null,
+            appointmentStatusAlsoChanged: true,
+        );
 
         DB::afterCommit(function () use ($updated, $existing, $actorId): void {
             event(new AppointmentStatusChanged(

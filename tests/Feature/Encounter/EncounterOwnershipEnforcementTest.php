@@ -39,7 +39,7 @@ function ownershipEncounterPatient(): PatientModel
 function ownershipEncounterUser(): User
 {
     $user = User::factory()->create();
-    foreach (['medical.records.read', 'medical.records.create', 'medical.records.finalize', 'medical.records.amend'] as $permission) {
+    foreach (['medical.records.read', 'medical.records.create', 'medical.records.finalize', 'medical.records.amend', 'medical.records.update-status'] as $permission) {
         $user->givePermissionTo($permission);
     }
 
@@ -73,38 +73,8 @@ function ownershipEncounterSignedNote(User $user, string $patientId, string $enc
 function ownershipEncounterFacilitySuperAdminUser(): User
 {
     $user = ownershipEncounterUser();
-
-    $tenantId = (string) Str::uuid();
-    DB::table('tenants')->insert([
-        'id' => $tenantId,
-        'code' => 'EO'.strtoupper(Str::random(6)),
-        'name' => 'Encounter Ownership Test Tenant',
-        'country_code' => 'TZ',
-        'status' => 'active',
-        'created_at' => now(),
-        'updated_at' => now(),
-    ]);
-
-    $facilityId = (string) Str::uuid();
-    DB::table('facilities')->insert([
-        'id' => $facilityId,
-        'tenant_id' => $tenantId,
-        'code' => 'EO'.strtoupper(Str::random(6)),
-        'name' => 'Encounter Ownership Test Facility',
-        'status' => 'active',
-        'created_at' => now(),
-        'updated_at' => now(),
-    ]);
-
-    DB::table('facility_user')->insert([
-        'facility_id' => $facilityId,
-        'user_id' => $user->id,
-        'role' => 'super_admin',
-        'is_primary' => true,
-        'is_active' => true,
-        'created_at' => now(),
-        'updated_at' => now(),
-    ]);
+    $user->is_platform_admin = true;
+    $user->save();
 
     return $user;
 }

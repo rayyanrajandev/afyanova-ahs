@@ -6,13 +6,36 @@
  *
  * API endpoints (Volume 2.3 §12.2):
  *   GET  /nursing/mar                    — get MAR for patient
- *   POST /nursing/mar/{id}/administer     — record administration (verifies 5 Rights)
+ *
+ * Fixed 2026-08-13 (Volume 3.8 Phase 6): `fetchMar` was hitting `/nursing/mar`
+ * with no `/api/v1` prefix (would 404 — no route matches), filtering by a
+ * `patient_id` query param the backend doesn't read (it expects `patientId`,
+ * confirmed in `ListPharmacyOrdersUseCase`), and casting the response
+ * straight to `MarMedication[]` when it's actually a paginated `{data, meta}`
+ * envelope of full pharmacy-order records (`PharmacyOrderResponseTransformer`).
+ * On top of that, `loadMar()` in `nursing/Index.vue` was never actually
+ * called by anything — the MAR panel opened but never fetched. All fixed
+ * together since they compound into the same symptom (an always-empty
+ * panel).
+ *
+ * `administerMedication` removed the same day: `POST /nursing/mar/{id}/
+ * administer` requires a permission (`pharmacy.orders.administer`) granted
+ * to no role anywhere in the system, and its controller method doesn't
+ * exist at all (confirmed live: 403 then, if bypassed, a 500 "undefined
+ * method"). There is also no administration-status concept anywhere in the
+ * Pharmacy domain — `PharmacyOrderStatus` only goes up to `dispensed`
+ * (pharmacy → order fulfilled), nothing for "given to patient". Building
+ * real MAR administration (permission, controller, use case, an actual
+ * administration-record data model, a genuine 5-Rights confirmation UI) is
+ * real feature work, deliberately deferred — not something to fake with a
+ * hardcoded "always succeeds" call. See Volume 3.8 §6 for the full record.
  */
 
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
-export type MarStatus = 'due' | 'given' | 'missed' | 'omitted' | 'held' | 'refused' | 'overdue';
+/** Real `PharmacyOrderStatus` values (`app/Modules/Pharmacy/Domain/ValueObjects/PharmacyOrderStatus.php`) — not a fabricated administration-status enum. */
+export type MarStatus = 'pending' | 'in_preparation' | 'partially_dispensed' | 'dispensed' | 'cancelled';
 
 export interface MarMedication {
     id: string;
@@ -20,8 +43,33 @@ export interface MarMedication {
     name: string;
     dose: string;
     route: string;
-    dueTime: string;
+    frequency: string;
     status: MarStatus;
+}
+
+interface PharmacyOrderApiRow {
+    id: string;
+    patientId: string | null;
+    medicationName: string | null;
+    doseQuantity: number | string | null;
+    doseUnit: string | null;
+    route: string | null;
+    frequency: string | null;
+    status: string | null;
+}
+
+/** Exported for direct unit coverage (Volume 3.8 Phase 8) — same pattern as queueStore's `toTask`/`toNursingTask`. */
+export function toMarMedication(row: PharmacyOrderApiRow): MarMedication {
+    const dose = [row.doseQuantity, row.doseUnit].filter((part) => part !== null && part !== '').join(' ');
+    return {
+        id: row.id,
+        patientId: row.patientId ?? '',
+        name: row.medicationName ?? '',
+        dose,
+        route: row.route ?? '',
+        frequency: row.frequency ?? '',
+        status: (row.status as MarStatus | null) ?? 'pending',
+    };
 }
 
 export const useMedicationStore = defineStore('medication', () => {
@@ -32,16 +80,17 @@ export const useMedicationStore = defineStore('medication', () => {
 
     // ---- Actions ----
 
-    /** GET /nursing/mar */
+    /** GET /nursing/mar?patientId=... */
     async function fetchMar(patientId: string): Promise<MarMedication[]> {
         isLoading.value = true;
         error.value = null;
         try {
-            const res = await fetch(`/nursing/mar?patient_id=${encodeURIComponent(patientId)}`, {
+            const res = await fetch(`/api/v1/nursing/mar?patientId=${encodeURIComponent(patientId)}`, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
             });
             if (!res.ok) throw new Error('Failed to fetch MAR');
-            mar.value = (await res.json()) as MarMedication[];
+            const body = (await res.json()) as { data?: PharmacyOrderApiRow[] };
+            mar.value = (body.data ?? []).map(toMarMedication);
             return mar.value;
         } catch (e) {
             error.value = e instanceof Error ? e.message : 'Failed to fetch MAR';
@@ -51,36 +100,10 @@ export const useMedicationStore = defineStore('medication', () => {
         }
     }
 
-    /** POST /nursing/mar/{id}/administer — verifies the 5 Rights (Volume 2.3 §8.2) */
-    async function administerMedication(id: string, verification: {
-        rightPatient: boolean;
-        rightMedication: boolean;
-        rightDose: boolean;
-        rightRoute: boolean;
-        rightTime: boolean;
-        notes?: string;
-    }): Promise<boolean> {
-        try {
-            const res = await fetch(`/nursing/mar/${id}/administer`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                body: JSON.stringify(verification),
-            });
-            if (!res.ok) throw new Error('Failed to administer medication');
-            const med = mar.value.find((m) => m.id === id);
-            if (med) med.status = 'given';
-            return true;
-        } catch (e) {
-            error.value = e instanceof Error ? e.message : 'Failed to administer medication';
-            return false;
-        }
-    }
-
     return {
         mar,
         isLoading,
         error,
         fetchMar,
-        administerMedication,
     };
 });

@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -60,7 +61,7 @@ function selectPatient(patient: Patient) {
 
 <template>
   <Dialog :open="scheduling.showScheduleDialog.value" @update:open="(v) => !v && scheduling.closeScheduleDialog()">
-    <DialogContent>
+    <DialogContent class="sm:max-w-2xl">
       <DialogHeader>
         <DialogTitle>{{ t("appointment.new") }}</DialogTitle>
       </DialogHeader>
@@ -181,10 +182,12 @@ function selectPatient(patient: Patient) {
             </Select>
           </div>
           <div class="space-y-1.5">
-            <label class="text-sm font-medium text-foreground">
+            <Label
+              :required="scheduling.scheduleFormNeedsDepartment.value"
+              class="text-sm font-medium text-foreground"
+            >
               {{ t("appointment.department") }}
-              <span v-if="scheduling.scheduleFormNeedsDepartment.value" class="text-critical">*</span>
-            </label>
+            </Label>
             <Select v-model="scheduling.scheduleFormDepartment.value">
               <SelectTrigger class="w-full">
                 <SelectValue :placeholder="t('appointment.department')" />

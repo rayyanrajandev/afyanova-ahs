@@ -119,4 +119,21 @@ describe('Queue — groupByCategory', () => {
         await scrollContainer.trigger('keydown', { key: 'Enter' });
         expect(wrapper.emitted('open')?.[0]?.[0]).toMatchObject({ id: 'w1' });
     });
+
+    it('immediately updates row status and statusLabel when props.items changes in place without page reload', async () => {
+        const initial: QueueItem[] = [
+            { id: 't1', name: 'Patient One', priority: 'normal', waitTime: '10 min', waitMinutes: 10, status: 'warning', statusLabel: 'Needs Vitals' },
+        ];
+        const wrapper = mount(Queue, { props: { items: initial, defaultSort: 'incoming' } });
+        expect(wrapper.text()).toContain('Needs Vitals');
+
+        // Simulate vitals recorded -> server returns updated task with status='success' and statusLabel='Waiting for Clinician'
+        const updated: QueueItem[] = [
+            { id: 't1', name: 'Patient One', priority: 'normal', waitTime: '10 min', waitMinutes: 10, status: 'success', statusLabel: 'Waiting for Clinician' },
+        ];
+        await wrapper.setProps({ items: updated });
+
+        expect(wrapper.text()).not.toContain('Needs Vitals');
+        expect(wrapper.text()).toContain('Waiting for Clinician');
+    });
 });

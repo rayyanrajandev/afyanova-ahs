@@ -16,7 +16,7 @@
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useToast } from "@/composables/useToast";
-import { usePatientStore, type Patient } from "@/stores/patientStore";
+import type { Patient } from "@/stores/patientStore";
 import { useQueueStore } from "@/stores/queueStore";
 import { patientDisplayName } from "../receptionFormatters";
 
@@ -36,7 +36,6 @@ export interface UseArrivalIntakeOptions {
 export function useArrivalIntake(options: UseArrivalIntakeOptions = {}) {
   const { t } = useI18n();
   const toast = useToast();
-  const patientStore = usePatientStore();
   const queueStore = useQueueStore();
 
   const showArrivalDialog = ref(false);
@@ -108,8 +107,19 @@ export function useArrivalIntake(options: UseArrivalIntakeOptions = {}) {
    * this file: new/edited reception-workspace calls stay on the
    * `reception/*` contract, never the generic one, even when they're
    * functionally identical.
+   *
+   * `patientId` made an explicit parameter (2026-08-13, T4.6 follow-up —
+   * one-click check-in added to the Schedule tab's own rows): this used to
+   * read `patientStore.currentPatient?.id` internally, silently assuming
+   * the appointment being checked in always belonged to whichever patient
+   * happened to be open in the main pane. That was only ever true at this
+   * function's one original call site (the profile's own Upcoming
+   * Appointments card, checking in the open patient's own appointment) —
+   * calling it from a list of OTHER patients' appointments (Schedule tab)
+   * would have fired `onCheckedIn` for the wrong patient (or not at all,
+   * with nobody selected), silently refreshing/skipping the wrong profile.
    */
-  async function checkInAppointment(appointmentId: string) {
+  async function checkInAppointment(appointmentId: string, patientId: string) {
     try {
       const res = await fetch(
         `/api/v1/reception/queue/${encodeURIComponent(appointmentId)}/check-in`,
@@ -120,8 +130,7 @@ export function useArrivalIntake(options: UseArrivalIntakeOptions = {}) {
       );
       if (res.ok) {
         toast.success(t("arrival.checkin_success"));
-        const patientId = patientStore.currentPatient?.id;
-        if (patientId) options.onCheckedIn?.(patientId);
+        options.onCheckedIn?.(patientId);
         void queueStore.fetchReceptionQueue();
       } else {
         const body = await res.json().catch(() => null);

@@ -103,8 +103,6 @@ return [
             'appointments.read', 'appointments.create',
             'admissions.read',
             'medical.records.read', 'medical.records.create',
-            'laboratory.access',
-            'pharmacy.access',
             'patient.demographics.update',
             'patient.medications.manage',
             'patient.vitals.record',
@@ -122,6 +120,9 @@ return [
             'radiology.orders.read',
             'clinical-procedure.orders.read',
             'clinical-procedure.order',
+            // clinician/orders/referral is guarded by this and no physician role
+            // held it, so a doctor could not raise a referral (2026-08-16).
+            'service.requests.create',
         ],
     ],
 
@@ -138,7 +139,6 @@ return [
             'appointments.read', 'appointments.create',
             'admissions.read', 'admissions.create',
             'medical.records.read', 'medical.records.create',
-            'laboratory.access', 'pharmacy.access',
             'patient.demographics.update',
             'patient.allergies.manage',
             'patient.medications.manage',
@@ -159,6 +159,9 @@ return [
             'radiology.orders.read',
             'clinical-procedure.orders.read',
             'clinical-procedure.order',
+            // clinician/orders/referral is guarded by this and no physician role
+            // held it, so a doctor could not raise a referral (2026-08-16).
+            'service.requests.create',
         ],
     ],
 
@@ -175,7 +178,6 @@ return [
             'appointments.read', 'appointments.create',
             'admissions.read', 'admissions.create',
             'medical.records.read', 'medical.records.create',
-            'laboratory.access', 'pharmacy.access',
             'patient.demographics.update',
             'patient.allergies.manage',
             'patient.medications.manage',
@@ -197,6 +199,9 @@ return [
             'radiology.orders.read',
             'clinical-procedure.orders.read',
             'clinical-procedure.order',
+            // clinician/orders/referral is guarded by this and no physician role
+            // held it, so a doctor could not raise a referral (2026-08-16).
+            'service.requests.create',
         ],
     ],
 
@@ -225,6 +230,21 @@ return [
             'service.requests.read',
             'clinical-procedure.orders.read',
             'clinical-procedure.order',
+            // nursing/notes/{id} is guarded by this. CLINICAL.NURSE.MIDWIFE
+            // already held it for the same nursing notes — the plain nurse role
+            // simply never did (2026-08-16).
+            'medical.records.create',
+            // Outpatient triage: claiming a patient, recording the handoff,
+            // releasing the claim. Previously gated behind emergency.triage.*
+            // (CLINICAL.EMERGENCY only), so a nurse got a 403 claiming triage
+            // and the "In Triage" state was unreachable (2026-08-16).
+            'appointments.record-triage',
+            // The MAR is the instrument this role's workspace is built around,
+            // yet the role could not read it: GET /nursing/mar is guarded by
+            // pharmacy.orders.read, which was granted to physicians, surgeons
+            // and pharmacy staff but not to nurses. The nursing workspace
+            // therefore 403'd on mount for every nurse (2026-08-16 RBAC audit).
+            'pharmacy.orders.read',
         ],
     ],
 
@@ -245,6 +265,8 @@ return [
             'medical.records.draft.update',
             'medical.records.finalize',
             'lab.sample.collect',
+            // Midwives run RCH triage for the same reason nurses run OPD triage.
+            'appointments.record-triage',
         ],
     ],
 
@@ -421,6 +443,18 @@ return [
             'appointment.check-in',
             'service.requests.create',
             'service.requests.read',
+            // The registration form collects insurance and posts it immediately,
+            // but this role could not write it — the POST 403'd and the UI fell
+            // back to "Patient registered, but insurance record could not be
+            // saved." Held only by FINANCE.CLAIMS before (2026-08-16).
+            'patients.insurance.manage',
+            'patients.insurance.verify',
+            // Reception routes patients to a clinician at triage handoff, so it
+            // needs the clinical directory GET /reception/clinicians serves.
+            // That route is guarded by staff.clinical-directory.read, which
+            // this role did not hold — so the reception workspace 403'd on
+            // mount (2026-08-16 RBAC audit).
+            'staff.clinical-directory.read',
         ],
     ],
 

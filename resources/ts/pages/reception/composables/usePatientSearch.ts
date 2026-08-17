@@ -21,12 +21,21 @@ interface PatientListRow {
   name: string;
   mrn: string;
   age: number;
+  gender: string;
+  phone: string;
+  nationalId?: string | null;
 }
 
-export function usePatientSearch() {
-  const { t } = useI18n();
+export interface UsePatientSearchOptions {
+  workspace?: "reception" | "clinician";
+}
+
+export function usePatientSearch(options: UsePatientSearchOptions = {}) {
+  const { t, locale } = useI18n({ useScope: "global" });
   const patientStore = usePatientStore();
   const recentStore = useRecentStore();
+
+  const workspace = options.workspace ?? "reception";
 
   // ---- Search (Volume 2.1 §7.2 — debounced 200ms, Volume 1.3 §6.3) ----
   const searchQuery = ref("");
@@ -38,6 +47,12 @@ export function usePatientSearch() {
   // search box is empty, matching results while filtering.
   const totalPatients = computed(() => patientStore.totalPatientCount);
 
+  // Drives the "which row is currently open" highlight in PatientSearchPanel
+  // (and its Recent patients list) — fast-glance confirmation of which
+  // patient is on screen, since the panel doesn't otherwise touch
+  // patientStore directly (see this file's own docblock).
+  const currentPatientId = computed(() => patientStore.currentPatientId);
+
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
   function onSearchInput() {
@@ -46,17 +61,21 @@ export function usePatientSearch() {
   }
 
   async function handleSearch() {
+    const fetcher = workspace === "clinician"
+      ? (q?: string) => patientStore.fetchClinicianPatients(q)
+      : (q?: string) => patientStore.fetchPatients(q);
+
     if (searchQuery.value.trim()) {
-      await patientStore.fetchPatients(searchQuery.value);
+      await fetcher(searchQuery.value);
     } else {
-      const loaded = await patientStore.fetchPatients();
+      const loaded = await fetcher();
       // Recents are localStorage-persisted; drop entries for patients that no
       // longer exist in the DB (e.g. deleted) so the list stays truthful.
       recentStore.reconcile(loaded.map((p) => p.id));
     }
   }
 
-  // Load the initial patient list on mount (Volume 2.1 §12.2: GET /api/v1/reception/patients)
+  // Load the initial patient list on mount
   void handleSearch();
 
   function handlePatientRetry() {
@@ -65,43 +84,55 @@ export function usePatientSearch() {
 
   // ---- Patient list rendered as a DataTable (Volume 2.1 §4.1, §7.2 / Volume 1.2 §6)
   const patientRows = computed<PatientListRow[]>(() =>
-    searchResults.value.map((patient) => ({
-      id: patient.id,
-      name: `${patient.name[0]?.given?.join(" ") ?? ""} ${patient.name[0]?.family ?? ""}`.trim(),
-      mrn: patient.identifier[0]?.value ?? "",
-      age: patient.meta.extension.age,
-    })),
+    searchResults.value.map((patient) => {
+      const phoneObj = patient.telecom?.find((t) => t.system === "phone");
+      return {
+        id: patient.id,
+        name: `${patient.name[0]?.given?.join(" ") ?? ""} ${patient.name[0]?.family ?? ""}`.trim(),
+        mrn: patient.identifier[0]?.value ?? "",
+        age: patient.meta.extension.age,
+        gender: patient.gender,
+        phone: phoneObj?.value ?? "",
+        nationalId: patient.nationalId ?? null,
+      };
+    }),
   );
 
-  // computed, not a plain array (bug fixed 2026-08-11): `t("patient.name")`
-  // etc. were being called once, here, at composable-setup time, baking
-  // that moment's locale's strings into the array permanently — switching
-  // locale later (setLocale()) never touched this array again, so the
-  // DataTable headers stayed frozen in whichever language was active on
-  // first load while every other label on the page correctly followed the
-  // switch (they call t() live, in their own templates, on every render).
-  // Wrapping in computed() re-derives `label` whenever vue-i18n's reactive
-  // locale ref changes, since t() reads it internally.
-  const patientColumns = computed<DataTableColumn<PatientListRow>[]>(() => [
-    {
-      key: "name",
-      label: t("patient.name"),
-      accessor: (r) => r.name,
-      slot: "patient-name",
-      sticky: true,
-    },
-    {
-      key: "mrn",
-      label: t("patient.mrn"),
-      accessor: (r) => r.mrn,
-      clinical: true,
-    },
-    {
-      key: "age",
-      label: t("patient.age"),
-      accessor: (r) => `${r.age}y`,
-    },
-  ]);
+  // computed column definitions
+  const patientColumns = computed<DataTableColumn<PatientListRow>[]>(() => {
+    void locale.value;
+    return [
+      {
+        key: "name",
+        label: t("patient.name"),
+        accessor: (r) => r.name,
+        slot: "patient-name",
+        sticky: true,
+      },
+      {
+        key: "mrn",
+        label: t("patient.mrn"),
+        accessor: (r) => r.mrn,
+        clinical: true,
+      },
+      {
+        key: "phone",
+        label: t("patient.phone"),
+        accessor: (r) => r.phone || "—",
+        clinical: true,
+      },
+      {
+        key: "age",
+        label: t("patient.age"),
+        accessor: (r) => `${r.age}`,
+      },
+      {
+        key: "sex",
+        label: t("patient.sex"),
+        accessor: (r) => t(`patient.gender_${r.gender}`),
+      },
+    ];
+  });
 
   function handlePatientRowClick(row: PatientListRow) {
     patientStore.setCurrentPatient(row.id);
@@ -130,6 +161,7 @@ export function usePatientSearch() {
     isSearching,
     searchError,
     totalPatients,
+    currentPatientId,
     onSearchInput,
     handleSearch,
     handlePatientRetry,

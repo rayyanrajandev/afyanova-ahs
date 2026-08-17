@@ -54,6 +54,11 @@ class AppointmentModel extends Model
         'consultation_owner_user_id',
         'consultation_owner_assigned_at',
         'consultation_takeover_count',
+        'nursing_contact_user_id',
+        'nursing_contact_started_at',
+        // Relationship form of `department` (2026_08_16_000004). The string column
+        // stays as a denormalised label until its readers move over.
+        'department_id',
     ];
 
     /**
@@ -68,6 +73,7 @@ class AppointmentModel extends Model
             'triage_owner_assigned_at' => 'datetime',
             'consultation_started_at' => 'datetime',
             'consultation_owner_assigned_at' => 'datetime',
+            'nursing_contact_started_at' => 'datetime',
             'consultation_takeover_count' => 'integer',
             'queue_position' => 'integer',
             'created_at' => 'datetime',

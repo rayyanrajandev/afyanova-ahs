@@ -8,6 +8,8 @@
         "build:ssr": "vite build && vite build --ssr",
         "dev": "vite",
         "guard:reference": "node scripts/check-reference-boundaries.mjs",
+        "guard:i18n-sync": "node scripts/i18n-key-sync-check.mjs",
+        "guard:codex-reference": "node scripts/codex-reference-check.mjs",
         "hooks:enable": "git config core.hooksPath .githooks",
         "format": "prettier --write resources/",
         "format:check": "prettier --check resources/",

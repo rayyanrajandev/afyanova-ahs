@@ -18,7 +18,12 @@ uses(RefreshDatabase::class);
  * rather than just deleting it outright.
  */
 it('renders the reception workspace page', function (): void {
-    $user = makeUserWithRole(['patients.read']);
+    // Was `patients.read` — the route's gate moved to the dedicated
+    // `reception.access` permission (2026-08-13) after a nurse (who also
+    // holds `patients.read`, and briefly `patients.create` under this
+    // route's intermediate gate) was found able to load the full Reception
+    // workspace. See routes/web.php's own comment for the full history.
+    $user = makeUserWithRole(['reception.access']);
 
     $this->withoutMiddleware([
         EnsureMappedFacilitySubscriptionEntitlement::class,
@@ -38,8 +43,11 @@ it('renders the reception workspace page', function (): void {
         ->assertInertia(fn ($page) => $page->component('reception/Index', false));
 });
 
-it('forbids the reception workspace route without patients.read', function (): void {
-    $user = makeUserWithRole([]);
+it('forbids the reception workspace route without reception.access', function (): void {
+    // A user with real, adjacent permissions (patients.read/create) but not
+    // the dedicated workspace-access permission — the exact shape of the
+    // cross-role bug this gate was changed to prevent (2026-08-13).
+    $user = makeUserWithRole(['patients.read', 'patients.create']);
 
     $this->withoutMiddleware([
         EnsureMappedFacilitySubscriptionEntitlement::class,

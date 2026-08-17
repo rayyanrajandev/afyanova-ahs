@@ -107,6 +107,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { useI18nSafe } from '@/composables/useI18nSafe';
+import { useUiStore } from "@/stores/uiStore";
 
 export type QueuePriority = 'critical' | 'urgent' | 'normal';
 // 'incoming' is deliberately excluded from `sortOptions` below (like
@@ -124,7 +125,9 @@ export interface QueueItem {
     waitTime: string;
     waitMinutes: number;
     status?: StatusType; // explicit status; falls back to wait-based
+    statusLabel?: string; // custom status text override (e.g. 'In Triage', 'Triaged')
     category?: string;   // optional category for filtering
+    hasWarning?: boolean; // optional administrative warning flag
 }
 
 interface DisplayRow {
@@ -139,29 +142,31 @@ const props = withDefaults(
         filter?: QueuePriority | 'all';
         loading?: boolean; // shows skeleton rows instead of an empty flash
         defaultSort?: QueueSort; // initial `activeSort`; still user-overridable via the Filters popover
-        // Section-headers-by-category (Volume 3.7 audit, 2026-08-10) — opt-in,
-        // additive, off by default so every existing consumer (clinician,
-        // nursing) is byte-identical unless they ask for this. Motivated by
-        // reception's arrival-mode tiering (§10.2): grouping makes the tier
-        // a patient is in something you *see*, not a small text label you
-        // have to read on every row. Not virtualization-aware yet (see
-        // `displayOrderItems` below) — falls back to the flat view past the
-        // 50-item virtualization threshold rather than half-implementing
-        // windowed group headers.
         groupByCategory?: boolean;
-        // Priority chips opt-out (Reception audit, 2026-08-12) — off by
-        // default so nursing/clinician (post-triage acuity is meaningful
-        // for them) stay byte-identical. Reception passes this true: its
-        // queue is `stage=waiting_triage` (pre-triage — no real acuity
-        // exists yet), and `priority` here is a wait-time bucket
-        // (queueStore.ts's `toTask()`), not clinical severity. That made
-        // the chips actively misleading — a just-arrived Emergency patient
-        // (0 min wait) showed "Normal", while an hour-long-waiting
-        // Scheduled patient showed "Critical". Reception's real urgency
-        // signal is arrival-mode tiering (already the section-header
-        // grouping/sort order above), already reachable as a Category
-        // filter inside the Filters popover this prop leaves untouched.
         hidePriorityChips?: boolean;
+        hideStatusBadges?: boolean;
+        hidePendingBadge?: boolean;
+        error?: string | null;
+        offline?: boolean;
+        persistenceKey?: string;
+        emptyTitle?: string;
+        emptyDescription?: string;
+        emptyIllustration?:
+            | 'users'
+            | 'stethoscope'
+            | 'clipboard'
+            | 'flask'
+            | 'activity'
+            | 'pill'
+            | 'receipt'
+            | 'package'
+            | 'search'
+            | 'inbox'
+            | 'calendar';
+        emptyBadge?: string;
+        emptyActionLabel?: string;
+        emptySecondaryActionLabel?: string;
+        compact?: boolean;
     }>(),
     {
         filter: 'all',
@@ -169,29 +174,73 @@ const props = withDefaults(
         defaultSort: 'priority',
         groupByCategory: false,
         hidePriorityChips: false,
+        hideStatusBadges: false,
+        hidePendingBadge: false,
+        error: null,
+        offline: false,
+        persistenceKey: undefined,
+        emptyTitle: undefined,
+        emptyDescription: undefined,
+        emptyIllustration: undefined,
+        emptyBadge: undefined,
+        emptyActionLabel: undefined,
+        emptySecondaryActionLabel: undefined,
+        compact: true,
     },
 );
 
 const emit = defineEmits<{
     open: [item: QueueItem];
     reorder: [ordered: QueueItem[]]; // audit trail — parent logs (Volume 1.5)
+    retry: [];
+    emptyAction: [];
+    emptySecondaryAction: [];
 }>();
 
 const { t } = useI18nSafe();
+
+function getUiDensity(): 'compact' | 'comfortable' | 'spacious' {
+    try {
+        const uiStore = useUiStore();
+        return uiStore.density ?? 'comfortable';
+    } catch {
+        return 'comfortable';
+    }
+}
+
+const densityRowClass = computed(() => {
+    const density = getUiDensity();
+    return density === 'compact' ? 'px-3 py-1.5 text-xs' : density === 'spacious' ? 'px-4 py-3.5' : 'px-4 py-2.5';
+});
 
 // ---- Local mutable copy (auto-updating wait time, drag-reorder) ----
 const itemsReactive = ref<QueueItem[]>(props.items.map((i) => ({ ...i })));
 watch(
     () => props.items,
-    (items) => {
-        // Only reset if the data actually changed (avoid clobbering local reorders)
-        const sameOrder =
-            itemsReactive.value.length === items.length &&
-            itemsReactive.value.every((i, idx) => i.id === items[idx]?.id);
-        if (!sameOrder) {
-            itemsReactive.value = items.map((i) => ({ ...i }));
+    (newItems) => {
+        if (!newItems) {
+            itemsReactive.value = [];
+            return;
+        }
+
+        const newMap = new Map(newItems.map((item) => [item.id, item]));
+        const isPermutation =
+            itemsReactive.value.length === newItems.length &&
+            itemsReactive.value.length > 0 &&
+            itemsReactive.value.every((item) => newMap.has(item.id));
+
+        if (isPermutation) {
+            // Keep local reorder sequence if user rearranged items,
+            // while updating all fresh item fields (status, statusLabel, waitTime, priority, etc.)
+            itemsReactive.value = itemsReactive.value.map((local) => {
+                const fresh = newMap.get(local.id)!;
+                return { ...local, ...fresh };
+            });
+        } else {
+            itemsReactive.value = newItems.map((i) => ({ ...i }));
         }
     },
+    { deep: true },
 );
 
 // ---- Filter (priority + status + category — one popover, §9.3) ----
@@ -199,13 +248,13 @@ const activeFilter = ref<QueuePriority | 'all'>(props.filter);
 const filters: (QueuePriority | 'all')[] = ['all', 'critical', 'urgent', 'normal'];
 
 const activeStatus = ref<StatusType | 'all'>('all');
-const statusFilters: (StatusType | 'all')[] = [
-    'all',
-    'pending',
-    'in_progress',
-    'complete',
-    'cancelled',
-];
+const statusFilters = computed<(StatusType | 'all')[]>(() => {
+    const statuses = new Set<StatusType>();
+    itemsReactive.value.forEach((i) => {
+        if (i.status) statuses.add(i.status as StatusType);
+    });
+    return ['all', ...Array.from(statuses)];
+});
 
 const activeCategory = ref<string>('all');
 const categories = computed(() => {
@@ -215,6 +264,57 @@ const categories = computed(() => {
     });
     return ['all', ...cats];
 });
+
+function formatCategory(cat: string): string {
+    if (!cat || cat === 'all') return t('common.all');
+    if (cat.startsWith('queue.') || cat.startsWith('status.') || cat.startsWith('common.') || cat.startsWith('nursing.') || cat.startsWith('patient.')) {
+        return t(cat);
+    }
+    const lower = cat.toLowerCase().replace(/[\s-]+/g, '_');
+    const categoryKey = `queue.category_${lower}`;
+    const tierKey = `queue.tier_${lower}`;
+    const translatedCategory = t(categoryKey);
+    if (translatedCategory !== categoryKey) return translatedCategory;
+    const translatedTier = t(tierKey);
+    if (translatedTier !== tierKey) return translatedTier;
+    return cat.charAt(0).toUpperCase() + cat.slice(1);
+}
+
+// ---- Sort — lives inside the Filters popover (no separate button/row) ----
+const activeSort = ref<QueueSort>(props.defaultSort);
+const sortOptions: QueueSort[] = ['priority', 'wait', 'name'];
+
+// Persist / restore filters from sessionStorage when persistenceKey is provided
+if (props.persistenceKey) {
+    try {
+        const raw = sessionStorage.getItem(props.persistenceKey);
+        if (raw) {
+            const data = JSON.parse(raw);
+            if (data.sort && sortOptions.includes(data.sort)) activeSort.value = data.sort;
+            if (data.filter && filters.includes(data.filter)) activeFilter.value = data.filter;
+            if (data.status && statusFilters.includes(data.status)) activeStatus.value = data.status;
+            if (data.category) activeCategory.value = data.category;
+        }
+    } catch {
+        // ignore
+    }
+
+    watch([activeSort, activeFilter, activeStatus, activeCategory], () => {
+        try {
+            sessionStorage.setItem(
+                props.persistenceKey!,
+                JSON.stringify({
+                    sort: activeSort.value,
+                    filter: activeFilter.value,
+                    status: activeStatus.value,
+                    category: activeCategory.value,
+                }),
+            );
+        } catch {
+            // ignore
+        }
+    });
+}
 
 // Counts per priority chip (component-library audit, 2026-08-10) — a chip
 // that just says "Critical" gives no sense of scale; "Critical 2" does.
@@ -247,11 +347,14 @@ function resetFilters(): void {
     activeFilter.value = 'all';
     activeStatus.value = 'all';
     activeCategory.value = 'all';
+    if (props.persistenceKey) {
+        try {
+            sessionStorage.removeItem(props.persistenceKey);
+        } catch {
+            // ignore
+        }
+    }
 }
-
-// ---- Sort — lives inside the Filters popover (no separate button/row) ----
-const activeSort = ref<QueueSort>(props.defaultSort);
-const sortOptions: QueueSort[] = ['priority', 'wait', 'name'];
 
 // ---- Priority presentation (dot + avatar ring instead of emoji) ----
 const priorityDotClass: Record<QueuePriority, string> = {
@@ -407,19 +510,37 @@ const sortedItems = computed(() => {
 const emptyStateContent = computed(() => {
     if (itemsReactive.value.length === 0) {
         return {
-            illustration: 'users' as const,
-            title: t('queue.empty_no_patients_title'),
-            description: t('queue.empty_no_patients_hint'),
-            actionLabel: undefined,
+            illustration: props.emptyIllustration ?? ('users' as const),
+            title: props.emptyTitle ?? t('queue.empty_no_patients_title'),
+            description: props.emptyDescription ?? t('queue.empty_no_patients_hint'),
+            badge: props.emptyBadge ?? undefined,
+            actionLabel: props.emptyActionLabel ?? undefined,
+            secondaryActionLabel: props.emptySecondaryActionLabel ?? undefined,
+            isFiltered: false,
         };
     }
     return {
         illustration: 'search' as const,
         title: t('queue.empty_filtered_title'),
-        description: undefined,
+        description: t('queue.empty_hint'),
+        badge: undefined,
         actionLabel: t('queue.clear_filters'),
+        secondaryActionLabel: undefined,
+        isFiltered: true,
     };
 });
+
+function handleEmptyAction(): void {
+    if (emptyStateContent.value.isFiltered) {
+        resetFilters();
+    } else {
+        emit('emptyAction');
+    }
+}
+
+function handleEmptySecondaryAction(): void {
+    emit('emptySecondaryAction');
+}
 
 // ---- Virtualization (§9.3 — required for > 50 items) ----
 // Based on the raw filtered/sorted count, not `displayOrderItems` below —
@@ -448,14 +569,17 @@ const categoryGroups = computed<CategoryGroup[]>(() => {
     const buckets = new Map<string, QueueItem[]>();
     const order: string[] = [];
     for (const item of sortedItems.value) {
-        const key = item.category || t('queue.group_other');
-        if (!buckets.has(key)) {
-            buckets.set(key, []);
-            order.push(key);
+        const rawKey = item.category || 'queue.group_other';
+        if (!buckets.has(rawKey)) {
+            buckets.set(rawKey, []);
+            order.push(rawKey);
         }
-        buckets.get(key)!.push(item);
+        buckets.get(rawKey)!.push(item);
     }
-    return order.map((key) => ({ key, label: key, items: buckets.get(key)! }));
+    return order.map((key) => {
+        const label = key.startsWith('queue.') || key.startsWith('status.') ? t(key) : key;
+        return { key, label, items: buckets.get(key)! };
+    });
 });
 
 // The order items are actually rendered/navigated in. Identical to
@@ -656,6 +780,18 @@ function onKeydown(event: KeyboardEvent): void {
 <template>
     <!-- Plain container — the parent pane (aside) provides the border/background -->
     <div class="flex h-full flex-col overflow-hidden">
+        <!-- Offline banner (T5.8) — same treatment as DataTable.vue's own
+             `offline` prop, informational only, never blocks the list below
+             it: stale cached data is still better than nothing while
+             reconnecting. -->
+        <div
+            v-if="offline"
+            class="border-b border-border bg-warning/5 px-4 py-2 text-xs text-warning"
+            role="status"
+        >
+            {{ t('offline.title') }}
+        </div>
+
         <!-- Header -->
         <div class="border-b border-border px-4 py-3">
             <!-- Redesigned 2026-08-11 (direct user feedback: "why chips,
@@ -679,7 +815,8 @@ function onKeydown(event: KeyboardEvent): void {
                  of both wrapped lines left it floating oddly between
                  them instead of sitting level with the first line —
                  caught live, not obvious from the code alone. -->
-            <div :class="['flex items-start gap-2', hidePriorityChips ? 'justify-end' : 'justify-between']">
+            <div class="flex items-center justify-between gap-2">
+                <!-- Priority Chips (when enabled) -->
                 <div v-if="!hidePriorityChips" class="flex flex-1 flex-wrap gap-1.5">
                     <Button
                         v-for="f in filters"
@@ -725,38 +862,42 @@ function onKeydown(event: KeyboardEvent): void {
                     </Button>
                 </div>
 
-                <!-- Sort/Status/Category — icon-only now that this row
-                     also carries the priority chips; a text label
-                     ("More Filters") would crowd the row into wrapping
-                     on the narrowest panes. `aria-label` carries the
-                     accessible name that used to be the button's own
-                     visible text.
-                     No Tooltip here (tried both nesting orders, workspace
-                     tooltip audit, 2026-08-11): `Tooltip > TooltipTrigger
-                     (as-child) > PopoverTrigger(as-child)` opens correctly
-                     but PopoverContent renders `position: static` at
-                     `y: -510` — off-screen — live-measured, not a visual
-                     guess; the reverse order (`PopoverTrigger` outer)
-                     opens nothing at all, `data-state` never reaches
-                     "open". Both real, reproducible breaks in how these
-                     two primitives' `as-child` ref-forwarding compose in
-                     this codebase's current reka-ui version, not a
-                     styling choice — shipping either would trade a
-                     missing tooltip for a broken filters button.
-                     `aria-label` + the icon + the active-count badge
-                     already showing on this exact button cover it. -->
+                <!-- Inline Sort Segmented Control (when priority chips are hidden) -->
+                <div v-else class="flex items-center gap-1.5 min-w-0">
+                    <div class="inline-flex rounded-md border border-border bg-muted p-0.5" role="radiogroup" :aria-label="t('queue.sort')">
+                        <button
+                            v-for="option in sortOptions"
+                            :key="option"
+                            type="button"
+                            role="radio"
+                            :aria-checked="activeSort === option"
+                            class="min-w-0 truncate rounded-sm px-2.5 py-1 text-xs font-medium transition-colors"
+                            :class="
+                                activeSort === option
+                                    ? 'bg-surface text-foreground shadow-xs font-semibold'
+                                    : 'text-muted-foreground hover:text-foreground'
+                            "
+                            @click="activeSort = option"
+                        >
+                            {{ t(`queue.sort_${option}`) }}
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Sort/Status/Category Popover Trigger with Clear Label -->
                 <Popover>
                     <PopoverTrigger as-child>
                         <Button
                             variant="outline"
-                            size="icon"
-                            class="relative h-8 w-8 shrink-0 rounded-full"
+                            size="sm"
+                            class="relative h-8 gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
                             :aria-label="t('queue.more_filters')"
                         >
-                            <SlidersHorizontal class="h-3.5 w-3.5" aria-hidden="true" />
+                            <SlidersHorizontal class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            <span class="text-xs font-medium">{{ t('queue.more_filters') }}</span>
                             <span
                                 v-if="activeFilterCount > 0"
-                                class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-xs font-medium text-primary-foreground"
+                                class="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground"
                                 aria-hidden="true"
                             >
                                 {{ activeFilterCount }}
@@ -819,14 +960,23 @@ function onKeydown(event: KeyboardEvent): void {
 
                             <!-- Status — Select (current value in the trigger,
                                  checkmark on the selected row, colored dot
-                                 reusing StatusBadge's own palette). -->
-                            <div>
+                                 reusing StatusBadge's own palette). Only shown
+                                 when there is more than 1 status to filter. -->
+                            <div v-if="statusFilters.length > 2">
                                 <Label class="mb-1.5 block text-xs font-medium text-muted-foreground">
                                     {{ t('queue.status_filter') }}
                                 </Label>
                                 <Select v-model="activeStatus">
-                                    <SelectTrigger size="sm" class="w-full">
-                                        <SelectValue />
+                                    <SelectTrigger size="sm" class="w-full text-xs">
+                                        <div class="flex items-center gap-2 truncate">
+                                            <span
+                                                v-if="activeStatus !== 'all'"
+                                                class="h-2 w-2 shrink-0 rounded-full"
+                                                :class="statusDotClass[activeStatus]"
+                                                aria-hidden="true"
+                                            />
+                                            <span>{{ activeStatus === 'all' ? t('common.all') : t(`status.${activeStatus}`) }}</span>
+                                        </div>
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem v-for="s in statusFilters" :key="s" :value="s">
@@ -849,12 +999,12 @@ function onKeydown(event: KeyboardEvent): void {
                                     {{ t('queue.category_filter') }}
                                 </Label>
                                 <Select v-model="activeCategory">
-                                    <SelectTrigger size="sm" class="w-full">
-                                        <SelectValue />
+                                    <SelectTrigger size="sm" class="w-full text-xs">
+                                        <span class="truncate">{{ formatCategory(activeCategory) }}</span>
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem v-for="cat in categories" :key="cat" :value="cat">
-                                            {{ cat === 'all' ? t('common.all') : cat }}
+                                            {{ formatCategory(cat) }}
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
@@ -866,15 +1016,33 @@ function onKeydown(event: KeyboardEvent): void {
 
         </div>
 
+        <!-- Stale-data notice (T5.8) — a failed background refresh (e.g. a
+             live-sync-triggered retry) shouldn't blank out a working, if
+             outdated, list; this says so without blocking it, unlike the
+             full error state below which only replaces the list when
+             there's truly nothing to show at all (`itemsReactive` is the
+             raw, pre-filter count — a filter narrowing the visible rows to
+             zero is a different, already-handled case, not this one). -->
+        <div
+            v-if="error && itemsReactive.length > 0"
+            class="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-warning/5 px-4 py-2 text-xs text-warning"
+            role="status"
+        >
+            <span>{{ t('queue.stale_notice') }}</span>
+            <Button size="sm" variant="ghost" class="h-6 px-2 text-xs" @click="emit('retry')">
+                {{ t('common.retry') }}
+            </Button>
+        </div>
+
         <!-- Queue — scroll container -->
         <div
             ref="scrollRef"
             class="relative flex-1 overflow-auto"
             @keydown="onKeydown"
         >
-            <!-- Loaded state -->
+            <!-- Loaded state (preserved during background refetches) -->
             <ul
-                v-if="!loading && sortedItems.length > 0"
+                v-if="sortedItems.length > 0"
                 class="relative"
                 role="listbox"
                 :aria-label="t('queue.label')"
@@ -902,7 +1070,8 @@ function onKeydown(event: KeyboardEvent): void {
                         :aria-selected="renderRow.row.index === activeIndex"
                         :style="rowStyle(renderRow.row)"
                         :class="[
-                            'group flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors',
+                            'group flex cursor-pointer items-center gap-3 transition-colors',
+                            densityRowClass,
                             priorityBorderClass[renderRow.row.item.priority],
                             renderRow.row.index === activeIndex
                                 ? 'bg-muted'
@@ -949,8 +1118,15 @@ function onKeydown(event: KeyboardEvent): void {
                          name always gets full width instead of being squeezed
                          down to a couple of characters on narrow panes. -->
                     <div class="min-w-0 flex-1">
-                        <div class="truncate text-sm font-medium text-foreground">
-                            {{ renderRow.row.item.name }}
+                        <div class="flex items-center gap-1.5 min-w-0">
+                            <span class="truncate text-sm font-medium text-foreground">
+                                {{ renderRow.row.item.name }}
+                            </span>
+                            <span
+                                v-if="renderRow.row.item.hasWarning"
+                                class="h-2 w-2 shrink-0 rounded-full bg-warning"
+                                aria-hidden="true"
+                            />
                             <span class="sr-only">{{ t(priorityLabelKey[renderRow.row.item.priority]) }}</span>
                         </div>
                         <div class="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
@@ -967,9 +1143,9 @@ function onKeydown(event: KeyboardEvent): void {
                                  be redundant now that there's a header saying it. -->
                             <span
                                 v-if="renderRow.row.item.category && !groupByCategory"
-                                class="min-w-0 truncate"
+                                class="min-w-0 truncate font-medium text-muted-foreground"
                             >
-                                {{ renderRow.row.item.category }}
+                                {{ formatCategory(renderRow.row.item.category) }}
                             </span>
                             <!-- Wait time (§9.4 — threshold coloring) -->
                             <span
@@ -986,7 +1162,12 @@ function onKeydown(event: KeyboardEvent): void {
                     </div>
 
                     <!-- StatusBadge (§9.3 — workflow status per item, Volume 2.1 §10.2) -->
-                    <StatusBadge :status="renderRow.row.item.status ?? 'pending'" class="shrink-0" />
+                    <StatusBadge
+                        v-if="!hideStatusBadges && (!hidePendingBadge || (renderRow.row.item.status && renderRow.row.item.status !== 'pending'))"
+                        :status="renderRow.row.item.status ?? 'pending'"
+                        :label="renderRow.row.item.statusLabel"
+                        class="shrink-0"
+                    />
 
                     <!-- Row actions — optional, per-consumer (Volume 1.2 §2.4: composable
                          slots, not a hardcoded action set baked into the shared component).
@@ -994,23 +1175,26 @@ function onKeydown(event: KeyboardEvent): void {
                          propagation so clicking an action doesn't also fire row `open`. -->
                     <div
                         v-if="$slots['row-actions']"
-                        class="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                        class="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 max-lg:opacity-100"
                         @click.stop
                     >
                         <slot name="row-actions" :item="renderRow.row.item" />
                     </div>
 
-                    <!-- Open affordance -->
+                    <!-- Open affordance. `max-lg:text-muted-foreground/60` (touch-visibility
+                         fix): below `lg` there's no hover, so this and the row-actions above
+                         default to visible instead of relying on a hover state a touch
+                         reception desk can never trigger. -->
                     <ChevronRight
-                        class="h-3.5 w-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/60"
+                        class="h-3.5 w-3.5 shrink-0 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/60 max-lg:text-muted-foreground/60"
                         aria-hidden="true"
                     />
                     </li>
                 </template>
             </ul>
 
-            <!-- Loading state — skeleton rows instead of a blank flash -->
-            <div v-else-if="loading" class="divide-y divide-border" aria-hidden="true">
+            <!-- Loading state — skeleton rows on initial mount with 0 items -->
+            <div v-else-if="loading && sortedItems.length === 0" class="divide-y divide-border" aria-hidden="true">
                 <div
                     v-for="n in SKELETON_ROWS"
                     :key="n"
@@ -1026,6 +1210,25 @@ function onKeydown(event: KeyboardEvent): void {
                 </div>
             </div>
 
+            <!-- Blocking error (T5.8) — only reached when there is no data
+                 at all to fall back on (unlike the stale-data notice above,
+                 which covers the "we have something, just couldn't refresh
+                 it" case). A first-ever load failure looked identical to a
+                 genuinely empty queue before this — same visual language as
+                 DataTable.vue's own error state. -->
+            <div
+                v-else-if="error && itemsReactive.length === 0"
+                class="flex flex-1 items-center justify-center p-6"
+                role="alert"
+            >
+                <div class="text-center">
+                    <p class="mb-2 text-sm font-medium text-destructive">{{ error }}</p>
+                    <Button size="sm" variant="outline" @click="emit('retry')">
+                        {{ t('common.retry') }}
+                    </Button>
+                </div>
+            </div>
+
             <!-- Empty state (Volume 1.2 §14) — shared EmptyState.vue
                  (component-library audit, 2026-08-11); was a hand-rolled
                  version of the same anatomy DataTable and ScheduleView
@@ -1037,8 +1240,12 @@ function onKeydown(event: KeyboardEvent): void {
                 :illustration="emptyStateContent.illustration"
                 :title="emptyStateContent.title"
                 :description="emptyStateContent.description"
+                :badge="emptyStateContent.badge"
                 :action-label="emptyStateContent.actionLabel"
-                @action="resetFilters"
+                :secondary-action-label="emptyStateContent.secondaryActionLabel"
+                :compact="compact"
+                @action="handleEmptyAction"
+                @secondary-action="handleEmptySecondaryAction"
             />
         </div>
 

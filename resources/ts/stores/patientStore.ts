@@ -93,7 +93,11 @@ function ageFrom(dateOfBirth: string | null | undefined): number {
 function toPatient(row: Partial<BackendPatientRow>): Patient {
     return {
         resourceType: 'Patient',
-        id: String(row.id),
+        // Not String(row.id): that turns a missing id into the literal string
+        // "undefined", which is truthy, so it survives every `if (!id)` guard
+        // and gets sent to the API as a patient id. An empty string is falsy,
+        // so a malformed payload fails where it happens instead of downstream.
+        id: row.id != null ? String(row.id) : '',
         identifier: row.patientNumber
             ? [{ system: MRN_SYSTEM, value: row.patientNumber }]
             : [],
@@ -190,6 +194,13 @@ export interface PatientActiveAppointmentSummary {
     id: string;
     appointmentNumber: string | null;
     status: string | null;
+    /**
+     * Server-resolved flow step (PatientFlowStep) — authoritative for the badge.
+     * `status` alone cannot express a nursing pickup, which is why the profile
+     * pane read "Waiting for Triage" for a patient the queue beside it already
+     * showed as "With Nurse".
+     */
+    visitStage: string | null;
     scheduledAt: string | null;
     department: string | null;
 }
@@ -223,12 +234,36 @@ export const usePatientStore = defineStore('patient', () => {
     const currentPatientId = ref<string | null>(null);
     const searchResults = ref<Patient[]>([]);
     const isLoading = ref(false);
+    /**
+     * List/search failures only. Bound directly to the patient list panels'
+     * `:error` slot, so nothing that isn't a failure of *the list itself* may
+     * ever be written here — a single-patient lookup writing to this is what
+     * made an emptied database render "Failed to fetch patient <uuid>" where
+     * the empty-state placeholder belonged.
+     */
     const error = ref<string | null>(null);
+    /**
+     * Single-patient lookup failures, kept apart from `error` for the reason
+     * above. A 404 is deliberately NOT recorded here: a patient that no longer
+     * exists is an expected state (deleted record, stale bookmark, stale
+     * localStorage recent), not a fault to report.
+     */
+    const detailError = ref<string | null>(null);
     // Total matching the current fetchPatients() call (server-side pagination
     // meta.total, not searchResults.value.length — the list endpoint's
     // perPage default is 50, so total can exceed what's actually loaded).
     // Powers the Patients tab's count badge (2026-08-11).
     const totalPatientCount = ref(0);
+    // Nursing's own patient list (Volume 2.3 §4.1, Volume 3.8 Phase 1) —
+    // deliberately a separate ref from `searchResults` above, not reused:
+    // that one is reception's search-box result set, a different concept
+    // from "the ward patient list a nurse is looking at" even though both
+    // resolve through this same store's `toPatient()`. Conflating them
+    // would mean one workspace's fetch silently clobbers what the other
+    // renders if both are ever active in the same session.
+    const nursingPatients = ref<Patient[]>([]);
+    const isNursingPatientsLoading = ref(false);
+    const nursingPatientsError = ref<string | null>(null);
 
     // ---- Getters ----
     const currentPatient = computed(() =>
@@ -278,13 +313,109 @@ export const usePatientStore = defineStore('patient', () => {
         }
     }
 
-    async function fetchPatient(mrn: string): Promise<Patient | null> {
+    /**
+     * GET /api/v1/nursing/patients (Volume 2.3 §12.2, Volume 3.8 Phase 1) —
+     * same backend controller and response shape as `fetchPatients` above
+     * (`PatientController::index`, confirmed live: identical `patientNumber`/
+     * `firstName`/`lastName`/... fields), reached via nursing's own scoped
+     * route rather than reception's — same rule as everywhere else in this
+     * codebase, a workspace calls its own `/{workspace}/*` contract even
+     * when it shares backend logic with another. Ward/bed (Volume 2.3 §4.1's
+     * "ward/unit filtered" list) are NOT in this response — confirmed live,
+     * not assumed — that's admission/encounter data, a different endpoint
+     * this phase doesn't call; the nursing patient list shows what's
+     * actually available (name/MRN/age/gender) rather than inventing
+     * placeholder ward/bed values.
+     */
+    async function fetchNursingPatients(query?: string): Promise<Patient[]> {
+        isNursingPatientsLoading.value = true;
+        nursingPatientsError.value = null;
+        try {
+            // `?q=` (2026-08-13, direct user feedback comparing this tab to
+            // reception's own): `GET /nursing/patients` shares
+            // `ListPatientsUseCase` with reception's own list, which already
+            // accepts `q` — confirmed by reading the use case, not assumed
+            // from reception's usage alone.
+            const url = query?.trim()
+                ? `${BASE_URL}/nursing/patients?q=${encodeURIComponent(query.trim())}`
+                : `${BASE_URL}/nursing/patients`;
+            const res = await fetch(url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (!res.ok) throw new Error('Failed to fetch nursing patients');
+            const body = (await res.json()) as { data?: BackendPatientRow[] };
+            const list = (body.data ?? []).map(toPatient);
+            list.forEach(cachePatient);
+            nursingPatients.value = list;
+            return list;
+        } catch (e) {
+            nursingPatientsError.value =
+                e instanceof Error ? e.message : 'Failed to fetch nursing patients';
+            nursingPatients.value = [];
+            return [];
+        } finally {
+            isNursingPatientsLoading.value = false;
+        }
+    }
+    async function fetchClinicianPatients(query?: string): Promise<Patient[]> {
         isLoading.value = true;
         error.value = null;
         try {
-            const res = await fetch(`${BASE_URL}/reception/patients/${encodeURIComponent(mrn)}`, {
+            const url = query?.trim()
+                ? `${BASE_URL}/clinician/patients?q=${encodeURIComponent(query.trim())}`
+                : `${BASE_URL}/clinician/patients`;
+            const res = await fetch(url, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
             });
+            if (!res.ok) throw new Error('Failed to fetch clinician patients');
+            const body = (await res.json()) as { data?: BackendPatientRow[]; meta?: { total?: number } };
+            const list = (body.data ?? []).map(toPatient);
+            list.forEach(cachePatient);
+            searchResults.value = list;
+            totalPatientCount.value = body.meta?.total ?? list.length;
+            return list;
+        } catch (e) {
+            error.value = e instanceof Error ? e.message : 'Failed to fetch clinician patients';
+            searchResults.value = [];
+            return [];
+        } finally {
+            isLoading.value = false;
+        }
+    }
+
+    /**
+     * Resolves one patient, or null when that patient does not exist.
+     *
+     * A 404 returns null quietly and evicts any cached copy: the patient was
+     * deleted, or the id came from a stale bookmark or a localStorage recent
+     * entry. Callers treat null as "show the empty state", which is what a
+     * workspace opened against an emptied database should do.
+     *
+     * Deliberately does not touch `error` (see its declaration) and does not
+     * set `isLoading` — both are the *list's* state, and a background detail
+     * lookup must not put the patient list into a loading or failed state it
+     * never entered.
+     */
+    async function fetchPatient(mrn: string): Promise<Patient | null> {
+        detailError.value = null;
+        try {
+            // Try reception endpoint first, fallback to clinician or generic if needed
+            let res = await fetch(`${BASE_URL}/reception/patients/${encodeURIComponent(mrn)}`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (!res.ok && res.status === 403) {
+                res = await fetch(`${BASE_URL}/clinician/patients/${encodeURIComponent(mrn)}`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+            }
+
+            // Gone, not broken. Drop the stale cache entry and any selection
+            // pointing at it so nothing keeps rendering a patient that isn't there.
+            if (res.status === 404 || res.status === 410) {
+                forgetPatient(mrn);
+                return null;
+            }
+
             if (!res.ok) throw new Error(`Failed to fetch patient ${mrn}`);
             const body = (await res.json()) as { data?: BackendPatientRow } | BackendPatientRow;
             const row: BackendPatientRow =
@@ -295,10 +426,25 @@ export const usePatientStore = defineStore('patient', () => {
             cachePatient(patient);
             return patient;
         } catch (e) {
-            error.value = e instanceof Error ? e.message : 'Failed to fetch patient';
+            // A real failure — network down, 500, malformed payload. Recorded
+            // where a caller can surface it, never in the list's own error slot.
+            detailError.value = e instanceof Error ? e.message : 'Failed to fetch patient';
             return null;
-        } finally {
-            isLoading.value = false;
+        }
+    }
+
+    /**
+     * Forgets a patient that no longer exists: evicts the cache entry and
+     * clears the current selection if it pointed there, so a deleted record
+     * cannot survive in memory and keep being rendered after the DB says it
+     * is gone.
+     */
+    function forgetPatient(patientId: string) {
+        patients.value.delete(patientId);
+        searchResults.value = searchResults.value.filter((p) => p.id !== patientId);
+        nursingPatients.value = nursingPatients.value.filter((p) => p.id !== patientId);
+        if (currentPatientId.value === patientId) {
+            currentPatientId.value = null;
         }
     }
 
@@ -350,9 +496,14 @@ export const usePatientStore = defineStore('patient', () => {
      */
     async function fetchPatientSummary(id: string): Promise<PatientSummary | null> {
         try {
-            const res = await fetch(`${BASE_URL}/reception/patients/${encodeURIComponent(id)}/summary`, {
+            let res = await fetch(`${BASE_URL}/patients/${encodeURIComponent(id)}/summary`, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
             });
+            if (!res.ok) {
+                res = await fetch(`${BASE_URL}/reception/patients/${encodeURIComponent(id)}/summary`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+            }
             if (!res.ok) return null;
             const body = (await res.json()) as { data?: Partial<PatientSummary> };
             const data = body.data ?? {};
@@ -380,13 +531,20 @@ export const usePatientStore = defineStore('patient', () => {
         currentPatientId,
         searchResults,
         totalPatientCount,
+        nursingPatients,
+        isNursingPatientsLoading,
+        nursingPatientsError,
         isLoading,
         error,
+        detailError,
         currentPatient,
         setCurrentPatient,
         clearCurrentPatient,
         cachePatient,
+        forgetPatient,
         fetchPatients,
+        fetchNursingPatients,
+        fetchClinicianPatients,
         fetchPatient,
         searchPatients,
         patchPatient,

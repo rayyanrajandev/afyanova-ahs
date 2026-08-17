@@ -58,6 +58,8 @@ use App\Modules\Appointment\Application\Exceptions\AppointmentNotFoundException;
 use App\Modules\Appointment\Presentation\Http\Transformers\AppointmentReferralAuditLogResponseTransformer;
 use App\Modules\Appointment\Presentation\Http\Transformers\AppointmentReferralResponseTransformer;
 use App\Modules\Appointment\Presentation\Http\Transformers\AppointmentResponseTransformer;
+use App\Modules\PatientFlow\Application\UseCases\ResolveConsultationDiagnosticStepsUseCase;
+use App\Modules\PatientFlow\Domain\ValueObjects\PatientFlowStep;
 use App\Modules\Appointment\Infrastructure\Models\AppointmentModel;
 use App\Modules\Admission\Presentation\Http\Transformers\AdmissionResponseTransformer;
 use App\Modules\EmergencyTriage\Presentation\Http\Transformers\EmergencyTriageCaseResponseTransformer;
@@ -598,6 +600,7 @@ class AppointmentController extends Controller
                                 'reason' => $takeoverReason,
                             ],
                         ],
+                        flowSource: 'clinician.consultation_takeover',
                     );
                 } catch (InvalidAppointmentStatusTransitionException $exception) {
                     return $this->invalidStatusTransitionResponse($exception);
@@ -632,6 +635,7 @@ class AppointmentController extends Controller
                         auditMetadata: [
                             'consultation_owner_assigned' => true,
                         ],
+                        flowSource: 'clinician.start_consultation',
                     );
                 } catch (InvalidAppointmentStatusTransitionException $exception) {
                     return $this->invalidStatusTransitionResponse($exception);
@@ -672,6 +676,7 @@ class AppointmentController extends Controller
                     'consultation_owner_user_id' => $actorId,
                     'consultation_owner_assigned_at' => now(),
                 ],
+                flowSource: 'clinician.start_consultation',
             );
         } catch (TenantScopeRequiredForIsolationException $exception) {
             return $this->tenantScopeRequiredResponse($exception->getMessage());
@@ -754,6 +759,32 @@ class AppointmentController extends Controller
             }
         }
 
+        // Releasing a patient from an open consultation back to the provider queue
+        // is, in practice, "I have sent you to the lab" — the doctor keeps the
+        // visit (consultation_started_at is preserved just below) while the
+        // patient physically leaves the room. Naming that on the timeline, and
+        // recording the step the patient is actually moving *to*, is the whole
+        // difference between a board that tracks people and one that tracks
+        // paperwork: derived from the status alone this would read
+        // "waiting_clinician_review" the instant they walked out, before the lab
+        // had even seen them.
+        $flowSource = 'appointment.status_updated';
+        $flowStepOverride = null;
+
+        if ($currentStatus === 'in_consultation' && $targetStatus === 'waiting_provider') {
+            $flowSource = 'clinician.sent_for_diagnostics';
+
+            $diagnosticStep = app(ResolveConsultationDiagnosticStepsUseCase::class)
+                ->resolveForAppointmentIds([$id])[$id]['step'] ?? null;
+
+            // 'with_clinician' is the resolver's "nothing outstanding" answer. A
+            // doctor releasing a patient with no open order is not sending them
+            // anywhere in particular, so the derived step stands.
+            if ($diagnosticStep !== null && $diagnosticStep !== 'with_clinician') {
+                $flowStepOverride = PatientFlowStep::tryFrom($diagnosticStep);
+            }
+        }
+
         try {
             $statusAttributes = [];
             if ($currentStatus === 'in_consultation') {
@@ -783,6 +814,8 @@ class AppointmentController extends Controller
                 reason: $request->input('reason'),
                 actorId: $actorId,
                 statusAttributes: $statusAttributes,
+                flowSource: $flowSource,
+                flowStepOverride: $flowStepOverride,
             );
         } catch (TenantScopeRequiredForIsolationException $exception) {
             return $this->tenantScopeRequiredResponse($exception->getMessage());

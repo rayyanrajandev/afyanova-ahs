@@ -3,6 +3,7 @@
 namespace App\Modules\Laboratory\Application\UseCases;
 
 use App\Modules\Laboratory\Application\Exceptions\LaboratoryOrderVerificationNotAllowedException;
+use App\Modules\Laboratory\Application\Services\RecordLaboratoryFlowTransitionService;
 use App\Modules\Laboratory\Domain\Repositories\LaboratoryOrderAuditLogRepositoryInterface;
 use App\Modules\Laboratory\Domain\Repositories\LaboratoryOrderRepositoryInterface;
 use App\Modules\Laboratory\Domain\ValueObjects\LaboratoryOrderStatus;
@@ -15,6 +16,7 @@ class VerifyLaboratoryOrderResultUseCase
         private readonly LaboratoryOrderRepositoryInterface $laboratoryOrderRepository,
         private readonly LaboratoryOrderAuditLogRepositoryInterface $auditLogRepository,
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
+        private readonly RecordLaboratoryFlowTransitionService $recordFlowTransition,
     ) {}
 
     public function execute(string $id, ?string $verificationNote, ?int $actorId = null): ?array
@@ -87,6 +89,21 @@ class VerifyLaboratoryOrderResultUseCase
                 'critical_result' => $isCriticalResult,
                 'verification_note_required' => $isCriticalResult,
                 'verification_note_provided' => ! blank($verificationNote),
+            ],
+        );
+
+        // Decision 1 of the laboratory flow plan: verification is where the lab
+        // hands the visit back. recordForOrder() re-resolves across every open
+        // order first, so a visit with other labs still running stays put —
+        // the step belongs to the visit, not to this order.
+        $this->recordFlowTransition->recordForOrder(
+            order: $updated,
+            source: 'laboratory.result_verified',
+            actorId: $actorId,
+            isVerification: true,
+            metadata: [
+                'laboratory_order_id' => $id,
+                'critical_result' => $isCriticalResult,
             ],
         );
 

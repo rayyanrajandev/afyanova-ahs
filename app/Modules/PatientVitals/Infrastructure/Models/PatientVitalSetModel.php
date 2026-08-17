@@ -31,6 +31,9 @@ class PatientVitalSetModel extends Model
         'oxygen_saturation_pct',
         'respiratory_rate_bpm',
         'weight_kg',
+        'height_cm',
+        'bmi',
+        'pain_score',
         'entry_state',
     ];
 

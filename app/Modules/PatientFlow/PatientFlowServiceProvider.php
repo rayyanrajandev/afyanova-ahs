@@ -6,6 +6,8 @@ use App\Modules\Appointment\Domain\Events\AppointmentStatusChanged;
 use App\Modules\Laboratory\Domain\Events\LaboratoryOrderCompleted;
 use App\Modules\PatientFlow\Application\Listeners\BroadcastPatientFlowBoardUpdate;
 use App\Modules\PatientFlow\Application\Listeners\LogOrderCompletionForOrderingClinician;
+use App\Modules\PatientFlow\Domain\Repositories\PatientFlowEventRepositoryInterface;
+use App\Modules\PatientFlow\Infrastructure\Repositories\EloquentPatientFlowEventRepository;
 use App\Modules\Pharmacy\Domain\Events\PharmacyOrderDispensed;
 use App\Modules\Radiology\Domain\Events\RadiologyOrderCompleted;
 use App\Modules\ClinicalProcedure\Domain\Events\ClinicalProcedureOrderCompleted;
@@ -16,6 +18,14 @@ use Illuminate\Support\ServiceProvider;
 
 class PatientFlowServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        $this->app->bind(
+            PatientFlowEventRepositoryInterface::class,
+            EloquentPatientFlowEventRepository::class,
+        );
+    }
+
     public function boot(): void
     {
         // Mode A (shadow log, always active) of

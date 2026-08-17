@@ -18,32 +18,53 @@ class DskRadiologyClinicalCatalogSeeder extends Seeder
             return;
         }
 
-        $deptId = DepartmentModel::where('facility_id', $facility->id)->where('code', 'OPD')->value('id');
+        $deptId = DepartmentModel::where('facility_id', $facility->id)->where('code', 'RAD')->value('id');
 
         if (!$deptId) {
-            $this->command?->error('OPD department not found for DSK. Run DskDepartmentsSeeder first.');
+            $this->command?->error('RAD department not found for DSK. Run DskDepartmentsSeeder first.');
             return;
         }
 
         $items = [
             [
-                'code' => 'RAD-US-ABD-001',
+                'code' => 'RAD-US-ABDOMEN',
                 'name' => 'Abdominal Ultrasound',
                 'category' => 'ultrasound',
                 'unit' => 'study',
                 'description' => 'An imaging test that uses sound waves to assess abdominal organs and detect abnormalities.',
             ],
             [
-                'code' => 'RAD-US-PEL-001',
+                'code' => 'RAD-US-PELVIS',
                 'name' => 'Pelvic Ultrasound',
                 'category' => 'ultrasound',
                 'unit' => 'study',
                 'description' => 'An imaging test used to examine the uterus, ovaries, cervix, and other pelvic organs.',
             ],
+            [
+                'code' => 'RAD-US-OBSTETRIC',
+                'name' => 'Obstetric Ultrasound',
+                'category' => 'ultrasound',
+                'unit' => 'study',
+                'description' => 'An imaging test used for fetal viability assessment, gestational age estimation, anomaly screening, and placenta localization during pregnancy.',
+            ],
+            [
+                'code' => 'RAD-US-THYROID',
+                'name' => 'Thyroid / Neck Ultrasound',
+                'category' => 'ultrasound',
+                'unit' => 'study',
+                'description' => 'An imaging test to evaluate the thyroid gland, adjacent neck structures, and detect nodules or masses.',
+            ],
+            [
+                'code' => 'RAD-US-SCROTAL',
+                'name' => 'Scrotal Ultrasound',
+                'category' => 'ultrasound',
+                'unit' => 'study',
+                'description' => 'An imaging test used to evaluate testicular and scrotal abnormalities including masses, torsion, and hydrocele.',
+            ],
         ];
 
         foreach ($items as $item) {
-            ClinicalCatalogItemModel::firstOrCreate(
+            ClinicalCatalogItemModel::updateOrCreate(
                 [
                     'facility_id' => $facility->id,
                     'catalog_type' => 'radiology_procedure',

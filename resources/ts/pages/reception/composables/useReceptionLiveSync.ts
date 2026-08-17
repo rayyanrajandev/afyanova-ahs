@@ -55,47 +55,30 @@ export interface UseReceptionLiveSyncOptions {
    * special case that could drift from it.
    */
   onPatientCalled: (payload: AppointmentCalledPayload) => void;
+  /** Called when Nursing returns a patient to Reception for administrative verification. */
+  onPatientReturned?: (payload: { appointmentId: string; patientId?: string; patientName: string; reason: string }) => void;
 }
 
 export function useReceptionLiveSync(options: UseReceptionLiveSyncOptions) {
   const page = usePage();
-  // Shared on every Inertia response (HandleInertiaRequests::share()),
-  // present synchronously in the initial page object — not an async
-  // fetch — so this is already resolved by the time Index.vue's setup()
-  // reaches this call, same timing guarantee AppShell.vue's own
-  // `page.props.auth` read relies on.
   const platform = page.props.platform as PlatformScopeProp | undefined;
   const facilityId = platform?.scope?.facility?.id ?? null;
 
-  // No facility scope (e.g. a platform-superadmin session with none
-  // selected) — Reception itself has nothing facility-scoped to show in
-  // that case either, so there's nothing to subscribe to. Skipping the
-  // useEcho() call entirely is safe here: unlike React, Vue's Composition
-  // API has no fixed hook-call-order requirement (reactivity is tracked
-  // via the active component instance, not a call-index array), so an
-  // early return before a composable that itself uses onMounted/onUnmounted
-  // internally is not a rules-of-hooks violation.
   if (!facilityId) return;
 
-  // Leading dot on the event name (bug found + fixed 2026-08-11, confirmed
-  // live via a raw WebSocket-frame capture): PatientFlowBoardUpdated uses
-  // broadcastAs() to send the bare name "board.updated" over the wire, no
-  // "App.Events." namespace prefix at all — but Echo's default event
-  // formatter auto-prefixes any listener event name that doesn't start
-  // with "." (Laravel's own documented convention for custom
-  // broadcastAs() names: https://laravel.com/docs/broadcasting#listening-for-events).
-  // Without the dot this silently bound to "App\Events\board\updated",
-  // which the incoming frame's literal "board.updated" never matched —
-  // no error, no console warning, just a subscription that looked
-  // successful (pusher_internal:subscription_succeeded fired) but never
-  // called this callback.
   useEcho(`patient-flow.${facilityId}`, ".board.updated", () => {
     options.onBoardUpdated();
   });
 
-  // Reception's own reception-queue.{facilityId} channel (not patient-flow
-  // — Call is Reception-only signaling with its own content-bearing
-  // payload, see AppointmentCalled's docblock for why it isn't reused).
+  useEcho(
+    `patient-flow.${facilityId}`,
+    ".patient.returned",
+    (payload: { appointmentId: string; patientId?: string; patientName: string; reason: string }) => {
+      options.onBoardUpdated();
+      options.onPatientReturned?.(payload);
+    },
+  );
+
   useEcho(
     `reception-queue.${facilityId}`,
     ".queue.appointment-called",

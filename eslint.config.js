@@ -13,7 +13,7 @@ export default defineConfigWithVueTs(
         // Volume 3.6 Finding F5). It was a leftover starter-kit path that, left
         // in place, would have silently exempted the component library — the
         // one place afyanova/no-hardcoded-values most needs to run.
-        ignores: ['vendor', 'node_modules', 'public', 'bootstrap/ssr', 'tailwind.config.js', 'vite.config.ts'],
+        ignores: ['vendor/**', 'node_modules/**', 'public/**', 'bootstrap/**', 'storage/**', '.agents/**', 'tests/**', 'tailwind.config.js', 'vite.config.ts', 'vitest.config.ts'],
     },
     {
         plugins: {

@@ -311,7 +311,7 @@ it('exposes consultationStep on in_consultation entries, reusing GetActiveVisitJ
     expect($entries->firstWhere('appointmentId', (string) $withClinicianAppointment->id)['consultationStep'])->toBe('with_clinician');
 });
 
-it('leaves consultationStep null for stages other than in_consultation', function (): void {
+it('leaves consultationStep null for waiting_triage, where nothing has been ordered yet', function (): void {
     $user = queueUser();
     checkInViaApi($user, queuePatient()->id, 'walk_in');
 
@@ -321,6 +321,73 @@ it('leaves consultationStep null for stages other than in_consultation', functio
 
     $entry = collect($response->json('data'))->first();
 
+    expect($entry['consultationStep'])->toBeNull();
+});
+
+/*
+ * Laboratory flow plan, phase 1. updateProviderWorkflow() releases a patient
+ * back to waiting_provider when the doctor sends them out for diagnostics, so
+ * a waiting_provider row is where a patient standing in the lab actually sits
+ * — this queue read plain "waiting for provider" for that entire time.
+ */
+it('exposes consultationStep on waiting_provider entries, so a patient sent out for labs is visible as in_lab', function (): void {
+    $user = queueUser();
+
+    $patient = queuePatient();
+    $appointment = AppointmentModel::query()->create([
+        'appointment_number' => 'APTQ'.strtoupper(Str::random(8)),
+        'patient_id' => $patient->id,
+        'department' => 'Outpatient',
+        'scheduled_at' => now()->addHour(),
+        'duration_minutes' => 30,
+        'reason' => 'Consultation',
+        'status' => 'waiting_provider',
+        // Sent out for labs, will return — consultation_started_at preserved.
+        'consultation_started_at' => now()->subMinutes(30),
+    ]);
+    \App\Modules\Laboratory\Infrastructure\Models\LaboratoryOrderModel::query()->create([
+        'order_number' => 'LAB'.strtoupper(Str::random(8)),
+        'patient_id' => $patient->id,
+        'appointment_id' => $appointment->id,
+        'ordered_at' => now(),
+        'test_code' => 'LOINC:57021-8',
+        'test_name' => 'Complete Blood Count',
+        'priority' => 'routine',
+        'status' => 'collected',
+    ]);
+
+    $response = $this->actingAs($user)
+        ->getJson('/api/v1/reception/queue?stage=waiting_provider')
+        ->assertOk();
+
+    $entry = collect($response->json('data'))->firstWhere('appointmentId', (string) $appointment->id);
+
+    expect($entry['consultationStep'])->toBe('in_lab');
+});
+
+it('leaves consultationStep null on a waiting_provider entry with no open order, rather than claiming with_clinician', function (): void {
+    $user = queueUser();
+
+    $patient = queuePatient();
+    $appointment = AppointmentModel::query()->create([
+        'appointment_number' => 'APTQ'.strtoupper(Str::random(8)),
+        'patient_id' => $patient->id,
+        'department' => 'Outpatient',
+        'scheduled_at' => now()->addHour(),
+        'duration_minutes' => 30,
+        'reason' => 'Consultation',
+        'status' => 'waiting_provider',
+        'consultation_started_at' => now()->subMinutes(30),
+    ]);
+
+    $response = $this->actingAs($user)
+        ->getJson('/api/v1/reception/queue?stage=waiting_provider')
+        ->assertOk();
+
+    $entry = collect($response->json('data'))->firstWhere('appointmentId', (string) $appointment->id);
+
+    // 'with_clinician' is the resolver's "nothing outstanding" answer. On a
+    // queued row it would assert the patient is in a room with a doctor.
     expect($entry['consultationStep'])->toBeNull();
 });
 

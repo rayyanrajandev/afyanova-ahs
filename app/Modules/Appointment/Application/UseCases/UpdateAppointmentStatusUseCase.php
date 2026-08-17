@@ -9,6 +9,8 @@ use App\Modules\Appointment\Domain\Repositories\AppointmentAuditLogRepositoryInt
 use App\Modules\Appointment\Domain\Repositories\AppointmentRepositoryInterface;
 use App\Modules\Appointment\Domain\ValueObjects\AppointmentStatus;
 use App\Modules\Billing\Application\UseCases\AutoCaptureConsultationFeeUseCase;
+use App\Modules\PatientFlow\Application\Services\RecordPatientFlowTransitionService;
+use App\Modules\PatientFlow\Domain\ValueObjects\PatientFlowStep;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -22,6 +24,7 @@ class UpdateAppointmentStatusUseCase
         private readonly AppointmentAuditLogRepositoryInterface $auditLogRepository,
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
         private readonly AutoCaptureConsultationFeeUseCase $autoCaptureConsultationFeeUseCase,
+        private readonly RecordPatientFlowTransitionService $recordPatientFlowTransition,
     ) {}
 
     public function getLastAutoCaptureResult(): ?array
@@ -37,6 +40,8 @@ class UpdateAppointmentStatusUseCase
         array $statusAttributes = [],
         array $auditMetadata = [],
         bool $isFacilitySuperAdmin = false,
+        string $flowSource = 'appointment.status_updated',
+        ?PatientFlowStep $flowStepOverride = null,
     ): ?array {
         $this->tenantIsolationWriteGuard->assertTenantScopeForWrite();
 
@@ -139,6 +144,45 @@ class UpdateAppointmentStatusUseCase
                 ], true),
             ], $auditMetadata),
         );
+
+        // The flow log (2026-08-16). Every status change that reaches this use
+        // case is also a step change on the board, and this is where it gets
+        // written down rather than re-inferred later. `appointmentStatusAlsoChanged`
+        // is true because the AppointmentStatusChanged dispatched just below
+        // already triggers the board broadcast — without it the board would
+        // refresh twice for one action.
+        // The step vocabulary is deliberately richer than the status enum, so a
+        // caller may name a step the status alone cannot express. Returning a
+        // patient to reception is the case that forced this: the status really
+        // is waiting_triage — they are back in reception's queue — but
+        // "returned_to_reception" is what happened, and deriving from the status
+        // would report it as an ordinary check-in and lose the distinction the
+        // step exists to draw.
+        $toStep = $flowStepOverride ?? PatientFlowStep::fromAppointmentStatus(
+            status: (string) ($updated['status'] ?? ''),
+            hasTriageOwner: ($updated['triage_owner_user_id'] ?? null) !== null,
+            hasConsultationStarted: ($updated['consultation_started_at'] ?? null) !== null,
+        );
+
+        if ($toStep !== null) {
+            $this->recordPatientFlowTransition->record(
+                toStep: $toStep,
+                patientId: (string) $updated['patient_id'],
+                appointmentId: (string) $updated['id'],
+                actorId: $actorId,
+                // Callers name the real action (a doctor starting a consultation,
+                // a takeover) so the timeline staff read says what happened
+                // rather than "Visit status updated" for every transition.
+                source: $flowSource,
+                reason: $updated['status_reason'] ?? null,
+                metadata: array_filter([
+                    'appointmentStatus' => $updated['status'] ?? null,
+                    'takeover' => $auditMetadata['consultation_takeover'] ?? null,
+                ], static fn ($value) => $value !== null),
+                facilityId: $updated['facility_id'] ?? null,
+                appointmentStatusAlsoChanged: true,
+            );
+        }
 
         DB::afterCommit(function () use ($existing, $updated, $actorId): void {
             event(new AppointmentStatusChanged(

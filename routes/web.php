@@ -2,6 +2,7 @@
 
 use App\Modules\Platform\Presentation\Http\Controllers\PlatformBrandingController;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -16,35 +17,96 @@ Route::get('auth/csrf-token', function (Request $request) {
     ]);
 })->middleware('throttle:30,1')->name('auth.csrf-token.web');
 
-Route::redirect('/', '/reception')->name('home');
+// Dynamic smart workspace redirector & Public Landing Page
+Route::get('/', function (Request $request) {
+    $user = $request->user();
+    if (! $user) {
+        return Inertia::render('Landing');
+    }
+
+    if (Gate::allows('clinician.access')) {
+        return redirect('/clinician');
+    }
+    if (Gate::allows('nursing.access')) {
+        return redirect('/nursing');
+    }
+    if (Gate::allows('reception.access')) {
+        return redirect('/reception');
+    }
+    if (Gate::allows('laboratory.access')) {
+        return redirect('/laboratory');
+    }
+    if (Gate::allows('radiology.access')) {
+        return redirect('/radiology');
+    }
+    if (Gate::allows('pharmacy.access')) {
+        return redirect('/pharmacy');
+    }
+    if (Gate::allows('cashier.access')) {
+        return redirect('/cashier');
+    }
+    if (Gate::allows('inventory.access')) {
+        return redirect('/inventory');
+    }
+    if (Gate::allows('admin.access')) {
+        return redirect('/admin');
+    }
+
+    return redirect('/reception');
+})->name('home');
+
+Route::get('landing', fn () => Inertia::render('Landing'))->name('landing');
 
 Route::get('pending-setup', function () {
     return Inertia::render('errors/PendingSetup');
 })->middleware(['auth'])->name('pending-setup');
 
-Route::get('dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified', 'user.has-role', 'session.limits'])->name('dashboard');
+Route::get('dashboard', function (Request $request) {
+    return redirect('/');
+})->middleware(['auth', 'verified', 'session.limits'])->name('dashboard');
 
 /*
 |--------------------------------------------------------------------------
 | Afyanova Workspaces (Volume 1.3 §5.1 — URL scheme)
 |--------------------------------------------------------------------------
-| Each workspace has a real, deep-linkable URL. Workspaces are built as
-| thin compositions of the Tier 0+1 platform (shell, tokens, components).
-| The Reception workspace is the pilot (Volume 2.1).
+| Each workspace has a real, deep-linkable URL gated by dedicated RBAC gates.
 |
 */
-// RBAC gate (Volume 2.1 §13, Volume 3.7 audit 2026-08-10): previously only
-// `auth`+`verified` — any authenticated user could load this page even with
-// zero reception permissions (every API call underneath would then 403, but
-// the page shell, nav icon, and layout were visible regardless). Gated on
-// `patients.read` — the same permission `GET reception/patients` already
-// requires (routes/api.php) — and `session.limits`, matching /dashboard's
-// idle/absolute session timeout (Volume 2.1 §13 "Session").
 Route::get('reception', fn () => Inertia::render('reception/Index'))
-    ->middleware(['auth', 'verified', 'session.limits', 'can:patients.read'])
+    ->middleware(['auth', 'verified', 'session.limits', 'can:reception.access'])
     ->name('reception');
+
+Route::get('clinician', fn () => Inertia::render('clinician/Index'))
+    ->middleware(['auth', 'verified', 'session.limits', 'can:clinician.access'])
+    ->name('clinician');
+
+Route::get('nursing', fn () => Inertia::render('nursing/Index'))
+    ->middleware(['auth', 'verified', 'session.limits', 'can:nursing.access'])
+    ->name('nursing');
+
+Route::get('laboratory', fn () => Inertia::render('laboratory/Index'))
+    ->middleware(['auth', 'verified', 'session.limits', 'can:laboratory.access'])
+    ->name('laboratory');
+
+Route::get('radiology', fn () => Inertia::render('radiology/Index'))
+    ->middleware(['auth', 'verified', 'session.limits', 'can:radiology.access'])
+    ->name('radiology');
+
+Route::get('pharmacy', fn () => Inertia::render('pharmacy/Index'))
+    ->middleware(['auth', 'verified', 'session.limits', 'can:pharmacy.access'])
+    ->name('pharmacy');
+
+Route::get('cashier', fn () => Inertia::render('cashier/Index'))
+    ->middleware(['auth', 'verified', 'session.limits', 'can:cashier.access'])
+    ->name('cashier');
+
+Route::get('inventory', fn () => Inertia::render('inventory/Index'))
+    ->middleware(['auth', 'verified', 'session.limits', 'can:inventory.access'])
+    ->name('inventory');
+
+Route::get('admin', fn () => Inertia::render('admin/Index'))
+    ->middleware(['auth', 'verified', 'session.limits', 'can:admin.access'])
+    ->name('admin');
 
 /*
 |--------------------------------------------------------------------------
@@ -73,6 +135,10 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::get('platform/admin/roles', fn () => Inertia::render('platform/admin/roles/Index'))
         ->middleware('can:platform.rbac.read')
         ->name('platform.admin.roles.page');
+
+    Route::get('patient-flow/board', fn () => Inertia::render('patient-flow/Board'))
+        ->middleware('can:appointments.read')
+        ->name('patient-flow.board.page');
 });
 
 require __DIR__.'/settings.php';

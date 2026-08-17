@@ -198,6 +198,8 @@ function grantMedicalRecordAuthorPermissions(User $user): void
         'medical.records.finalize',
         'medical.records.amend',
         'medical.records.attest',
+        'medical.records.update-status',
+        'medical.records.draft.update',
     ] as $permission) {
         $user->givePermissionTo($permission);
     }
@@ -1267,6 +1269,8 @@ it('lists encounter audit logs when authorized', function (): void {
         ->assertCreated()
         ->json('data');
 
+    $user->givePermissionTo('medical.records.audit-logs.view');
+
     $this->actingAs($user)
         ->getJson('/api/v1/encounters/'.$created['encounterId'].'/audit-logs?perPage=5')
         ->assertOk()
@@ -1922,6 +1926,8 @@ it('lists medical record audit logs when authorized', function (): void {
         'created_at' => now()->addSecond(),
     ]);
 
+    $user->givePermissionTo('medical.records.audit-logs.view');
+
     $this->actingAs($user)
         ->getJson('/api/v1/medical-records/'.$created['id'].'/audit-logs?perPage=2')
         ->assertOk()
@@ -1947,10 +1953,10 @@ it('forbids medical record audit log access without permission', function (): vo
 });
 
 it('forbids medical record audit logs when gate override denies', function (): void {
-    Gate::define('medical-records.view-audit-logs', static fn (): bool => false);
+    Gate::define('medical.records.audit-logs.view', static fn (): bool => false);
 
     $user = makeMedicalRecordUser();
-    $user->givePermissionTo('medical-records.view-audit-logs');
+    $user->givePermissionTo('medical.records.audit-logs.view');
     $patient = makeMedicalRecordPatient();
 
     $created = $this->actingAs($user)
@@ -1964,7 +1970,7 @@ it('forbids medical record audit logs when gate override denies', function (): v
 
 it('returns 404 for medical record audit logs of unknown id', function (): void {
     $user = makeMedicalRecordUser();
-    $user->givePermissionTo('medical-records.view-audit-logs');
+    $user->givePermissionTo('medical.records.audit-logs.view');
 
     $this->actingAs($user)
         ->getJson('/api/v1/medical-records/060afc03-2ce9-4b1d-a1c2-326d2722ce25/audit-logs')

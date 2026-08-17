@@ -63,6 +63,11 @@ class EncounterModel extends Model
         return $this->belongsTo(PatientModel::class, 'patient_id');
     }
 
+    public function appointment(): BelongsTo
+    {
+        return $this->belongsTo(\App\Modules\Appointment\Infrastructure\Models\AppointmentModel::class, 'appointment_id');
+    }
+
     public function diagnoses(): HasMany
     {
         return $this->hasMany(EncounterDiagnosisModel::class, 'encounter_id');

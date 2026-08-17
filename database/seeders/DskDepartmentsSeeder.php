@@ -98,6 +98,35 @@ class DskDepartmentsSeeder extends Seeder
                 'is_patient_facing' => false,
                 'is_appointmentable' => false,
             ],
+            [
+                'code' => 'RAD',
+                'name' => 'Radiology & Imaging Department',
+                'service_type' => 'Diagnostic',
+                'description' => 'Provides diagnostic imaging and ultrasound services at DSK Dispensary.',
+                'is_patient_facing' => true,
+                'is_appointmentable' => false,
+            ],
+            [
+                'code' => 'EMD',
+                'name' => 'Emergency Department',
+                // A distinct service_type, not 'Clinical': it is how the
+                // emergency destination is resolved without a magic code, and it
+                // groups correctly in the routing options list.
+                'service_type' => 'Emergency',
+                'description' => 'Receives emergency arrivals for immediate assessment and stabilisation at DSK Dispensary. Handles walk-in emergencies, resuscitation, and escalation from triage when a patient deteriorates.',
+                'is_patient_facing' => true,
+                // Routable, so a nurse can escalate a deteriorating patient to it
+                // from triage.
+                'is_appointmentable' => true,
+            ],
+            [
+                'code' => 'FDS',
+                'name' => 'Front Desk / Reception Department',
+                'service_type' => 'Administrative',
+                'description' => 'Handles patient registration, reception, triage queue routing, and appointment check-in at DSK Dispensary.',
+                'is_patient_facing' => true,
+                'is_appointmentable' => false,
+            ],
         ];
 
         foreach ($departments as $dept) {

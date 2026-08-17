@@ -13,20 +13,26 @@ import { useI18n } from 'vue-i18n';
 
 interface SafeI18n {
     t: (key: string, options?: Record<string, unknown>) => string;
+    te: (key: string) => boolean;
     locale: string;
 }
 
 export function useI18nSafe(): SafeI18n {
     try {
-        const { t, locale } = useI18n();
+        const { t, te, locale } = useI18n({ useScope: 'global' });
         return {
-            t: (key, options) => t(key, options as never),
+            t: (key, options) => {
+                void locale.value;
+                return t(key, options as never);
+            },
+            te: (key) => te(key),
             locale: (locale.value as string) ?? 'en',
         };
     } catch {
         // i18n plugin not installed — fall back to showing the key
         return {
             t: (key) => key,
+            te: () => false,
             locale: 'en',
         };
     }

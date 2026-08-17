@@ -1,110 +1,223 @@
 /**
  * EmptyState — composite component (Volume 1.2 §4.2, §14)
  * =========================================================
- * Shown when no data exists. Anatomy (Volume 1.2 §14.2):
- *   [ Illustration ]   ← --color-muted (SVG, not emoji)
- *   No patients found  ← --text-lg, --font-weight-medium
- *   Try adjusting...   ← --text-sm, --color-muted-foreground
- *   [ Register Patient ] ← primary or secondary action
- *
- * Rules (§14.3):
- *   - Every empty state has guidance text + at least one action.
- *   - Illustration is an SVG (consistent across platforms), uses --color-muted.
- *   - aria-label or visually-hidden text describes the state for screen readers.
+ * Modern 2027 Enterprise clinical empty state with contextual
+ * illustrations, status pill badges, and dual action triggers.
  */
 
 <script setup lang="ts">
+import {
+    Activity,
+    Calendar,
+    ClipboardList,
+    FlaskConical,
+    Inbox,
+    Package,
+    Pill,
+    Receipt,
+    Search,
+    Stethoscope,
+    Users,
+} from 'lucide-vue-next';
+import type { Component } from 'vue';
 import { Button } from '@/components/ui/button';
 
-withDefaults(
+export type EmptyStateIllustration =
+    | 'users'
+    | 'stethoscope'
+    | 'clipboard'
+    | 'flask'
+    | 'activity'
+    | 'pill'
+    | 'receipt'
+    | 'package'
+    | 'search'
+    | 'inbox'
+    | 'calendar';
+
+const props = withDefaults(
     defineProps<{
         title: string;
         description?: string;
+        badge?: string;
+        badgeDotColor?: string;
         actionLabel?: string;
-        /** Optional custom SVG illustration slot content. */
-        illustration?: 'search' | 'inbox' | 'clipboard' | 'users';
+        actionIcon?: Component;
+        actionVariant?: 'default' | 'outline' | 'secondary' | 'ghost';
+        secondaryActionLabel?: string;
+        secondaryActionIcon?: Component;
+        secondaryActionVariant?: 'default' | 'outline' | 'secondary' | 'ghost';
+        illustration?: EmptyStateIllustration;
+        compact?: boolean;
     }>(),
     {
         description: undefined,
+        badge: undefined,
+        badgeDotColor: 'bg-emerald-500',
         actionLabel: undefined,
+        actionIcon: undefined,
+        actionVariant: 'default',
+        secondaryActionLabel: undefined,
+        secondaryActionIcon: undefined,
+        secondaryActionVariant: 'outline',
         illustration: 'inbox',
+        compact: false,
     },
 );
 
 const emit = defineEmits<{
     action: [];
+    secondaryAction: [];
 }>();
 </script>
 
 <template>
     <div
-        class="flex h-full flex-col items-center justify-center gap-3 px-6 py-16 text-center"
+        class="flex h-full w-full flex-col items-center justify-center text-center select-none transition-all duration-300"
+        :class="compact ? 'gap-2.5 px-3 py-6' : 'gap-3 px-6 py-12'"
         role="status"
         :aria-label="title"
     >
-        <!-- Illustration (SVG, theme-aware via --color-muted) -->
-        <div class="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
-            <!-- Search -->
-            <svg
-                v-if="illustration === 'search'"
-                class="h-6 w-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
+        <!-- Optional contextual badge pill -->
+        <slot name="badge">
+            <div
+                v-if="badge"
+                class="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-muted/60 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground shadow-2xs backdrop-blur-xs"
             >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <!-- Inbox -->
-            <svg
-                v-else-if="illustration === 'inbox'"
-                class="h-6 w-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
+                <span
+                    class="size-1.5 rounded-full animate-pulse shrink-0"
+                    :class="badgeDotColor"
+                    aria-hidden="true"
+                />
+                <span class="truncate">{{ badge }}</span>
+            </div>
+        </slot>
+
+        <!-- Illustration container with layered glassmorphism glow -->
+        <slot name="icon">
+            <div
+                class="relative flex items-center justify-center rounded-2xl border border-primary/20 bg-linear-to-b from-primary/10 via-primary/5 to-muted/40 shadow-xs ring-1 ring-border/50 text-primary transition-transform duration-300 hover:scale-105"
+                :class="compact ? 'h-10 w-10 p-2' : 'h-14 w-14 p-3.5'"
             >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-            </svg>
-            <!-- Clipboard -->
-            <svg
-                v-else-if="illustration === 'clipboard'"
-                class="h-6 w-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
+                <!-- Subtle radial ambient glow behind the icon -->
+                <div
+                    class="absolute inset-0 -z-10 rounded-2xl bg-primary/10 blur-md"
+                    aria-hidden="true"
+                />
+
+                <Stethoscope
+                    v-if="illustration === 'stethoscope'"
+                    :class="compact ? 'size-5' : 'size-7'"
+                    aria-hidden="true"
+                />
+                <Users
+                    v-else-if="illustration === 'users'"
+                    :class="compact ? 'size-5' : 'size-7'"
+                    aria-hidden="true"
+                />
+                <ClipboardList
+                    v-else-if="illustration === 'clipboard'"
+                    :class="compact ? 'size-5' : 'size-7'"
+                    aria-hidden="true"
+                />
+                <FlaskConical
+                    v-else-if="illustration === 'flask'"
+                    :class="compact ? 'size-5' : 'size-7'"
+                    aria-hidden="true"
+                />
+                <Activity
+                    v-else-if="illustration === 'activity'"
+                    :class="compact ? 'size-5' : 'size-7'"
+                    aria-hidden="true"
+                />
+                <Pill
+                    v-else-if="illustration === 'pill'"
+                    :class="compact ? 'size-5' : 'size-7'"
+                    aria-hidden="true"
+                />
+                <Receipt
+                    v-else-if="illustration === 'receipt'"
+                    :class="compact ? 'size-5' : 'size-7'"
+                    aria-hidden="true"
+                />
+                <Package
+                    v-else-if="illustration === 'package'"
+                    :class="compact ? 'size-5' : 'size-7'"
+                    aria-hidden="true"
+                />
+                <Search
+                    v-else-if="illustration === 'search'"
+                    :class="compact ? 'size-5' : 'size-7'"
+                    aria-hidden="true"
+                />
+                <Calendar
+                    v-else-if="illustration === 'calendar'"
+                    :class="compact ? 'size-5' : 'size-7'"
+                    aria-hidden="true"
+                />
+                <Inbox
+                    v-else
+                    :class="compact ? 'size-5' : 'size-7'"
+                    aria-hidden="true"
+                />
+            </div>
+        </slot>
+
+        <!-- Typography Hierarchy -->
+        <div class="space-y-1 max-w-sm">
+            <h3
+                class="font-semibold tracking-tight text-foreground"
+                :class="compact ? 'text-xs sm:text-sm' : 'text-sm sm:text-base'"
             >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-            </svg>
-            <!-- Users -->
-            <svg
-                v-else
-                class="h-6 w-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
+                {{ title }}
+            </h3>
+
+            <p
+                v-if="description"
+                class="text-muted-foreground leading-relaxed text-balance"
+                :class="compact ? 'text-[11.5px] max-w-[260px]' : 'text-xs sm:text-sm max-w-xs sm:max-w-sm'"
             >
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
+                {{ description }}
+            </p>
         </div>
 
-        <!-- Title -->
-        <h3 class="text-lg font-medium text-foreground">{{ title }}</h3>
+        <!-- Action Triggers -->
+        <slot name="actions">
+            <slot name="action">
+                <div
+                    v-if="actionLabel || secondaryActionLabel"
+                    class="mt-1 flex flex-wrap items-center justify-center gap-2"
+                >
+                    <Button
+                        v-if="actionLabel"
+                        :variant="actionVariant"
+                        :size="compact ? 'xs' : 'sm'"
+                        class="gap-1.5 cursor-pointer font-medium shadow-2xs"
+                        @click="emit('action')"
+                    ><component
+                            :is="actionIcon"
+                            v-if="actionIcon"
+                            class="size-3.5"
+                            aria-hidden="true"
+                        />{{ actionLabel }}</Button>
 
-        <!-- Description / guidance -->
-        <p v-if="description" class="max-w-sm text-sm text-muted-foreground">
-            {{ description }}
-        </p>
+                    <Button
+                        v-if="secondaryActionLabel"
+                        :variant="secondaryActionVariant"
+                        :size="compact ? 'xs' : 'sm'"
+                        class="gap-1.5 cursor-pointer font-medium"
+                        @click="emit('secondaryAction')"
+                    ><component
+                            :is="secondaryActionIcon"
+                            v-if="secondaryActionIcon"
+                            class="size-3.5"
+                            aria-hidden="true"
+                        />{{ secondaryActionLabel }}</Button>
+                </div>
+            </slot>
+        </slot>
 
-        <!-- Action -->
-        <Button
-            v-if="actionLabel"
-            class="mt-1"
-            @click="emit('action')"
-        >
-            {{ actionLabel }}
-        </Button>
+        <!-- Optional custom footer slot -->
+        <slot name="extra" />
     </div>
 </template>

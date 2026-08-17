@@ -40,6 +40,27 @@ export function formatClinicalTime(iso: string | null | undefined): string {
   });
 }
 
+/**
+ * True when an ISO datetime falls on today's date, compared in the
+ * browser's local time on both sides (Volume 3.7 T4.6 follow-up) — not UTC.
+ * `scheduledAt` round-trips through the backend as a UTC instant (see
+ * useAppointmentScheduling.ts's own timezone bug-fix docblock), so
+ * comparing raw date substrings would misjudge any appointment near
+ * midnight in East Africa Time. `Date`'s local getters (`getFullYear`/
+ * `getMonth`/`getDate`) already do this conversion correctly.
+ */
+export function isToday(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return false;
+  const now = new Date();
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  );
+}
+
 export function patientDisplayName(patient: Patient): string {
   return `${patient.name[0]?.given?.join(" ") ?? ""} ${patient.name[0]?.family ?? ""}`.trim();
 }

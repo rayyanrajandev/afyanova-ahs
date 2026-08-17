@@ -103,6 +103,122 @@ class AppServiceProvider extends ServiceProvider
             return null;
         });
 
+        // Workspace-level access gates
+        Gate::define('reception.access', function ($user): bool {
+            if ($this->isFacilitySuperAdmin($user)) return true;
+            if (method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo('reception.access')) return true;
+            $roles = method_exists($user, 'roleCodes') ? $user->roleCodes() : [];
+            return in_array('receptionist', $roles, true)
+                || in_array('admin.registration', $roles, true)
+                || in_array('registration_clerk', $roles, true)
+                || (method_exists($user, 'hasPermissionTo') && (bool) $user->hasPermissionTo('appointment.check-in'));
+        });
+
+        Gate::define('clinician.access', function ($user): bool {
+            if ($this->isFacilitySuperAdmin($user)) return true;
+            if (method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo('clinician.access')) return true;
+            $roles = method_exists($user, 'roleCodes') ? $user->roleCodes() : [];
+            return in_array('clinical_officer', $roles, true)
+                || in_array('clinical.officer', $roles, true)
+                || in_array('medical-officer', $roles, true)
+                || in_array('clinical.physician', $roles, true)
+                || in_array('doctor', $roles, true)
+                || in_array('physician', $roles, true)
+                || in_array('surgeon', $roles, true)
+                || in_array('clinical.surgeon', $roles, true)
+                || (method_exists($user, 'hasPermissionTo') && (bool) $user->hasPermissionTo('medication.prescribe'));
+        });
+
+        Gate::define('nursing.access', function ($user): bool {
+            if ($this->isFacilitySuperAdmin($user)) return true;
+            if (method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo('nursing.access')) return true;
+            $roles = method_exists($user, 'roleCodes') ? $user->roleCodes() : [];
+            return in_array('nurse', $roles, true)
+                || in_array('nurse-officer', $roles, true)
+                || in_array('clinical.nurse', $roles, true)
+                || in_array('nurse-midwife', $roles, true)
+                || in_array('clinical.nurse.midwife', $roles, true)
+                || in_array('medical_attendant', $roles, true)
+                || (method_exists($user, 'hasPermissionTo') && (bool) $user->hasPermissionTo('inpatient.ward.create-task'));
+        });
+
+        Gate::define('laboratory.access', function ($user): bool {
+            if ($this->isFacilitySuperAdmin($user)) return true;
+            if (method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo('laboratory.access')) return true;
+            $roles = method_exists($user, 'roleCodes') ? $user->roleCodes() : [];
+            return in_array('lab_technician', $roles, true)
+                || in_array('lab-technologist', $roles, true)
+                || in_array('lab.staff', $roles, true)
+                || in_array('lab-supervisor', $roles, true)
+                || in_array('lab.supervisor', $roles, true)
+                || in_array('lab-manager', $roles, true)
+                || in_array('lab.manager', $roles, true)
+                || (method_exists($user, 'hasPermissionTo') && (bool) $user->hasPermissionTo('lab.result.enter'));
+        });
+
+        Gate::define('radiology.access', function ($user): bool {
+            if ($this->isFacilitySuperAdmin($user)) return true;
+            if (method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo('radiology.access')) return true;
+            $roles = method_exists($user, 'roleCodes') ? $user->roleCodes() : [];
+            return in_array('radiographer', $roles, true)
+                || in_array('radiology.staff', $roles, true)
+                || in_array('radiographer-senior', $roles, true)
+                || in_array('radiology.supervisor', $roles, true)
+                || in_array('radiologist', $roles, true)
+                || (method_exists($user, 'hasPermissionTo') && (bool) $user->hasPermissionTo('imaging.perform'));
+        });
+
+        Gate::define('pharmacy.access', function ($user): bool {
+            if ($this->isFacilitySuperAdmin($user)) return true;
+            if (method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo('pharmacy.access')) return true;
+            $roles = method_exists($user, 'roleCodes') ? $user->roleCodes() : [];
+            return in_array('dispenser', $roles, true)
+                || in_array('pharmacy.staff', $roles, true)
+                || in_array('pharmacist', $roles, true)
+                || in_array('pharmacy.supervisor', $roles, true)
+                || (method_exists($user, 'hasPermissionTo') && (bool) $user->hasPermissionTo('medication.dispense'));
+        });
+
+        Gate::define('cashier.access', function ($user): bool {
+            if ($this->isFacilitySuperAdmin($user)) return true;
+            if (method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo('cashier.access')) return true;
+            $roles = method_exists($user, 'roleCodes') ? $user->roleCodes() : [];
+            return in_array('cashier', $roles, true)
+                || in_array('finance.cashier', $roles, true)
+                || in_array('accountant', $roles, true)
+                || (method_exists($user, 'hasPermissionTo') && (bool) $user->hasPermissionTo('billing.payments.record'));
+        });
+
+        Gate::define('inventory.access', function ($user): bool {
+            if ($this->isFacilitySuperAdmin($user)) return true;
+            if (method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo('inventory.access')) return true;
+            $roles = method_exists($user, 'roleCodes') ? $user->roleCodes() : [];
+            return in_array('inventory_clerk', $roles, true)
+                || in_array('storekeeper', $roles, true)
+                || (method_exists($user, 'hasPermissionTo') && (bool) $user->hasPermissionTo('inventory.manage'));
+        });
+
+        Gate::define('admin.access', function ($user): bool {
+            return $this->isFacilitySuperAdmin($user);
+        });
+
+        /**
+         * OPD triage — claiming a patient, recording the handoff, releasing the
+         * claim.
+         *
+         * This resolved only from `emergency.triage.*`, which are held by
+         * CLINICAL.EMERGENCY alone. So an ordinary nurse got a 403 on
+         * `appointments/{id}/claim-triage`: outpatient triage was gated behind
+         * Emergency Department permissions, `triage_owner_user_id` could never
+         * be set through the normal path, and the "In Triage" badge and the
+         * triage.claimed / triage.claim_released timeline entries were
+         * unreachable for the role that actually does the work (2026-08-16).
+         *
+         * A directly-granted `appointments.record-triage` now satisfies it too,
+         * so OPD triage is expressed by its own permission instead of borrowing
+         * the ED's. Emergency staff keep resolving through the branch below —
+         * this widens the gate, it does not narrow it.
+         */
         Gate::define('appointments.record-triage', function ($user): bool {
             if ($this->isFacilitySuperAdmin($user)) {
                 return true;
@@ -110,10 +226,26 @@ class AppServiceProvider extends ServiceProvider
 
             return method_exists($user, 'hasPermissionTo')
                 && (
-                    (bool) $user->hasPermissionTo('emergency.triage.create')
+                    (bool) $user->hasPermissionTo('appointments.record-triage')
+                    || (bool) $user->hasPermissionTo('emergency.triage.create')
                     || (bool) $user->hasPermissionTo('emergency.triage.update')
                     || (bool) $user->hasPermissionTo('emergency.triage.update-status')
                 );
+        });
+
+        Gate::define('admissions.create', function ($user): bool {
+            if ($this->isFacilitySuperAdmin($user)) {
+                return true;
+            }
+
+            if (! method_exists($user, 'hasPermissionTo')) {
+                return true;
+            }
+
+            return (bool) $user->hasPermissionTo('admissions.create')
+                || (bool) $user->hasPermissionTo('inpatient.ward.create')
+                || (bool) $user->hasPermissionTo('emergency.triage.create')
+                || (bool) $user->hasPermissionTo('appointments.record-triage');
         });
 
         Gate::define('appointments.read-routing-options', function ($user): bool {

@@ -24,6 +24,9 @@ class UpdatePatientVitalSetRequest extends FormRequest
             'oxygenSaturationPct' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'respiratoryRateBpm'  => ['nullable', 'integer', 'min:4', 'max:70'],
             'weightKg'            => ['nullable', 'numeric', 'min:0.3', 'max:700'],
+            'heightCm'            => ['nullable', 'numeric', 'min:30', 'max:250'],
+            'bmi'                 => ['nullable', 'numeric', 'min:5', 'max:100'],
+            'painScore'           => ['nullable', 'integer', 'min:0', 'max:10'],
         ];
     }
 }

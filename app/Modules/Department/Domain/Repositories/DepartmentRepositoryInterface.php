@@ -37,5 +37,31 @@ interface DepartmentRepositoryInterface
     public function listAppointmentableOptions(): array;
 
     public function findActiveByName(string $name): ?array;
+
+    /**
+     * The department a walk-in lands in when nobody has routed them yet.
+     *
+     * Falls back through: the department flagged as the walk-in default, then
+     * any active appointmentable clinical department. Null only when a facility
+     * has no routable clinic at all, in which case the visit stays unrouted
+     * rather than being pointed at something arbitrary.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function findDefaultWalkInDepartment(): ?array;
+
+    /**
+     * The department an emergency arrival is routed to.
+     *
+     * Resolved by `service_type = 'Emergency'` rather than by a magic code, so a
+     * facility can name its emergency unit whatever it likes. Null when a
+     * facility has no emergency department, in which case the visit keeps the
+     * legacy 'Emergency' label only — enough for
+     * EncounterResolverService::deriveEncounterType() to still type the
+     * encounter correctly.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function findEmergencyDepartment(): ?array;
 }
 

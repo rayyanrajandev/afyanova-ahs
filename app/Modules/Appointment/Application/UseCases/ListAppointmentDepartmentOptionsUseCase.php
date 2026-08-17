@@ -9,7 +9,7 @@ class ListAppointmentDepartmentOptionsUseCase
     public function __construct(private readonly DepartmentRepositoryInterface $departmentRepository) {}
 
     /**
-     * @return array<int, array{value:string,label:string,group?:string|null,description?:string|null,keywords?:array<int,string>}>
+     * @return array<int, array{id:string|null,value:string,label:string,group?:string|null,description?:string|null,keywords?:array<int,string>}>
      */
     public function execute(): array
     {
@@ -24,6 +24,12 @@ class ListAppointmentDepartmentOptionsUseCase
             $description = trim((string) ($department['description'] ?? ''));
 
             return [
+                // The department's real id, added 2026-08-16 so callers can route
+                // by relationship instead of by display name. `value` stays the
+                // name for back-compat: the scheduling form still writes the
+                // string column, and appointments.department is still read by
+                // several modules.
+                'id' => $department['id'] ?? null,
                 'value' => $name,
                 'label' => $code !== '' ? sprintf('%s - %s', $code, $name) : $name,
                 'group' => $serviceType !== '' ? $serviceType : null,

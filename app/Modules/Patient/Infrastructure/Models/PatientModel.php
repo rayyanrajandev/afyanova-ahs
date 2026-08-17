@@ -24,6 +24,15 @@ class PatientModel extends Model
         static::updating(function (PatientModel $patient): void {
             self::normalizeDirtyNameFields($patient);
         });
+
+        static::deleted(function (PatientModel $patient): void {
+            /** @var \App\Modules\Patient\Application\Services\PatientMrnGenerator $generator */
+            $generator = app(\App\Modules\Patient\Application\Services\PatientMrnGenerator::class);
+            $scope = $generator->resolveScope($patient->tenant_id);
+            if (! $generator->scopeHasPatients($scope)) {
+                $generator->resetForTenant($patient->tenant_id);
+            }
+        });
     }
 
     private static function normalizeAllNameFields(PatientModel $patient): void

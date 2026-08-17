@@ -246,6 +246,14 @@ if (! function_exists('defaultHospitalRolePermissionProfiles')) {
                 'platform.subscription-plans.view-audit-logs',
             ],
             'ADMIN.FACILITY' => [
+                // Dedicated workspace-access permissions (2026-08-13) — a
+                // facility administrator should retain oversight access to
+                // every clinical workspace; granted explicitly here rather
+                // than left to fall out of a broader operational permission
+                // (which is exactly the bug these two permissions replace
+                // for ADMIN.REGISTRATION/CLINICAL.NURSE above).
+                'reception.access',
+                'nursing.access',
                 'patients.read',
                 'patients.create',
                 'patients.update',
@@ -373,6 +381,16 @@ if (! function_exists('defaultHospitalRolePermissionProfiles')) {
                 'departments.read',
             ],
             'ADMIN.REGISTRATION' => [
+                // Dedicated workspace-access permission (Volume 2.1 §13,
+                // added 2026-08-13) — the blueprint always named
+                // `reception.access` as the required permission; it just
+                // never existed as a real row until now. Added after a nurse
+                // was found able to open the full Reception workspace via
+                // the operational `patients.create` permission both roles
+                // happened to share — gates the /reception route and its nav
+                // icon on its own dedicated permission instead of overloading
+                // an action permission as a page-access check.
+                'reception.access',
                 'patients.read',
                 'patients.create',
                 'patients.update',
@@ -453,12 +471,44 @@ if (! function_exists('defaultHospitalRolePermissionProfiles')) {
                 'clinical-procedure.orders.read',
             ],
             'CLINICAL.NURSE' => [
+                // Dedicated workspace-access permission (Volume 2.3 §13,
+                // added 2026-08-13) — same reasoning as ADMIN.REGISTRATION's
+                // `reception.access` above: the blueprint always named
+                // `nursing.access`, it just never existed as a real row.
+                // Replaces `inpatient.ward.read` (an operational permission,
+                // not a page-access one) as the /nursing route + nav gate.
+                'nursing.access',
                 'patients.read',
                 'service.requests.create',
                 'service.requests.read',
                 'admissions.read',
                 'appointments.read',
                 'medical.records.read',
+                // Added 2026-08-13 (Volume 3.8 §6 #2) — neither was ever granted
+                // to CLINICAL.NURSE, not even in the original permission-seeding
+                // migration (2026_07_16_000002_insert_workflow_permissions.php,
+                // which scoped patient.vitals.record to
+                // ADMIN.FACILITY/CLINICAL.PHYSICIAN/CLINICAL.GENERAL/
+                // CLINICAL.EMERGENCY only). Confirmed this made the role
+                // non-functional for its own core task: `POST /nursing/vitals`
+                // and `POST /nursing/notes` both require these, and a ward nurse
+                // unable to record vital signs or write a nursing note isn't a
+                // narrower role, it's a broken one. Treated as the same class of
+                // accidental gap as Reception's own permission-drift fixes this
+                // session (§16 #13/#14 in Volume 3.7), just without a migration
+                // to point to as proof — a deliberate decision, not a rediscovered
+                // one, see Volume 3.8 §6 #2 for the full reasoning.
+                'patient.vitals.record',
+                'medical.records.create',
+                // Added 2026-08-13 (Volume 3.8 Phase 6) — same class of gap
+                // as patient.vitals.record/medical.records.create above:
+                // `GET /nursing/mar` requires this, and a ward nurse unable
+                // to even view a patient's medication list is a broken
+                // role, not a narrower one. Found via a live 403, not
+                // assumed — Volume 3.8's own baseline had claimed this
+                // endpoint was "confirmed real" without actually checking
+                // against a real permission set.
+                'pharmacy.orders.read',
                 'inpatient.ward.read',
                 'inpatient.ward.create-task',
                 'inpatient.ward.update-task-status',
@@ -1374,16 +1424,26 @@ Artisan::command('app:sync-default-role-permissions {--code=*} {--list}', functi
             $permissionIdsByName[$permissionName] = $permission->id;
         }
 
+        // Grouped by code, not keyBy (bug fixed 2026-08-13, Volume 3.8 §6
+        // #2): a role code can have multiple real rows — one per facility,
+        // sometimes plus a null-facility variant (confirmed live: 2 rows for
+        // CLINICAL.NURSE, 3 for ADMIN.REGISTRATION). `keyBy` silently
+        // collapsed that down to one arbitrary representative row, so only
+        // one facility's copy of a role ever received a permission-profile
+        // update — every other facility's copy went stale with no error.
+        // Found while granting CLINICAL.NURSE a missing permission (only one
+        // of its two rows actually got it); confirmed app-wide, not
+        // role-specific, so fixed here rather than worked around per-role.
         $rolesByCode = RoleModel::query()
             ->whereIn('code', $roleCodes)
             ->get()
-            ->keyBy(static fn (RoleModel $role): string => Str::upper((string) $role->code));
+            ->groupBy(static fn (RoleModel $role): string => Str::upper((string) $role->code));
 
         foreach ($profiles as $roleCode => $permissionNames) {
-            /** @var RoleModel|null $role */
-            $role = $rolesByCode->get($roleCode);
+            /** @var \Illuminate\Support\Collection<int, RoleModel> $roles */
+            $roles = $rolesByCode->get($roleCode) ?? collect();
 
-            if (! $role instanceof RoleModel) {
+            if ($roles->isEmpty()) {
                 $roleName = $roleDisplayNames[$roleCode]
                     ?? Str::of($roleCode)
                         ->afterLast('.')
@@ -1399,7 +1459,8 @@ Artisan::command('app:sync-default-role-permissions {--code=*} {--list}', functi
                     'description' => null,
                     'is_system' => false,
                 ]);
-                $rolesByCode->put($roleCode, $role);
+                $roles = collect([$role]);
+                $rolesByCode->put($roleCode, $roles);
                 $missingRoles[] = $roleCode;
             }
 
@@ -1408,12 +1469,15 @@ Artisan::command('app:sync-default-role-permissions {--code=*} {--list}', functi
                 $permissionNames
             ));
 
-            $role->permissions()->sync($permissionIds);
-            $syncedRoles[] = [
-                'code' => $roleCode,
-                'name' => $role->name,
-                'count' => count($permissionIds),
-            ];
+            foreach ($roles as $role) {
+                $role->permissions()->sync($permissionIds);
+                $syncedRoles[] = [
+                    'code' => $roleCode,
+                    'name' => $role->name,
+                    'facilityId' => $role->facility_id,
+                    'count' => count($permissionIds),
+                ];
+            }
         }
     });
 
@@ -1423,7 +1487,8 @@ Artisan::command('app:sync-default-role-permissions {--code=*} {--list}', functi
     $this->line('New permissions created: '.$createdPermissions);
 
     foreach ($syncedRoles as $entry) {
-        $this->line('- '.$entry['code'].' ('.$entry['name'].'): '.$entry['count'].' permissions');
+        $facilityLabel = $entry['facilityId'] === null ? 'no facility' : 'facility '.$entry['facilityId'];
+        $this->line('- '.$entry['code'].' ('.$entry['name'].', '.$facilityLabel.'): '.$entry['count'].' permissions');
     }
 
     if ($missingRoles !== []) {

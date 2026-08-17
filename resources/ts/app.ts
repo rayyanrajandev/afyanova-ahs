@@ -14,6 +14,8 @@ import { computed, createApp, Fragment, h } from "vue";
 import { Toaster } from "vue-sonner";
 import "vue-sonner/style.css";
 import "../css/globals.css";
+import AppShell from "./components/shell/AppShell.vue";
+import AuthLayout from "./layouts/AuthLayout.vue";
 import { i18n } from "./i18n";
 import { useUiStore } from "./stores/uiStore";
 
@@ -43,34 +45,18 @@ createInertiaApp({
     resolvePageComponent(
       `./pages/${name}.vue`,
       import.meta.glob<DefineComponent>("./pages/**/*.vue"),
-    ),
+    ).then((page) => {
+      const component = (page as any)?.default;
+      if (component && component.layout === undefined) {
+        if (name.toLowerCase().startsWith("auth/")) {
+          component.layout = AuthLayout;
+        } else if (name.toLowerCase() !== "landing") {
+          component.layout = AppShell;
+        }
+      }
+      return page as any;
+    }),
   setup({ el, App, props, plugin }) {
-    // Mount vue-sonner's Toaster once, globally — useToast (Volume 1.2 §11)
-    // is pure plumbing and renders nothing on its own; without this the
-    // registration toast etc. would fire into the void.
-    //
-    // Bug found and fixed 2026-08-11: the `Toaster` mount above was already
-    // correct, but `vue-sonner/style.css` (the `./style.css` export — the
-    // library ships its styling as a separate, non-default import, not
-    // bundled into the JS) was never imported anywhere, so every toast
-    // rendered with zero CSS — `position: static`, no background/shadow,
-    // `height: 24px` — sitting unstyled at the bottom of the page's normal
-    // document flow instead of floating fixed over it. No script errors,
-    // nothing to point at a "toast not showing" bug report — the element
-    // was always in the DOM, just imperceptible. Confirmed via a real
-    // toast's computed styles before and after this import was added.
-    //
-    // Second bug, found and fixed same day: the `Toaster` had no `theme`
-    // prop at all, so it never followed the user's actual theme choice
-    // from the top-bar switcher — toasts just always rendered in
-    // vue-sonner's own default palette. vue-sonner only understands
-    // `light`/`dark`/`system`, but this app has six themes (Volume 0.2
-    // §11), so they're mapped down to the two vue-sonner knows: `dark`
-    // and `imaging` (a near-black theme for radiology/imaging rooms,
-    // tokens.css) read as dark; `high-contrast`/`deuteranopia`/
-    // `tritanopia` are all light-background variants (tokens.css
-    // comments confirm — they inherit the light palette and only shift
-    // specific accent colors) and read as light, same as `light` itself.
     createApp({
       setup() {
         const uiStore = useUiStore();
@@ -92,9 +78,9 @@ createInertiaApp({
       .mount(el);
   },
   progress: {
-    // var(--primary) resolves at paint time from tokens.css, so the
-    // progress bar always matches the active theme's brand color
-    // instead of duplicating it as a second, driftable literal.
-    color: "var(--primary)",
+    color: "#0891b2",
+    includeCSS: true,
+    showSpinner: false,
+    delay: 50,
   },
 });

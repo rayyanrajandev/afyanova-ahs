@@ -98,6 +98,7 @@ export function useToast() {
 
     return {
         critical: (title: string, options?: ToastOptions) => show('critical', title, options),
+        error: (title: string, options?: ToastOptions) => show('critical', title, options),
         warning: (title: string, options?: ToastOptions) => show('warning', title, options),
         success: (title: string, options?: ToastOptions) => show('success', title, options),
         info: (title: string, options?: ToastOptions) => show('info', title, options),

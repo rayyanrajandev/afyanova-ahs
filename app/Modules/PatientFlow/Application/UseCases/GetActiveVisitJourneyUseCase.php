@@ -7,6 +7,7 @@ use App\Modules\Appointment\Infrastructure\Models\AppointmentModel;
 use App\Modules\Billing\Infrastructure\Models\BillingInvoiceModel;
 use App\Modules\Patient\Infrastructure\Models\PatientAllergyModel;
 use App\Modules\Patient\Infrastructure\Models\PatientModel;
+use App\Modules\PatientFlow\Domain\Repositories\PatientFlowEventRepositoryInterface;
 use App\Modules\ServiceRequest\Domain\ValueObjects\ServiceRequestStatus;
 use App\Modules\ServiceRequest\Infrastructure\Models\ServiceRequestModel;
 use Illuminate\Support\Collection;
@@ -38,9 +39,10 @@ use Illuminate\Support\Collection;
  * WAITING_TRIAGE appointment with a claim in place is 'in_triage', otherwise
  * 'waiting_triage'.
  *
- * The IN_CONSULTATION branch's diagnostic-order derivation
+ * The diagnostic-order derivation
  * (waiting_lab/in_lab/waiting_pharmacy/with_clinician) is delegated to
- * ResolveConsultationDiagnosticStepsUseCase — extracted so
+ * ResolveConsultationDiagnosticStepsUseCase, and consulted from both the
+ * IN_CONSULTATION and WAITING_PROVIDER branches — extracted so
  * GetReceptionQueueUseCase (clinician/Queue.vue's "In progress · In lab"
  * indicator) can reuse the exact same batched Laboratory/Pharmacy/Radiology
  * lookups and precedence rules without a second, potentially-drifting copy.
@@ -64,12 +66,25 @@ use Illuminate\Support\Collection;
  * actually marks that transition (checked_in_at, triage_owner_assigned_at,
  * consultation_started_at, the earliest open order's ordered_at, or a
  * ServiceRequest's requested_at/acknowledged_at). `waiting_clinician` and
- * `waiting_clinician_review` have no such column at all — deliberately
- * `null` there rather than approximated from an unrelated timestamp.
+ * `waiting_clinician_review` have no such column at all — they were
+ * deliberately `null` rather than approximated from an unrelated timestamp,
+ * and are now filled in from patient_flow_events, which records the exact
+ * moment (see fillMissingStepEnteredAtFromFlowLog()). Still null when the log
+ * has no event for that visit, which is the honest answer.
+ *
+ * `with_nurse` (2026-08-16) is derived from nursing_contact_user_id, the third
+ * use of this codebase's ownership-column shape after consultation and triage
+ * ownership. Read from that column and not from the flow log on purpose: the
+ * log is best-effort by design (RecordPatientFlowTransitionService swallows
+ * failures), and a board that depends on a source allowed to miss writes would
+ * eventually drop a patient off a queue.
  */
 class GetActiveVisitJourneyUseCase
 {
-    public function __construct(private readonly ResolveConsultationDiagnosticStepsUseCase $consultationStepResolver) {}
+    public function __construct(
+        private readonly ResolveConsultationDiagnosticStepsUseCase $consultationStepResolver,
+        private readonly PatientFlowEventRepositoryInterface $flowEventRepository,
+    ) {}
 
     /**
      * Public so Phase 4's GetOrderCompletionNotificationsForClinicianUseCase
@@ -260,7 +275,59 @@ class GetActiveVisitJourneyUseCase
                 ];
             });
 
-        return $appointmentEntries->concat($serviceRequestEntries)->values()->all();
+        return $this->fillMissingStepEnteredAtFromFlowLog(
+            $appointmentEntries->concat($serviceRequestEntries)->values()->all(),
+        );
+    }
+
+    /**
+     * Fills in `stepEnteredAt` for the steps no column can answer.
+     *
+     * waiting_clinician and waiting_clinician_review have no timestamp column of
+     * their own — nothing marks "triage finished" or "released back to the queue"
+     * distinctly from consultation_started_at — so this use case has always
+     * returned null for them rather than approximating from an unrelated column.
+     * patient_flow_events now records the exact moment, so those two are read
+     * back from the log here.
+     *
+     * Enrichment, never authority: the step itself is still derived from the
+     * transactional status/ownership columns above, and an entry whose event is
+     * missing (the log is best-effort, and visits that predate it have no
+     * history at all) simply keeps its null — the elapsed-time indicator hides,
+     * exactly as it did before. Nothing disappears from the board.
+     *
+     * @param  array<int, array<string, mixed>>  $entries
+     * @return array<int, array<string, mixed>>
+     */
+    private function fillMissingStepEnteredAtFromFlowLog(array $entries): array
+    {
+        $appointmentIdsNeedingTimestamp = [];
+        foreach ($entries as $entry) {
+            if ($entry['stepEnteredAt'] === null && $entry['appointmentId'] !== null) {
+                $appointmentIdsNeedingTimestamp[] = (string) $entry['appointmentId'];
+            }
+        }
+
+        if ($appointmentIdsNeedingTimestamp === []) {
+            return $entries;
+        }
+
+        $enteredAtByAppointmentId = $this->flowEventRepository
+            ->currentStepEnteredAtByAppointmentIds(array_values(array_unique($appointmentIdsNeedingTimestamp)));
+
+        if ($enteredAtByAppointmentId === []) {
+            return $entries;
+        }
+
+        foreach ($entries as $index => $entry) {
+            if ($entry['stepEnteredAt'] !== null || $entry['appointmentId'] === null) {
+                continue;
+            }
+
+            $entries[$index]['stepEnteredAt'] = $enteredAtByAppointmentId[(string) $entry['appointmentId']] ?? null;
+        }
+
+        return $entries;
     }
 
     /**
@@ -325,10 +392,12 @@ class GetActiveVisitJourneyUseCase
     }
 
     /**
-     * $consultationStep is the pre-resolved IN_CONSULTATION diagnostic step
-     * + stepEnteredAt (ResolveConsultationDiagnosticStepsUseCase) — only
-     * actually used in that branch; passed in either way to keep this
-     * method's shape simple.
+     * $consultationStep is the pre-resolved diagnostic step + stepEnteredAt
+     * (ResolveConsultationDiagnosticStepsUseCase). Used by both the
+     * IN_CONSULTATION and WAITING_PROVIDER branches — a visit sent out for
+     * labs sits in WAITING_PROVIDER while the order is open, so open orders
+     * decide the step in that branch too. WAITING_TRIAGE ignores it; nothing
+     * has been ordered yet at that point.
      *
      * @param  array{step: string, stepEnteredAt: string|null}|null  $consultationStep
      * @return array{0: string, 1: string|null} [step, stepEnteredAt]
@@ -340,6 +409,17 @@ class GetActiveVisitJourneyUseCase
      */
     private function deriveAppointmentStep(AppointmentModel $appointment, ?array $consultationStep): array
     {
+        // Nursing pickup outranks the queue the patient is waiting in (but never
+        // an active consultation — see PatientFlowStep::fromAppointmentStatus()'s
+        // precedence note). Read from the transactional column, not the
+        // best-effort flow log.
+        if (
+            $appointment->nursing_contact_user_id !== null
+            && $appointment->status !== AppointmentStatus::IN_CONSULTATION->value
+        ) {
+            return ['with_nurse', optional($appointment->nursing_contact_started_at)->toISOString()];
+        }
+
         if ($appointment->status === AppointmentStatus::WAITING_TRIAGE->value) {
             if ($appointment->triage_owner_user_id !== null) {
                 return ['in_triage', optional($appointment->triage_owner_assigned_at)->toISOString()];
@@ -349,6 +429,34 @@ class GetActiveVisitJourneyUseCase
         }
 
         if ($appointment->status === AppointmentStatus::WAITING_PROVIDER->value) {
+            /**
+             * A visit waiting for a provider may be waiting *at a department*
+             * rather than in the provider queue.
+             *
+             * updateProviderWorkflow() deliberately returns a visit to
+             * WAITING_PROVIDER when the doctor sends it out for diagnostics — it
+             * preserves consultation_started_at for exactly that, commented
+             * "sent out for labs, will return". But the diagnostic step was only
+             * consulted in the IN_CONSULTATION branch below, so for the whole
+             * time the patient was physically in the lab this read "Waiting for
+             * Doctor Review" (2026-08-16 laboratory flow plan, phase 1).
+             *
+             * The resolver returns 'with_clinician' when nothing is outstanding,
+             * so that value means "no department holds this patient" and falls
+             * through to the provider-queue answer below — which is also a truer
+             * reading of waiting_clinician_review: the results really are back.
+             */
+            $diagnosticStep = $consultationStep['step'] ?? null;
+
+            if ($diagnosticStep !== null && $diagnosticStep !== 'with_clinician') {
+                return [$diagnosticStep, $consultationStep['stepEnteredAt'] ?? null];
+            }
+
+            // stepEnteredAt stays null here — no column marks "triage finished"
+            // or "released back to the queue" distinctly from
+            // consultation_started_at. execute() fills these two steps in from
+            // the flow log afterwards, which does record the exact moment; see
+            // the enrichment pass there.
             if ($appointment->consultation_started_at !== null) {
                 return ['waiting_clinician_review', null];
             }

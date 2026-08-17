@@ -185,6 +185,42 @@ class EloquentDepartmentRepository implements DepartmentRepositoryInterface
             ->all();
     }
 
+    public function findDefaultWalkInDepartment(): ?array
+    {
+        $base = function () {
+            $query = DepartmentModel::query();
+            $this->applyPlatformScopeIfEnabled($query);
+
+            return $query
+                ->where('status', 'active')
+                ->where('is_patient_facing', true)
+                ->where('is_appointmentable', true);
+        };
+
+        $flagged = $base()->where('is_default_walk_in', true)->orderBy('name')->first();
+        if ($flagged !== null) {
+            return $flagged->toArray();
+        }
+
+        // No flagged default — take any routable clinical department rather than
+        // leaving the walk-in unrouted, which is the state this whole change
+        // exists to eliminate.
+        return $base()->orderBy('name')->first()?->toArray();
+    }
+
+    public function findEmergencyDepartment(): ?array
+    {
+        $query = DepartmentModel::query();
+        $this->applyPlatformScopeIfEnabled($query);
+
+        return $query
+            ->where('status', 'active')
+            ->whereRaw('LOWER(service_type) = ?', ['emergency'])
+            ->orderBy('name')
+            ->first()
+            ?->toArray();
+    }
+
     public function findActiveByName(string $name): ?array
     {
         $trimmed = trim($name);

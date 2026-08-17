@@ -5,6 +5,8 @@ namespace App\Modules\Appointment\Application\UseCases;
 use App\Modules\Appointment\Application\Exceptions\TriageClaimConflictException;
 use App\Modules\Appointment\Domain\Repositories\AppointmentAuditLogRepositoryInterface;
 use App\Modules\Appointment\Domain\Repositories\AppointmentRepositoryInterface;
+use App\Modules\PatientFlow\Application\Services\RecordPatientFlowTransitionService;
+use App\Modules\PatientFlow\Domain\ValueObjects\PatientFlowStep;
 use App\Modules\Appointment\Domain\ValueObjects\AppointmentStatus;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
 use Illuminate\Validation\ValidationException;
@@ -25,6 +27,7 @@ class ClaimAppointmentTriageUseCase
         private readonly AppointmentRepositoryInterface $appointmentRepository,
         private readonly AppointmentAuditLogRepositoryInterface $auditLogRepository,
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
+        private readonly RecordPatientFlowTransitionService $recordPatientFlowTransition,
     ) {}
 
     /**
@@ -75,6 +78,24 @@ class ClaimAppointmentTriageUseCase
                 'takeover' => $currentOwnerUserId !== null && $currentOwnerUserId !== $actorId,
                 'previous_owner_user_id' => $currentOwnerUserId,
             ],
+        );
+
+        // Flow log (2026-08-16 activity audit). A triage claim changes no
+        // appointment status — it is metadata alongside WAITING_TRIAGE — so it
+        // never reached the timeline, and the Activity tab was silent while the
+        // board correctly showed "In Triage". Recorded here for the same reason
+        // the nursing pickup is: the step is real work by a named person.
+        $this->recordPatientFlowTransition->record(
+            toStep: PatientFlowStep::IN_TRIAGE,
+            patientId: (string) $updated['patient_id'],
+            appointmentId: (string) $updated['id'],
+            actorId: $actorId,
+            source: 'triage.claimed',
+            metadata: array_filter([
+                'takeover' => $currentOwnerUserId !== null && $currentOwnerUserId !== $actorId,
+                'previousOwnerUserId' => $currentOwnerUserId,
+            ], static fn ($value) => $value !== null && $value !== false),
+            facilityId: $updated['facility_id'] ?? null,
         );
 
         return $updated;

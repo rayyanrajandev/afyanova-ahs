@@ -3,13 +3,16 @@
 use App\Http\Middleware\EnforceTenantIsolationWhenEnabled;
 use App\Http\Middleware\EnsureMappedFacilitySubscriptionEntitlement;
 use App\Http\Middleware\ResolvePlatformScopeContext;
+use App\Modules\Admission\Presentation\Http\Controllers\NursingAdmissionController;
 use App\Modules\Appointment\Presentation\Http\Controllers\AppointmentController;
 use App\Modules\Billing\Presentation\Http\Controllers\PatientInsuranceController;
 use App\Modules\Encounter\Presentation\Http\Controllers\EncounterClinicalAttachmentController;
 use App\Modules\Encounter\Presentation\Http\Controllers\EncounterController;
 use App\Modules\Encounter\Presentation\Http\Controllers\EncounterDiagnosisController;
 use App\Modules\Laboratory\Presentation\Http\Controllers\LaboratoryOrderController;
+use App\Modules\MedicalRecord\Presentation\Http\Controllers\MedicalRecordController;
 use App\Modules\Patient\Presentation\Http\Controllers\PatientController;
+use App\Modules\PatientFlow\Presentation\Http\Controllers\PatientFlowController;
 use App\Modules\Platform\Presentation\Http\Controllers\PlatformConfigurationController;
 use App\Modules\PatientVitals\Presentation\Http\Controllers\PatientVitalSetController;
 use App\Modules\Pharmacy\Presentation\Http\Controllers\PharmacyOrderController;
@@ -179,6 +182,9 @@ Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTen
         Route::post('reception/queue/reorder', [ReceptionController::class, 'reorderQueue'])
             ->middleware('can:appointment.check-in')
             ->name('reception.queue.reorder');
+        Route::get('reception/patients/{patientId}/flow-timeline', [PatientFlowController::class, 'patientTimeline'])
+            ->middleware('can:patients.read')
+            ->name('reception.patients.flow-timeline');
 
         // ============================================================
         // CLINICIAN WORKSPACE ROUTES (Volume 2.2 §13.2)
@@ -187,42 +193,116 @@ Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTen
         Route::get('clinician/patients', [PatientController::class, 'index'])
             ->middleware('can:patients.read')
             ->name('clinician.patients');
+        Route::get('clinician/patients/{mrn}', [PatientController::class, 'show'])
+            ->middleware('can:patients.read')
+            ->name('clinician.patients.show');
+        Route::get('clinician/patients/{id}/summary', [PatientController::class, 'summary'])
+            ->middleware('can:patients.read')
+            ->name('clinician.patients.summary');
         Route::get('clinician/encounters', [EncounterController::class, 'index'])
             ->middleware('can:medical.records.read')
             ->name('clinician.encounters');
-        Route::post('clinician/encounters', [EncounterController::class, 'store'])
-            ->middleware('can:medical.records.create')
-            ->name('clinician.encounters.store');
+        Route::get('clinician/encounters/by-appointment/{appointmentId}', [EncounterController::class, 'resolveForAppointment'])
+            ->middleware('can:medical.records.read')
+            ->name('clinician.encounters.by-appointment');
         Route::get('clinician/encounters/{id}', [EncounterController::class, 'show'])
             ->middleware('can:medical.records.read')
             ->name('clinician.encounters.show');
-        Route::post('clinician/notes', [EncounterClinicalAttachmentController::class, 'store'])
+        // `{id}` (2026-08-13, found & fixed while wiring Nursing's own notes
+        // route below): was missing entirely — `store()` requires `string $id`
+        // positionally, and with no route segment to bind it, Laravel's
+        // dependency resolution misaligns the remaining class-typed
+        // parameters, throwing a TypeError on every real call (confirmed
+        // live: a 500, not a validation error). The correctly-parameterized
+        // sibling route (`encounters/{id}/clinical-documents`, routes/api.php)
+        // already proves the right shape; this workspace-scoped route just
+        // never got it when it was added.
+        Route::post('clinician/notes/{id}', [EncounterClinicalAttachmentController::class, 'store'])
             ->middleware('can:medical.records.create')
             ->name('clinician.notes.store');
         Route::post('clinician/notes/{id}/sign', [EncounterController::class, 'updateStatus'])
-            ->middleware('can:medical.records.update')
+            ->middleware('can:medical.records.finalize')
             ->name('clinician.notes.sign');
+        Route::post('clinician/medical-records', [MedicalRecordController::class, 'store'])
+            ->middleware('can:medical.records.create')
+            ->name('clinician.medical-records.store');
+        Route::get('clinician/medical-records/{id}', [MedicalRecordController::class, 'show'])
+            ->middleware('can:medical.records.read')
+            ->name('clinician.medical-records.show');
+        Route::patch('clinician/medical-records/{id}', [MedicalRecordController::class, 'update'])
+            ->middleware('can:medical.records.update')
+            ->name('clinician.medical-records.update');
+        Route::patch('clinician/medical-records/{id}/status', [MedicalRecordController::class, 'updateStatus'])
+            ->middleware('can:medical.records.update-status')
+            ->name('clinician.medical-records.update-status');
         Route::post('clinician/orders/lab', [LaboratoryOrderController::class, 'store'])
             ->middleware('can:lab.order')
             ->name('clinician.orders.lab');
+        Route::post('clinician/orders/lab/{id}/cancel', [LaboratoryOrderController::class, 'applyLifecycleAction'])
+            ->middleware('can:lab.order')
+            ->name('clinician.orders.lab.cancel');
         Route::post('clinician/orders/imaging', [RadiologyOrderController::class, 'store'])
-            ->middleware('can:radiology.orders.create')
+            ->middleware('can:imaging.order')
             ->name('clinician.orders.imaging');
+        Route::post('clinician/orders/imaging/{id}/cancel', [RadiologyOrderController::class, 'applyLifecycleAction'])
+            ->middleware('can:imaging.order')
+            ->name('clinician.orders.imaging.cancel');
         Route::post('clinician/orders/medication', [PharmacyOrderController::class, 'store'])
-            ->middleware('can:pharmacy.orders.create')
+            ->middleware('can:medication.prescribe')
             ->name('clinician.orders.medication');
+        Route::post('clinician/orders/medication/{id}/cancel', [PharmacyOrderController::class, 'applyLifecycleAction'])
+            ->middleware('can:medication.prescribe')
+            ->name('clinician.orders.medication.cancel');
+        Route::get('clinician/catalog/medications', [PharmacyOrderController::class, 'approvedMedicinesCatalog'])
+            ->middleware('can:medication.prescribe')
+            ->name('clinician.catalog.medications');
+
+        // Patient-flow transitions (2026-08-16 flow audit, finding 05).
+        // Until now the clinician prefix had encounters, notes, orders, results
+        // and catalog — and no way at all to move a visit, which is why the
+        // workspace faked "start consultation" in local component state and the
+        // patient stayed on every other screen as "Waiting for Doctor".
+        //
+        // Delegates to the existing AppointmentController actions rather than
+        // reimplementing them: consultation ownership, forced takeover with a
+        // reason, the displaced-owner notification, the transition guard and the
+        // audit row are all already correct there. This is the missing door, not
+        // new logic.
+        Route::patch('clinician/visits/{id}/start-consultation', [AppointmentController::class, 'startConsultation'])
+            ->middleware('can:appointments.start-consultation')
+            ->name('clinician.visits.start-consultation');
+        Route::patch('clinician/visits/{id}/provider-workflow', [AppointmentController::class, 'updateProviderWorkflow'])
+            ->middleware('can:appointments.manage-provider-session')
+            ->name('clinician.visits.provider-workflow');
+        Route::get('clinician/patients/{patientId}/flow-timeline', [PatientFlowController::class, 'patientTimeline'])
+            ->middleware('can:patients.read')
+            ->name('clinician.patients.flow-timeline');
+        Route::get('clinician/visit-timeline', [PatientFlowController::class, 'visitTimeline'])
+            ->middleware('can:patients.read')
+            ->name('clinician.visit-timeline');
         Route::post('clinician/orders/referral', [ServiceRequestController::class, 'store'])
             ->middleware('can:service.requests.create')
             ->name('clinician.orders.referral');
         Route::post('clinician/diagnoses', [EncounterDiagnosisController::class, 'store'])
             ->middleware('can:medical.records.create')
             ->name('clinician.diagnoses.store');
+        // `laboratory.orders.read`, not `lab.results.read` (2026-08-16 RBAC
+        // audit): that permission has never existed in the catalog, so this
+        // route denied every non-super-admin user with "This action is
+        // unauthorized" — indistinguishable from a legitimate denial, which is
+        // why it survived. The canonical name is the one the equivalent
+        // `laboratory-orders` route in routes/api.php already uses.
         Route::get('clinician/results', [LaboratoryOrderController::class, 'index'])
-            ->middleware('can:lab.results.read')
+            ->middleware('can:laboratory.orders.read')
             ->name('clinician.results');
-        Route::post('clinician/results/{id}/acknowledge', [LaboratoryOrderController::class, 'acknowledge'])
-            ->middleware('can:lab.results.read')
-            ->name('clinician.results.acknowledge');
+        // `clinician/results/{id}/acknowledge` removed (2026-08-16 RBAC audit):
+        // LaboratoryOrderController has no `acknowledge()` method and no
+        // result-acknowledgement use case exists anywhere in the Laboratory
+        // module, so this route could only ever have 403'd (bad permission) or
+        // 500'd ("Call to undefined method"). Same shape as the `nursing/complete`
+        // route removed on 2026-08-13. Result acknowledgement is unbuilt, not
+        // broken configuration — useClinicianResults.ts still calls it and needs
+        // a real endpoint before that button can work.
 
         // ============================================================
         // NURSING WORKSPACE ROUTES (Volume 2.3 §12.2)
@@ -234,22 +314,127 @@ Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTen
         Route::post('nursing/vitals', [PatientVitalSetController::class, 'store'])
             ->middleware('can:patient.vitals.record')
             ->name('nursing.vitals.store');
-        Route::post('nursing/assessments', [NurseQueueController::class, 'assess'])
+        // Added 2026-08-13 (Volume 3.8 Phase 2 follow-up) — reported
+        // directly by the user: vitals were saving successfully but never
+        // showing up anywhere, because nothing ever fetched them back. The
+        // "Recent Vitals" card was reading from a local, component-only
+        // ref that resets on every navigation/reload — the data was safely
+        // persisted server-side the whole time, just never re-read.
+        // Reuses `PatientVitalSetController::latestForPatient` (already
+        // real, already used by the generic `patient-vitals/patient/{id}`
+        // route) rather than duplicating it — same "reuse existing
+        // controllers" rule as every route in this file, and keeps
+        // nursing's frontend calling its own `/nursing/*` contract instead
+        // of the generic path.
+        Route::get('nursing/vitals/{patientId}', [PatientVitalSetController::class, 'latestForPatient'])
+            ->middleware('can:patients.read')
+            ->name('nursing.vitals.latest');
+        // `{encounterId}`/`{id}` (2026-08-13, found while wiring Volume 3.8
+        // Phase 3/4): both routes were missing their URI parameter entirely
+        // — `assess()`/`store()` each require it positionally (`string
+        // $encounterId`/`string $id`), and with no route segment to bind it,
+        // Laravel's dependency resolution misaligns the remaining
+        // class-typed parameters, throwing a TypeError on every real call
+        // (confirmed live: both 500'd, not a validation error — neither
+        // endpoint could ever have worked in this shape). The
+        // correctly-parameterized legacy siblings (`nurse-queue/{encounterId}
+        // /assess`, `encounters/{id}/clinical-documents`, both routes/api.php)
+        // already prove the right shape; these workspace-scoped routes just
+        // never got it when added.
+        Route::post('nursing/assessments/{encounterId}', [NurseQueueController::class, 'assess'])
             ->middleware('can:service.requests.create')
             ->name('nursing.assessments.store');
-        Route::post('nursing/notes', [EncounterClinicalAttachmentController::class, 'store'])
+        Route::post('nursing/notes/{id}', [EncounterClinicalAttachmentController::class, 'store'])
             ->middleware('can:medical.records.create')
             ->name('nursing.notes.store');
         Route::get('nursing/mar', [PharmacyOrderController::class, 'index'])
             ->middleware('can:pharmacy.orders.read')
             ->name('nursing.mar');
-        Route::post('nursing/mar/{id}/administer', [PharmacyOrderController::class, 'administer'])
-            ->middleware('can:pharmacy.orders.administer')
-            ->name('nursing.mar.administer');
+        // `nursing/mar/{id}/administer` removed (2026-08-16 RBAC audit):
+        // PharmacyOrderController has no `administer()` method and
+        // `pharmacy.orders.administer` is not a permission that exists, so this
+        // route was doubly dead. The frontend had already given up on it —
+        // medicationStore.ts records removing its `administerMedication` call on
+        // 2026-08-13 for exactly this reason — leaving the route orphaned
+        // server-side. Recording medication administration is unbuilt work, not
+        // a misconfiguration.
+        // Routing targets for triage completion (2026-08-16). Walk-ins are
+        // registered with no department at all, and recording vitals is the
+        // moment a nurse knows which clinic the patient belongs to — so the
+        // nursing workspace needs its own scoped copy of the options list
+        // reception already has for scheduling.
+        Route::get('nursing/department-options', [AppointmentController::class, 'departmentOptions'])
+            ->middleware('can:appointments.read')
+            ->name('nursing.department-options');
         Route::get('nursing/tasks', [NurseQueueController::class, 'index'])
             ->middleware('can:service.requests.read')
             ->name('nursing.tasks');
-        Route::post('nursing/tasks/{id}/complete', [NurseQueueController::class, 'complete'])
-            ->middleware('can:service.requests.update')
-            ->name('nursing.tasks.complete');
+        Route::get('nursing/active-visit/{patientId}', [NurseQueueController::class, 'activeVisit'])
+            ->middleware('can:patients.read')
+            ->name('nursing.active-visit');
+        Route::post('nursing/admissions', [NursingAdmissionController::class, 'store'])
+            ->middleware('can:service.requests.create')
+            ->name('nursing.admissions.store');
+        Route::post('nursing/return-to-reception/{appointmentId}', [NurseQueueController::class, 'returnToReception'])
+            ->middleware('can:service.requests.create')
+            ->name('nursing.return-to-reception');
+
+        // Explicit nursing pickup/handback (2026-08-16 flow audit, finding 04).
+        // Triage has had a claim since Phase 2; nursing had none, so a nurse
+        // actively working with a patient was indistinguishable from a patient
+        // sitting untouched in a queue. These change no appointment status —
+        // nursing happens inside an existing status — they record the step.
+        Route::post('nursing/visits/{encounterId}/claim', [PatientFlowController::class, 'claimForNursing'])
+            ->middleware('can:service.requests.create')
+            ->name('nursing.visits.claim');
+        Route::post('nursing/visits/{encounterId}/release', [PatientFlowController::class, 'releaseFromNursing'])
+            ->middleware('can:service.requests.create')
+            ->name('nursing.visits.release');
+        Route::get('nursing/patients/{patientId}/flow-timeline', [PatientFlowController::class, 'patientTimeline'])
+            ->middleware('can:patients.read')
+            ->name('nursing.patients.flow-timeline');
+        Route::get('nursing/visit-timeline', [PatientFlowController::class, 'visitTimeline'])
+            ->middleware('can:patients.read')
+            ->name('nursing.visit-timeline');
+        Route::post('nursing/visit-notes/{appointmentId}', [NurseQueueController::class, 'addVisitNote'])
+            ->middleware('can:patients.read')
+            ->name('nursing.add-visit-note');
+        Route::get('nursing/visit-notes/{appointmentId}', [NurseQueueController::class, 'getVisitNotes'])
+            ->middleware('can:patients.read')
+            ->name('nursing.get-visit-notes');
+        Route::put('nursing/visit-notes/{appointmentId}', [NurseQueueController::class, 'updateVisitNotes'])
+            ->middleware('can:patients.read')
+            ->name('nursing.update-visit-notes');
+        // Restored 2026-08-16: this route went missing from the working tree
+        // while the laboratory block was being added. NurseQueueController::
+        // deleteVisitNote() still exists and NurseVisitNotesApiTest still covers
+        // it, so the only symptom was a 405 on delete — the method was fine, the
+        // door had gone.
+        Route::delete('nursing/visit-notes/{appointmentId}', [NurseQueueController::class, 'deleteVisitNote'])
+            ->middleware('can:patients.read')
+            ->name('nursing.delete-visit-note');
+        // ============================================================
+        // LABORATORY WORKSPACE ROUTES (Volume 2.4)
+        // ============================================================
+        Route::get('laboratory/orders', [LaboratoryOrderController::class, 'index'])
+            ->middleware('can:laboratory.orders.read')
+            ->name('laboratory.orders.index');
+        Route::get('laboratory/orders/status-counts', [LaboratoryOrderController::class, 'statusCounts'])
+            ->middleware('can:laboratory.orders.read')
+            ->name('laboratory.orders.status-counts');
+        Route::get('laboratory/orders/{id}', [LaboratoryOrderController::class, 'show'])
+            ->middleware('can:laboratory.orders.read')
+            ->name('laboratory.orders.show');
+        Route::patch('laboratory/orders/{id}/status', [LaboratoryOrderController::class, 'updateStatus'])
+            ->middleware('can:lab.sample.collect')
+            ->name('laboratory.orders.update-status');
+        Route::patch('laboratory/orders/{id}/verify', [LaboratoryOrderController::class, 'verifyResult'])
+            ->middleware('can:lab.result.verify')
+            ->name('laboratory.orders.verify');
+        Route::get('laboratory/orders/{id}/audit-logs', [LaboratoryOrderController::class, 'auditLogs'])
+            ->middleware('can:laboratory.orders.read')
+            ->name('laboratory.orders.audit-logs');
+        Route::get('laboratory/patients/{patientId}/flow-timeline', [PatientFlowController::class, 'patientTimeline'])
+            ->middleware('can:laboratory.orders.read')
+            ->name('laboratory.patients.flow-timeline');
     });

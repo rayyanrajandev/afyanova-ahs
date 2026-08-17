@@ -90,7 +90,6 @@ class DskFormularyClinicalCatalogSeeder extends Seeder
     {
         return [
             // ── Analgesics & Antipyretics ──
-            ['code' => 'MED-PARA-500-001', 'name' => 'Paracetamol 500 mg', 'category' => 'analgesics_antipyretics', 'unit' => 'tablet', 'description' => 'Oral paracetamol 500 mg tablet for pain and fever management.'],
             ['code' => 'MED-PARA-500TAB', 'name' => 'Paracetamol 500 mg tablet', 'category' => 'analgesics_antipyretics', 'unit' => 'tablet', 'description' => 'Analgesic and antipyretic for pain and fever.'],
             ['code' => 'MED-PARA-100SYR', 'name' => 'Paracetamol 120 mg/5 ml syrup 100 ml', 'category' => 'analgesics_antipyretics', 'unit' => 'bottle', 'description' => 'Analgesic and antipyretic syrup for pain and fever in children.'],
             ['code' => 'MED-PARA-IV100', 'name' => 'Paracetamol 1 g/100 ml IV infusion', 'category' => 'analgesics_antipyretics', 'unit' => 'each', 'description' => 'IV paracetamol for pain and fever when oral route is not suitable.'],
@@ -313,6 +312,14 @@ class DskFormularyClinicalCatalogSeeder extends Seeder
 
             // ── Urological ──
             ['code' => 'MED-TAMS-04CAP', 'name' => 'Tamsulosin 0.4 mg capsule', 'category' => 'urological_genitourinary', 'unit' => 'capsule', 'description' => 'Alpha-1 blocker for benign prostatic hyperplasia (BPH) symptom relief.'],
+
+            // ── NEMLIT Level A/B First-Line Additions ──
+            ['code' => 'MED-AMLO-5TAB', 'name' => 'Amlodipine 5 mg tablet', 'category' => 'cardiovascular', 'unit' => 'tablet', 'description' => 'Calcium channel blocker for first-line treatment of essential hypertension per Tanzania STG/NEMLIT.'],
+            ['code' => 'MED-AMLO-10TAB', 'name' => 'Amlodipine 10 mg tablet', 'category' => 'cardiovascular', 'unit' => 'tablet', 'description' => 'Calcium channel blocker for hypertension requiring higher dose.'],
+            ['code' => 'MED-ENAL-5TAB', 'name' => 'Enalapril 5 mg tablet', 'category' => 'cardiovascular', 'unit' => 'tablet', 'description' => 'ACE inhibitor for hypertension and heart failure per Tanzania STG/NEMLIT.'],
+            ['code' => 'MED-ENAL-10TAB', 'name' => 'Enalapril 10 mg tablet', 'category' => 'cardiovascular', 'unit' => 'tablet', 'description' => 'ACE inhibitor for hypertension and heart failure at standard dose.'],
+            ['code' => 'MED-GLIB-5TAB', 'name' => 'Glibenclamide 5 mg tablet', 'category' => 'endocrine_metabolic', 'unit' => 'tablet', 'description' => 'Sulfonylurea oral hypoglycaemic for Type 2 Diabetes Mellitus per Tanzania STG/NEMLIT.'],
+            ['code' => 'MED-MGSO4-50IV', 'name' => 'Magnesium Sulphate 50% injection 10 ml', 'category' => 'obstetric_emergency', 'unit' => 'ampoule', 'description' => 'Anticonvulsant for severe pre-eclampsia and eclampsia per Tanzania STG/NEMLIT. Critical obstetric emergency medicine.'],
         ];
     }
 

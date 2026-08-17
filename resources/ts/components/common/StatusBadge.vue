@@ -42,9 +42,11 @@ export type StatusType =
 const props = withDefaults(
     defineProps<{
         status: StatusType;
+        label?: string;
     }>(),
     {
         status: 'info',
+        label: undefined,
     },
 );
 
@@ -62,23 +64,17 @@ const statusConfig: Record<StatusType, { icon: Component; labelKey: string }> = 
     cancelled: { icon: X, labelKey: 'status.cancelled' },
 };
 
-// Bug fix (2026-08-10, i18n audit): both were plain `const`s, computed once
-// at setup and never again — `label` silently froze at whatever locale was
-// active on mount (found via a live language-switch test: switching locale
-// updated every other label on screen except this one), and `config` had
-// the same non-reactivity bug tied to `props.status`, meaning even a status
-// *prop* change after mount wouldn't have updated the badge either.
-const config = computed(() => statusConfig[props.status]);
-const label = computed(() => t(config.value.labelKey));
+const config = computed(() => statusConfig[props.status] ?? statusConfig.info);
+const displayLabel = computed(() => props.label || t(config.value.labelKey));
 </script>
 
 <template>
     <Badge
         :variant="status"
         role="img"
-        :aria-label="label"
+        :aria-label="displayLabel"
     >
         <component :is="config.icon" class="h-3 w-3 shrink-0" aria-hidden="true" />
-        {{ label }}
+        {{ displayLabel }}
     </Badge>
 </template>

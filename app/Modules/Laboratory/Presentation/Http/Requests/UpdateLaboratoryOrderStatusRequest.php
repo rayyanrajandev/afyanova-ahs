@@ -10,7 +10,7 @@ class UpdateLaboratoryOrderStatusRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('lab.sample.collect') ?? false;
+        return ($this->user()?->can('lab.sample.collect') || $this->user()?->can('laboratory.orders.manage') || $this->user()?->can('laboratory.orders.verify')) ?? false;
     }
 
     /**

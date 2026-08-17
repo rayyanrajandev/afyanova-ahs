@@ -27,116 +27,123 @@ class DskLabClinicalCatalogSeeder extends Seeder
 
         $items = [
             [
-                'code' => 'LAB-MRDT-001',
-                'name' => 'Malaria Rapid Diagnostic Test',
+                'code' => 'LAB-PAR-MRDT',
+                'name' => 'Malaria Rapid Diagnostic Test (mRDT)',
                 'category' => 'parasitology',
                 'unit' => 'test',
                 'description' => 'A rapid screening test that detects malaria parasite antigens in a small blood sample, providing results within 15–20 minutes.',
             ],
             [
-                'code' => 'LAB-HIV-001',
-                'name' => 'Human Immunodeficiency Virus Test',
+                'code' => 'LAB-SER-HIV-RDT',
+                'name' => 'Human Immunodeficiency Virus Test (HIV 1/2)',
                 'category' => 'serology_immunology',
                 'unit' => 'test',
                 'description' => 'A laboratory test used to detect HIV infection in a person\'s blood sample.',
             ],
             [
-                'code' => 'LAB-HPYLORI-001',
+                'code' => 'LAB-SER-HPYLORI-RDT',
                 'name' => 'H. pylori Antibody Test',
                 'category' => 'serology_immunology',
                 'unit' => 'test',
                 'description' => 'An H. pylori test is used to detect infection with Helicobacter Pylori infection.',
             ],
             [
-                'code' => 'LAB-VDRL-001',
-                'name' => 'Syphilis Test (VDRL)',
+                'code' => 'LAB-SER-SYPHILIS-RPR',
+                'name' => 'Syphilis Test (VDRL / RPR)',
                 'category' => 'serology_immunology',
                 'unit' => 'test',
                 'description' => 'Screens for syphilis infection.',
             ],
             [
-                'code' => 'LAB-HB-001',
+                'code' => 'LAB-HEM-HB',
                 'name' => 'Hemoglobin (Hb) Test',
                 'category' => 'hematology',
                 'unit' => 'report',
                 'description' => 'Measures blood hemoglobin levels to check for anemia.',
             ],
             [
-                'code' => 'LAB-RBG-001',
+                'code' => 'LAB-BIO-GLUCOSE-RBG',
                 'name' => 'Blood Sugar (RBG)',
                 'category' => 'clinical_chemistry',
                 'unit' => 'report',
                 'description' => 'Measures glucose levels for diabetes screening.',
             ],
             [
-                'code' => 'LAB-ABO-001',
+                'code' => 'LAB-BB-ABO-RH',
                 'name' => 'Blood Grouping & Rh Factor',
                 'category' => 'blood_bank_transfusion',
                 'unit' => 'test',
                 'description' => 'Determines blood type and Rh status.',
             ],
             [
-                'code' => 'LAB-URINE-001',
-                'name' => 'Urinalysis',
-                'category' => 'parasitology',
+                'code' => 'LAB-URI-ROUTINE',
+                'name' => 'Urinalysis (Dipstick + Microscopy)',
+                'category' => 'urinalysis',
                 'unit' => 'slide',
                 'description' => 'Examines urine for infections, kidney disease, and other conditions.',
             ],
             [
-                'code' => 'LAB-STOOL-001',
-                'name' => 'Stool Analysis',
+                'code' => 'LAB-PAR-STOOL-ROUTINE',
+                'name' => 'Stool Analysis (Routine Microscopy)',
                 'category' => 'parasitology',
                 'unit' => 'slide',
                 'description' => 'Detects intestinal parasites and gastrointestinal infections.',
             ],
             [
-                'code' => 'LAB-ESR-001',
+                'code' => 'LAB-HEM-ESR',
                 'name' => 'Erythrocyte Sedimentation Rate (ESR)',
                 'category' => 'hematology',
                 'unit' => 'sample',
                 'description' => 'Detects inflammation in the body.',
             ],
             [
-                'code' => 'LAB-HVS-001',
-                'name' => 'High Vaginal Swab Test',
+                'code' => 'LAB-MIC-HVS',
+                'name' => 'High Vaginal Swab Test (HVS)',
                 'category' => 'microbiology',
                 'unit' => 'slide',
                 'description' => 'Detect Bacteria, Fungi and Parasites.',
             ],
             [
-                'code' => 'LAB-UPT-001',
+                'code' => 'LAB-SER-UPT',
                 'name' => 'Urine Pregnancy Test (UPT)',
-                'category' => 'parasitology',
+                'category' => 'serology_immunology',
                 'unit' => 'test',
                 'description' => 'Detects pregnancy.',
             ],
             [
-                'code' => 'LAB-HBSAG-001',
-                'name' => 'Hepatitis B Test (HBsAg)',
+                'code' => 'LAB-SER-HBSAG-RDT',
+                'name' => 'Hepatitis B Surface Antigen Test (HBsAg)',
                 'category' => 'serology_immunology',
                 'unit' => 'test',
                 'description' => 'Detects Hepatitis B infection.',
             ],
             [
-                'code' => 'LAB-WIDAL-001',
-                'name' => 'Typhoid Test (Widal Test)',
+                'code' => 'LAB-SER-WIDAL',
+                'name' => 'Typhoid Test (Widal Agglutination)',
                 'category' => 'serology_immunology',
                 'unit' => 'test',
                 'description' => 'Screens for typhoid fever.',
             ],
             [
-                'code' => 'LAB-CHO-001',
-                'name' => 'Lipid Profile (Cholesterol)',
+                'code' => 'LAB-BIO-LIPID-CHO',
+                'name' => 'Lipid Profile (Total Cholesterol)',
                 'category' => 'clinical_chemistry',
                 'unit' => 'report',
                 'description' => 'Measures cholesterol levels in the blood.',
             ],
             [
-                'code' => 'LAB-URA-001',
+                'code' => 'LAB-BIO-RENAL-URIC',
                 'name' => 'Renal Function Test (Uric Acid)',
                 'category' => 'clinical_chemistry',
                 'unit' => 'report',
                 'description' => 'Detects Uric Acid level in blood.',
+            ],
+            [
+                'code' => 'LAB-SER-HCV-RDT',
+                'name' => 'Hepatitis C Antibody Test (Anti-HCV)',
+                'category' => 'serology_immunology',
+                'unit' => 'test',
+                'description' => 'A rapid screening test to detect antibodies against Hepatitis C virus in a blood sample.',
             ],
         ];
 
@@ -172,7 +179,7 @@ class DskLabClinicalCatalogSeeder extends Seeder
     private static function resultTemplateForCode(string $code): ?array
     {
         return match ($code) {
-            'LAB-URINE-001' => ['sections' => [
+            'LAB-URI-ROUTINE' => ['sections' => [
                 ['label' => 'Physical Examination', 'fields' => [
                     ['code' => 'color', 'label' => 'Color', 'type' => 'select', 'options' => ['Pale Yellow', 'Yellow', 'Dark Yellow', 'Amber', 'Red', 'Brown', 'Colourless', 'Cloudy']],
                     ['code' => 'appearance', 'label' => 'Appearance', 'type' => 'select', 'options' => ['Clear', 'Slightly Cloudy', 'Cloudy', 'Turbid']],
@@ -199,7 +206,7 @@ class DskLabClinicalCatalogSeeder extends Seeder
                     ['code' => 'yeast', 'label' => 'Yeast Cells', 'type' => 'select', 'options' => ['None Seen', 'Few', 'Moderate']],
                 ]],
             ]],
-            'LAB-STOOL-001' => ['sections' => [
+            'LAB-PAR-STOOL-ROUTINE' => ['sections' => [
                 ['label' => 'Macroscopic Examination', 'fields' => [
                     ['code' => 'colour', 'label' => 'Colour', 'type' => 'select', 'options' => ['Brown', 'Yellow', 'Green', 'Black', 'Red', 'Pale', 'Other']],
                     ['code' => 'consistency', 'label' => 'Consistency', 'type' => 'select', 'options' => ['Formed', 'Soft', 'Loose', 'Watery', 'Mucoid']],
@@ -232,7 +239,7 @@ class DskLabClinicalCatalogSeeder extends Seeder
                     ['code' => 'reducing_substance', 'label' => 'Reducing Substance', 'type' => 'positive-negative'],
                 ]],
             ]],
-            'LAB-MRDT-001' => ['sections' => [
+            'LAB-PAR-MRDT' => ['sections' => [
                 ['label' => 'Test Result', 'fields' => [
                     ['code' => 'result', 'label' => 'Result', 'type' => 'positive-negative'],
                 ]],
@@ -242,21 +249,21 @@ class DskLabClinicalCatalogSeeder extends Seeder
                     ['code' => 'parasite_density', 'label' => 'Parasite Density', 'type' => 'select', 'options' => ['+ (1-10 parasites / 100 HPF)', '++ (11-100 parasites / 100 HPF)', '+++ (1-10 parasites / HPF)', '++++ (>10 parasites / HPF)']],
                 ]],
             ]],
-            'LAB-HIV-001' => ['sections' => [
+            'LAB-SER-HIV-RDT' => ['sections' => [
                 ['label' => 'Test Result', 'fields' => [
                     ['code' => 'result', 'label' => 'Result', 'type' => 'select', 'options' => ['Non-Reactive', 'Reactive', 'Invalid']],
                     ['code' => 'kit_name', 'label' => 'Kit Used', 'type' => 'select', 'options' => ['Determine HIV-1/2', 'SD Bioline HIV-1/2', 'Uni-Gold HIV', 'Stat-Pak HIV-1/2', 'Other']],
                     ['code' => 'kit_lot', 'label' => 'Kit Lot Number', 'type' => 'text', 'placeholder' => 'e.g. LOT-12345'],
                 ]],
             ]],
-            'LAB-ABO-001' => ['sections' => [
+            'LAB-BB-ABO-RH' => ['sections' => [
                 ['label' => 'Blood Group', 'fields' => [
                     ['code' => 'abo_group', 'label' => 'ABO Group', 'type' => 'select', 'options' => ['A', 'B', 'AB', 'O']],
                     ['code' => 'rh_type', 'label' => 'Rh Type', 'type' => 'select', 'options' => ['Positive', 'Negative']],
                     ['code' => 'method', 'label' => 'Method', 'type' => 'select', 'options' => ['Slide Method', 'Tube Method', 'Gel Card']],
                 ]],
             ]],
-            'LAB-WIDAL-001' => ['sections' => [
+            'LAB-SER-WIDAL' => ['sections' => [
                 ['label' => 'Test Result', 'fields' => [
                     ['code' => 'result', 'label' => 'Result', 'type' => 'reactive-nonreactive'],
                 ]],

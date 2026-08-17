@@ -45,6 +45,7 @@ return [
 
     'page_paths' => [
 
+        resource_path('ts/pages'),
         resource_path('js/Pages'),
 
     ],
@@ -95,6 +96,7 @@ return [
         'ensure_pages_exist' => true,
 
         'page_paths' => [
+            resource_path('ts/pages'),
             resource_path('js/pages'),
         ],
 

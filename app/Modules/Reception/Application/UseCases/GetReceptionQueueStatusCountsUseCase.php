@@ -27,6 +27,7 @@ class GetReceptionQueueStatusCountsUseCase
         AppointmentStatus::WAITING_TRIAGE->value,
         AppointmentStatus::WAITING_PROVIDER->value,
         AppointmentStatus::IN_CONSULTATION->value,
+        'admitted',
     ];
 
     /**
@@ -60,6 +61,28 @@ class GetReceptionQueueStatusCountsUseCase
 
     private function baseQuery(string $stage, ?string $query, ?string $department, ?string $clinicianUserId): Builder
     {
+        if ($stage === 'admitted') {
+            return \App\Modules\Admission\Infrastructure\Models\AdmissionModel::query()
+                ->where('status', 'admitted')
+                ->when($department, fn (Builder $builder, string $value) => $builder->where('ward', $value))
+                ->when($clinicianUserId, fn (Builder $builder, string $value) => $builder->where('attending_clinician_user_id', $value))
+                ->when($query, function (Builder $builder, string $searchTerm): void {
+                    $like = '%'.strtolower($searchTerm).'%';
+                    $matchingPatientIds = PatientModel::query()
+                        ->where(function (Builder $nested) use ($like): void {
+                            $nested->whereRaw('LOWER(first_name) LIKE ?', [$like])
+                                ->orWhereRaw('LOWER(last_name) LIKE ?', [$like])
+                                ->orWhereRaw('LOWER(patient_number) LIKE ?', [$like]);
+                        })
+                        ->pluck('id');
+
+                    $builder->where(function (Builder $nested) use ($like, $matchingPatientIds): void {
+                        $nested->whereRaw('LOWER(admission_number) LIKE ?', [$like])
+                            ->orWhereIn('patient_id', $matchingPatientIds);
+                    });
+                });
+        }
+
         return AppointmentModel::query()
             ->where('status', $stage)
             ->when($department, fn (Builder $builder, string $value) => $builder->where('department', $value))

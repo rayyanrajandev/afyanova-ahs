@@ -247,9 +247,17 @@ class User extends Authenticatable implements MustVerifyEmail
                 ->pluck('roles.code')
                 ->all();
 
+            $facilityRoles = DB::table('facility_user')
+                ->where('user_id', $this->id)
+                ->where('is_active', true)
+                ->pluck('role')
+                ->all();
+
+            $allCodes = array_merge($codes, $facilityRoles);
+
             $normalized = array_values(array_unique(array_filter(array_map(
-                static fn (mixed $code): string => strtoupper(trim((string) $code)),
-                $codes,
+                static fn (mixed $code): string => strtolower(trim((string) $code)),
+                $allCodes,
             ))));
             sort($normalized);
 

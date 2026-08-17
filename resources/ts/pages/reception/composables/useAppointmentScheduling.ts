@@ -54,7 +54,7 @@ export interface UseAppointmentSchedulingOptions {
 }
 
 export function useAppointmentScheduling(options: UseAppointmentSchedulingOptions) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n({ useScope: "global" });
   const toast = useToast();
   const patientStore = usePatientStore();
   const recentStore = useRecentStore();

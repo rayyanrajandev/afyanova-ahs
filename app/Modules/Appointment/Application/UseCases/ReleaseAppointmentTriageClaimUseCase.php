@@ -5,6 +5,8 @@ namespace App\Modules\Appointment\Application\UseCases;
 use App\Modules\Appointment\Application\Exceptions\TriageClaimConflictException;
 use App\Modules\Appointment\Domain\Repositories\AppointmentAuditLogRepositoryInterface;
 use App\Modules\Appointment\Domain\Repositories\AppointmentRepositoryInterface;
+use App\Modules\PatientFlow\Application\Services\RecordPatientFlowTransitionService;
+use App\Modules\PatientFlow\Domain\ValueObjects\PatientFlowStep;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
 
 /**
@@ -20,6 +22,7 @@ class ReleaseAppointmentTriageClaimUseCase
         private readonly AppointmentRepositoryInterface $appointmentRepository,
         private readonly AppointmentAuditLogRepositoryInterface $auditLogRepository,
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
+        private readonly RecordPatientFlowTransitionService $recordPatientFlowTransition,
     ) {}
 
     /**
@@ -64,6 +67,19 @@ class ReleaseAppointmentTriageClaimUseCase
                 ],
             ],
             metadata: [],
+        );
+
+        // Flow log (2026-08-16 activity audit). Releasing a claim puts the
+        // patient back in the triage queue; without this the timeline showed a
+        // pickup with no matching hand-back, which reads as though the nurse is
+        // still with them.
+        $this->recordPatientFlowTransition->record(
+            toStep: PatientFlowStep::WAITING_TRIAGE,
+            patientId: (string) $updated['patient_id'],
+            appointmentId: (string) $updated['id'],
+            actorId: $actorId,
+            source: 'triage.claim_released',
+            facilityId: $updated['facility_id'] ?? null,
         );
 
         return $updated;

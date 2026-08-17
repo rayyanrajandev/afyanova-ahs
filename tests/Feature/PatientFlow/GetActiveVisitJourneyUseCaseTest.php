@@ -656,10 +656,9 @@ it('runs a bounded, N-independent number of queries regardless of active-visit v
     DB::disableQueryLog();
 
     expect($entries)->toHaveCount(150);
-    // Ceiling bumped from 6 to 8 for the Phase 1 card-enrichment pass: one
-    // more batched query each for allergies and pending-invoice lookups,
-    // still one query per data source regardless of visit volume.
-    expect($queryCount)->toBeLessThanOrEqual(8);
+    // Ceiling bumped for Phase 1 card-enrichment and flow-log batched lookups:
+    // still constant batched queries (O(1)) regardless of visit volume (150 visits).
+    expect($queryCount)->toBeLessThanOrEqual(10);
 });
 
 it('excludes completed, cancelled, and no_show appointments entirely', function (): void {
@@ -704,4 +703,196 @@ it('returns an empty array when the scoped patientId has no active visit', funct
     $entries = app(GetActiveVisitJourneyUseCase::class)->execute($patient->id);
 
     expect($entries)->toBe([]);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Laboratory flow plan, phase 1 — a visit waiting for a provider may be
+| waiting *at a department*.
+|--------------------------------------------------------------------------
+|
+| updateProviderWorkflow() releases a patient back to waiting_provider when the
+| doctor sends them out for diagnostics, preserving consultation_started_at
+| ("sent out for labs, will return"). Before this, open orders were consulted
+| only for in_consultation, so the whole time the patient stood in the lab
+| every board read "Waiting for Doctor Review".
+*/
+
+it('maps a waiting_provider appointment with an open lab order to in_lab, not waiting_clinician_review', function (): void {
+    $patient = makePatientFlowPatient();
+    $appointment = makePatientFlowAppointment($patient->id, [
+        'status' => 'waiting_provider',
+        'consultation_started_at' => now()->subMinutes(20),
+    ]);
+    makePatientFlowLabOrder($patient->id, $appointment->id, 'collected');
+
+    $entries = app(GetActiveVisitJourneyUseCase::class)->execute();
+
+    expect($entries[0]['step'])->toBe('in_lab');
+});
+
+it('maps a waiting_provider appointment with an unstarted lab order to waiting_lab', function (): void {
+    $patient = makePatientFlowPatient();
+    $appointment = makePatientFlowAppointment($patient->id, [
+        'status' => 'waiting_provider',
+        'consultation_started_at' => now()->subMinutes(20),
+    ]);
+    makePatientFlowLabOrder($patient->id, $appointment->id, 'ordered');
+
+    $entries = app(GetActiveVisitJourneyUseCase::class)->execute();
+
+    expect($entries[0]['step'])->toBe('waiting_lab');
+});
+
+it('sources stepEnteredAt from the order for a waiting_provider visit held by the lab', function (): void {
+    $patient = makePatientFlowPatient();
+    $appointment = makePatientFlowAppointment($patient->id, [
+        'status' => 'waiting_provider',
+        'consultation_started_at' => now()->subMinutes(20),
+    ]);
+    makePatientFlowLabOrder($patient->id, $appointment->id, 'ordered');
+
+    $entries = app(GetActiveVisitJourneyUseCase::class)->execute();
+
+    // The wait being measured is the diagnostic order's, not the consultation's
+    // — this is the whole reason the step moved.
+    expect($entries[0]['stepEnteredAt'])->not->toBeNull();
+});
+
+it('still maps a waiting_provider appointment whose orders are all closed to waiting_clinician_review', function (): void {
+    $patient = makePatientFlowPatient();
+    $appointment = makePatientFlowAppointment($patient->id, [
+        'status' => 'waiting_provider',
+        'consultation_started_at' => now()->subMinutes(20),
+    ]);
+    makePatientFlowLabOrder($patient->id, $appointment->id, 'completed');
+
+    $entries = app(GetActiveVisitJourneyUseCase::class)->execute();
+
+    // The resolver's 'with_clinician' fallback means "no department holds this
+    // patient" — it must never become the step for a queued visit.
+    expect($entries[0]['step'])->toBe('waiting_clinician_review');
+});
+
+it('still maps a first-visit waiting_provider appointment with an open lab order to in_lab', function (): void {
+    $patient = makePatientFlowPatient();
+    $appointment = makePatientFlowAppointment($patient->id, [
+        'status' => 'waiting_provider',
+        'consultation_started_at' => null,
+    ]);
+    makePatientFlowLabOrder($patient->id, $appointment->id, 'collected');
+
+    $entries = app(GetActiveVisitJourneyUseCase::class)->execute();
+
+    // Where the patient physically is does not depend on whether they have
+    // seen a doctor yet.
+    expect($entries[0]['step'])->toBe('in_lab');
+});
+
+it('lets a nursing claim outrank the lab step on a waiting_provider visit', function (): void {
+    $nurse = User::factory()->create();
+    $patient = makePatientFlowPatient();
+    $appointment = makePatientFlowAppointment($patient->id, [
+        'status' => 'waiting_provider',
+        'consultation_started_at' => now()->subMinutes(20),
+        'nursing_contact_user_id' => $nurse->id,
+        'nursing_contact_started_at' => now()->subMinutes(2),
+    ]);
+    makePatientFlowLabOrder($patient->id, $appointment->id, 'collected');
+
+    $entries = app(GetActiveVisitJourneyUseCase::class)->execute();
+
+    // Someone physically with the patient beats where they are queued.
+    expect($entries[0]['step'])->toBe('with_nurse');
+});
+
+/*
+|--------------------------------------------------------------------------
+| ResolveVisitStagesUseCase — one answer to "where is this visit?"
+|--------------------------------------------------------------------------
+|
+| PatientFlowStep::forAppointment() reads only the appointment's own columns and
+| cannot see open orders, so a doctor who ordered a lab test left the patient
+| reading "With Doctor" on the profile badge and clinician queue while the board
+| correctly read "Waiting for Lab" for the same patient at the same moment.
+*/
+
+it('reports a visit with an open lab order as being at the lab, not with the doctor', function (): void {
+    $patient = makePatientFlowPatient();
+    $appointment = makePatientFlowAppointment($patient->id, [
+        'status' => 'in_consultation',
+        'consultation_started_at' => now()->subMinutes(10),
+    ]);
+    makePatientFlowLabOrder($patient->id, $appointment->id, 'ordered');
+
+    $resolver = app(\App\Modules\PatientFlow\Application\UseCases\ResolveVisitStagesUseCase::class);
+
+    // with_clinician is an active-contact step: it asserts a named doctor is
+    // physically with this patient. While they stand in the lab that is false,
+    // and it keeps the doctor's room reading occupied.
+    expect($resolver->forAppointment($appointment->fresh()))->toBe('waiting_lab');
+});
+
+it('agrees with the patient-flow board about the same visit', function (): void {
+    $patient = makePatientFlowPatient();
+    $appointment = makePatientFlowAppointment($patient->id, [
+        'status' => 'in_consultation',
+        'consultation_started_at' => now()->subMinutes(10),
+    ]);
+    makePatientFlowLabOrder($patient->id, $appointment->id, 'collected');
+
+    $board = app(GetActiveVisitJourneyUseCase::class)->execute()[0]['step'];
+    $badge = app(\App\Modules\PatientFlow\Application\UseCases\ResolveVisitStagesUseCase::class)
+        ->forAppointment($appointment->fresh());
+
+    // The whole point: two surfaces, one answer.
+    expect($badge)->toBe($board);
+});
+
+it('lets a nurse in the room outrank a pending order', function (): void {
+    $nurse = User::factory()->create();
+    $patient = makePatientFlowPatient();
+    $appointment = makePatientFlowAppointment($patient->id, [
+        'status' => 'waiting_provider',
+        'nursing_contact_user_id' => $nurse->id,
+        'nursing_contact_started_at' => now()->subMinutes(2),
+    ]);
+    makePatientFlowLabOrder($patient->id, $appointment->id, 'ordered');
+
+    $resolver = app(\App\Modules\PatientFlow\Application\UseCases\ResolveVisitStagesUseCase::class);
+
+    // The specimen can wait; the person cannot be in two places.
+    expect($resolver->forAppointment($appointment->fresh()))->toBe('with_nurse');
+});
+
+it('leaves a consultation with nothing outstanding as with_clinician', function (): void {
+    $patient = makePatientFlowPatient();
+    $appointment = makePatientFlowAppointment($patient->id, [
+        'status' => 'in_consultation',
+        'consultation_started_at' => now()->subMinutes(10),
+    ]);
+
+    $resolver = app(\App\Modules\PatientFlow\Application\UseCases\ResolveVisitStagesUseCase::class);
+
+    expect($resolver->forAppointment($appointment->fresh()))->toBe('with_clinician');
+});
+
+it('resolves a whole page of appointments in one batched pass', function (): void {
+    $patient = makePatientFlowPatient();
+    $atLab = makePatientFlowAppointment($patient->id, [
+        'status' => 'in_consultation',
+        'consultation_started_at' => now()->subMinutes(10),
+    ]);
+    makePatientFlowLabOrder($patient->id, $atLab->id, 'ordered');
+
+    $withDoctor = makePatientFlowAppointment($patient->id, [
+        'status' => 'in_consultation',
+        'consultation_started_at' => now()->subMinutes(5),
+    ]);
+
+    $stages = app(\App\Modules\PatientFlow\Application\UseCases\ResolveVisitStagesUseCase::class)
+        ->forAppointments([$atLab->fresh(), $withDoctor->fresh()]);
+
+    expect($stages[$atLab->id])->toBe('waiting_lab');
+    expect($stages[$withDoctor->id])->toBe('with_clinician');
 });

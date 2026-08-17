@@ -27,7 +27,7 @@ final class ClinicalOrderPatientSummaryEnricher
 
         $patients = PatientModel::query()
             ->whereIn('id', array_keys($patientIds))
-            ->get(['id', 'patient_number', 'first_name', 'middle_name', 'last_name', 'phone']);
+            ->get(['id', 'patient_number', 'first_name', 'middle_name', 'last_name', 'gender', 'date_of_birth', 'phone']);
 
         $summaries = [];
 
@@ -61,12 +61,33 @@ final class ClinicalOrderPatientSummaryEnricher
      */
     private static function transformPatient(PatientModel $patient): array
     {
+        $fullName = trim(implode(' ', array_filter([
+            $patient->first_name,
+            $patient->middle_name,
+            $patient->last_name,
+        ])));
+
+        $age = null;
+        if ($patient->date_of_birth !== null) {
+            try {
+                $age = \Carbon\Carbon::parse($patient->date_of_birth)->age . ' yrs';
+            } catch (\Throwable) {
+                $age = null;
+            }
+        }
+
         return [
             'id' => (string) $patient->id,
+            'name' => $fullName !== '' ? $fullName : 'Patient',
+            'mrn' => $patient->patient_number,
             'patientNumber' => $patient->patient_number,
             'firstName' => $patient->first_name,
             'middleName' => $patient->middle_name,
             'lastName' => $patient->last_name,
+            'gender' => $patient->gender ? ucfirst((string) $patient->gender) : null,
+            'dateOfBirth' => $patient->date_of_birth ? (string) $patient->date_of_birth : null,
+            'dob' => $patient->date_of_birth ? (string) $patient->date_of_birth : null,
+            'age' => $age,
             'phone' => $patient->phone,
         ];
     }

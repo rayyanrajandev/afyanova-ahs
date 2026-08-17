@@ -5,6 +5,10 @@
  * match the backend StorePatientRequest exactly. Validation mirrors the
  * server: dateOfBirth before:today (no future, age > 0) and locale-aware
  * phone formats (Volume 0.4 §6) that normalize to +255 for Tanzania.
+ *
+ * 2027 Enterprise Upgrades:
+ * - Bi-directional Age ↔ DOB calculation utilities
+ * - Integrated financial coverage / insurance fields (Self-Pay vs Insurance)
  */
 
 import { z } from "zod";
@@ -22,7 +26,7 @@ export function isTanzaniaPhone(value: string): boolean {
   return false;
 }
 
-/** DOB must be a real calendar date, not in the future, and imply age > 0 (Volume 2.1 §6.1). */
+/** DOB must be a real calendar date, not in the future, and imply age >= 0 (Volume 2.1 §6.1). */
 export function isValidDateOfBirth(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
 
@@ -38,20 +42,28 @@ export function isValidDateOfBirth(value: string): boolean {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  if (date >= today) return false; // not in the future, not today (age 0)
+  if (date > today) return false; // not in the future
 
-  const age = ageFrom(value);
-  return age > 0;
+  return true;
 }
 
 export function ageFrom(dateOfBirth: string): number {
+  if (!dateOfBirth) return 0;
   const [year, month, day] = dateOfBirth.split("-").map(Number);
+  if (!year || !month || !day) return 0;
   const dob = new Date(year, month - 1, day);
   const now = new Date();
   let age = now.getFullYear() - dob.getFullYear();
   const m = now.getMonth() - dob.getMonth();
   if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age -= 1;
   return Math.max(age, 0);
+}
+
+/** Convert an age in years back to an estimated January 1st Date of Birth ISO string. */
+export function dobFromAge(ageInYears: number): string {
+  const safeAge = Math.max(0, Math.min(130, Math.floor(ageInYears)));
+  const birthYear = new Date().getFullYear() - safeAge;
+  return `${birthYear}-01-01`;
 }
 
 export type RegistrationValues = z.infer<typeof registrationSchema>;
@@ -63,17 +75,21 @@ export const registrationSchema = z.object({
   dateOfBirth: z.string().refine(isValidDateOfBirth, "invalid_date_of_birth"),
   gender: z.enum(["male", "female", "other", "unknown"]),
   phone: z.string().refine(isTanzaniaPhone, "invalid_phone"),
-  email: z.string().email().optional().or(z.literal("")),
+  email: z.string().email("invalid_email").optional().or(z.literal("")),
   addressLine: z.string().min(1, "required"),
   region: z.string().min(1, "required"),
   district: z.string().min(1, "required"),
-  countryCode: z.string().length(2, "required"),
+  countryCode: z.string().length(2, "required").default("TZ"),
   nationalId: z.string().optional(),
+  
+  // Financial Coverage / Insurance (2027 Enterprise Intake)
+  coverageType: z.enum(["self_pay", "insurance"]).default("self_pay"),
+  insuranceProvider: z.string().optional(),
+  memberNumber: z.string().optional(),
+  policyType: z.string().optional(),
+
+  // Emergency Contact
   nextOfKinName: z.string().optional(),
-  // Same Tanzania phone shape as the patient's own number, but only
-  // checked when actually filled in — nextOfKinPhone is optional on the
-  // backend (StorePatientRequest) and a name without a phone is still a
-  // useful partial record (Volume 0.4 §6 doesn't require the pair).
   nextOfKinPhone: z
     .string()
     .optional()

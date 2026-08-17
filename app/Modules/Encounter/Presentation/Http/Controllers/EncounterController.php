@@ -22,6 +22,7 @@ use App\Modules\Encounter\Presentation\Http\Transformers\EncounterWorkspaceRespo
 use App\Modules\Platform\Application\Exceptions\TenantScopeRequiredForIsolationException;
 use App\Support\CanonicalEncounterState\CanonicalEncounterShadowLogger;
 use App\Support\CanonicalEncounterState\CanonicalEncounterStateResolver;
+use App\Modules\PatientFlow\Application\UseCases\ResolveVisitStagesUseCase;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -33,8 +34,23 @@ class EncounterController extends Controller
     {
         $result = $useCase->execute($request->all());
 
+        // One batched diagnostic-order lookup for the whole page rather than one
+        // per row — the clinician queue is the busiest list in the product.
+        $visitStages = app(ResolveVisitStagesUseCase::class)->forAppointments(
+            array_values(array_filter(array_map(
+                static fn (array $encounter): ?array => $encounter['appointment'] ?? null,
+                $result['data'],
+            ))),
+        );
+
         return response()->json([
-            'data' => array_map([EncounterListItemResponseTransformer::class, 'transform'], $result['data']),
+            'data' => array_map(
+                static fn (array $encounter): array => EncounterListItemResponseTransformer::transform(
+                    $encounter,
+                    $visitStages[(string) ($encounter['appointment']['id'] ?? '')] ?? null,
+                ),
+                $result['data'],
+            ),
             'meta' => $result['meta'],
         ]);
     }

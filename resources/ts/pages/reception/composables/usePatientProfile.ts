@@ -30,7 +30,7 @@ interface PatientAuditLogEntry {
 }
 
 export function usePatientProfile(selectedPatient: ComputedRef<Patient | null>) {
-  const { t, te } = useI18n();
+  const { t, te, locale } = useI18n({ useScope: "global" });
   const patientStore = usePatientStore();
 
   const profileSummary = ref<PatientSummary | null>(null);

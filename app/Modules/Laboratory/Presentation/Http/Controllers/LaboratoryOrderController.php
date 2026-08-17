@@ -31,6 +31,7 @@ use App\Modules\Platform\Application\Exceptions\TenantScopeRequiredForIsolationE
 use App\Modules\Platform\Infrastructure\Models\AuditExportJobModel;
 use App\Support\ClinicalOrders\ClinicalOrderPatientSummaryEnricher;
 use App\Support\ClinicalOrders\ClinicalOrderUserSummaryEnricher;
+use App\Support\ClinicalOrders\ClinicalOrderVisitStageEnricher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -53,6 +54,11 @@ class LaboratoryOrderController extends Controller
             $result['data'],
             array_map([LaboratoryOrderResponseTransformer::class, 'transform'], $result['data']),
         );
+
+        // visitStage lets the worklist say where each patient actually is —
+        // still waiting for triage, with a doctor, or held by the lab itself —
+        // instead of showing only this order's own status.
+        $orders = ClinicalOrderVisitStageEnricher::attachToTransformedOrders($result['data'], $orders);
 
         return response()->json([
             'data' => ClinicalOrderUserSummaryEnricher::attachOrderingClinicianToTransformedOrders($result['data'], $orders),

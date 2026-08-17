@@ -26,6 +26,7 @@ class DepartmentModel extends Model
         'service_type',
         'is_patient_facing',
         'is_appointmentable',
+        'is_default_walk_in',
         'manager_user_id',
         'status',
         'status_reason',
@@ -41,6 +42,7 @@ class DepartmentModel extends Model
         return [
             'is_patient_facing' => 'boolean',
             'is_appointmentable' => 'boolean',
+            'is_default_walk_in' => 'boolean',
             'manager_user_id' => 'integer',
             'default_warehouse_id' => 'string',
             'created_at' => 'datetime',

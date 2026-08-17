@@ -46,16 +46,36 @@ function mrnApiUser(): User
 it('generates sequential zero-padded 8-digit MRNs per scope', function (): void {
     $generator = app(PatientMrnGenerator::class);
 
-    expect($generator->nextForTenant(null))->toBe('00000001');
-    expect($generator->nextForTenant(null))->toBe('00000002');
-    expect($generator->nextForTenant(null))->toBe('00000003');
+    $mrn1 = $generator->nextForTenant(null);
+    expect($mrn1)->toBe('00000001');
+    PatientModel::query()->create(['patient_number' => $mrn1, 'first_name' => 'A', 'last_name' => 'B', 'gender' => 'female', 'date_of_birth' => '1990-01-01', 'country_code' => 'TZ']);
+
+    $mrn2 = $generator->nextForTenant(null);
+    expect($mrn2)->toBe('00000002');
+    PatientModel::query()->create(['patient_number' => $mrn2, 'first_name' => 'C', 'last_name' => 'D', 'gender' => 'female', 'date_of_birth' => '1990-01-01', 'country_code' => 'TZ']);
+
+    $mrn3 = $generator->nextForTenant(null);
+    expect($mrn3)->toBe('00000003');
+    PatientModel::query()->create(['patient_number' => $mrn3, 'first_name' => 'E', 'last_name' => 'F', 'gender' => 'female', 'date_of_birth' => '1990-01-01', 'country_code' => 'TZ']);
 
     $tenantA = (string) Str::uuid();
     $tenantB = (string) Str::uuid();
 
-    expect($generator->nextForTenant($tenantA))->toBe('00000001');
-    expect($generator->nextForTenant($tenantA))->toBe('00000002');
-    expect($generator->nextForTenant($tenantB))->toBe('00000001');
+    DB::table('tenants')->insert([
+        ['id' => $tenantA, 'code' => 'TENA_SEQ', 'name' => 'Tenant A', 'country_code' => 'TZ', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+        ['id' => $tenantB, 'code' => 'TENB_SEQ', 'name' => 'Tenant B', 'country_code' => 'TZ', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+    ]);
+
+    $mrnTenantA1 = $generator->nextForTenant($tenantA);
+    expect($mrnTenantA1)->toBe('00000001');
+    PatientModel::query()->create(['tenant_id' => $tenantA, 'patient_number' => $mrnTenantA1, 'first_name' => 'G', 'last_name' => 'H', 'gender' => 'male', 'date_of_birth' => '1990-01-01', 'country_code' => 'TZ']);
+
+    $mrnTenantA2 = $generator->nextForTenant($tenantA);
+    expect($mrnTenantA2)->toBe('00000002');
+    PatientModel::query()->create(['tenant_id' => $tenantA, 'patient_number' => $mrnTenantA2, 'first_name' => 'I', 'last_name' => 'J', 'gender' => 'male', 'date_of_birth' => '1990-01-01', 'country_code' => 'TZ']);
+
+    $mrnTenantB1 = $generator->nextForTenant($tenantB);
+    expect($mrnTenantB1)->toBe('00000001');
 });
 
 it('returns MRNs that are always exactly 8 digits', function (): void {
@@ -221,6 +241,136 @@ it('returns the MRN in API responses', function (): void {
         ->getJson('/api/v1/patients/'.$created['id'])
         ->assertOk()
         ->assertJsonPath('data.patientNumber', '00000001');
+});
+
+it('resets MRN sequence back to 00000001 when all patients are deleted via Eloquent', function (): void {
+    $generator = app(PatientMrnGenerator::class);
+    $user = mrnApiUser();
+
+    $patient1 = $this->actingAs($user)->postJson('/api/v1/patients', mrnApiPayload())->json('data');
+    $patient2 = $this->actingAs($user)->postJson('/api/v1/patients', mrnApiPayload(['phone' => '+255700500003', 'nationalId' => 'TZ-MRN-002']))->json('data');
+
+    expect($patient1['patientNumber'])->toBe('00000001');
+    expect($patient2['patientNumber'])->toBe('00000002');
+
+    // Delete both patients
+    PatientModel::query()->find($patient1['id'])->delete();
+    PatientModel::query()->find($patient2['id'])->delete();
+
+    expect(PatientModel::query()->count())->toBe(0);
+
+    // Next patient created should restart at 00000001
+    $patient3 = $this->actingAs($user)->postJson('/api/v1/patients', mrnApiPayload(['phone' => '+255700500004', 'nationalId' => 'TZ-MRN-003']))->json('data');
+    expect($patient3['patientNumber'])->toBe('00000001');
+});
+
+it('resets MRN sequence back to 00000001 when patients are wiped via DB and reset is called or synced', function (): void {
+    $generator = app(PatientMrnGenerator::class);
+
+    PatientModel::query()->create([
+        'patient_number' => $generator->nextForTenant(null),
+        'first_name' => 'John',
+        'last_name' => 'Doe',
+        'gender' => 'male',
+        'date_of_birth' => '1990-01-01',
+        'country_code' => 'TZ',
+    ]);
+
+    expect($generator->nextForTenant(null))->toBe('00000002');
+
+    // Wipe DB directly (e.g. DB::table('patients')->delete())
+    DB::table('patients')->delete();
+
+    // Call resetAll or syncAllSequencesWithDatabase
+    $generator->syncAllSequencesWithDatabase();
+
+    expect($generator->nextForTenant(null))->toBe('00000001');
+});
+
+it('resets only the specific tenant sequence when that tenant has all patients deleted', function (): void {
+    $generator = app(PatientMrnGenerator::class);
+    $tenantA = (string) Str::uuid();
+    $tenantB = (string) Str::uuid();
+
+    DB::table('tenants')->insert([
+        ['id' => $tenantA, 'code' => 'TENA', 'name' => 'Tenant A', 'country_code' => 'TZ', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+        ['id' => $tenantB, 'code' => 'TENB', 'name' => 'Tenant B', 'country_code' => 'TZ', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()],
+    ]);
+
+    PatientModel::query()->create([
+        'tenant_id' => $tenantA,
+        'patient_number' => $generator->nextForTenant($tenantA),
+        'first_name' => 'John',
+        'last_name' => 'Doe',
+        'gender' => 'male',
+        'date_of_birth' => '1990-01-01',
+        'country_code' => 'TZ',
+    ]);
+
+    PatientModel::query()->create([
+        'tenant_id' => $tenantB,
+        'patient_number' => $generator->nextForTenant($tenantB),
+        'first_name' => 'Jane',
+        'last_name' => 'Doe',
+        'gender' => 'female',
+        'date_of_birth' => '1992-02-02',
+        'country_code' => 'TZ',
+    ]);
+
+    PatientModel::query()->create([
+        'tenant_id' => $tenantB,
+        'patient_number' => $generator->nextForTenant($tenantB),
+        'first_name' => 'Baby',
+        'last_name' => 'Doe',
+        'gender' => 'female',
+        'date_of_birth' => '2020-03-03',
+        'country_code' => 'TZ',
+    ]);
+
+    // Tenant A has 1 patient, Tenant B has 2 patients
+    expect(PatientModel::query()->where('tenant_id', $tenantA)->count())->toBe(1);
+    expect(PatientModel::query()->where('tenant_id', $tenantB)->count())->toBe(2);
+
+    // Delete Tenant A's only patient via Eloquent
+    PatientModel::query()->where('tenant_id', $tenantA)->first()->delete();
+
+    // Tenant A restarts at 00000001, while Tenant B continues at 00000003
+    expect($generator->nextForTenant($tenantA))->toBe('00000001');
+    expect($generator->nextForTenant($tenantB))->toBe('00000003');
+});
+
+it('supports manually resetting and syncing MRN sequences via Artisan command', function (): void {
+    $generator = app(PatientMrnGenerator::class);
+    $tenantA = (string) Str::uuid();
+
+    DB::table('tenants')->insert([
+        'id' => $tenantA, 'code' => 'TENC', 'name' => 'Tenant C', 'country_code' => 'TZ', 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    PatientModel::query()->create([
+        'tenant_id' => $tenantA,
+        'patient_number' => '00000005',
+        'first_name' => 'John',
+        'last_name' => 'Doe',
+        'gender' => 'male',
+        'date_of_birth' => '1990-01-01',
+        'country_code' => 'TZ',
+    ]);
+
+    $this->artisan('patients:reset-mrn-sequence', ['--tenant' => $tenantA, '--sync' => true])
+        ->assertSuccessful();
+
+    // With patient 00000005 present, next should be 00000006
+    expect($generator->nextForTenant($tenantA))->toBe('00000006');
+
+    // Reset command for all
+    $this->artisan('patients:reset-mrn-sequence', ['--all' => true])
+        ->assertSuccessful();
+
+    // Now delete patient and verify start at 00000001
+    PatientModel::query()->where('tenant_id', $tenantA)->delete();
+    $generator->resetForTenant($tenantA);
+    expect($generator->nextForTenant($tenantA))->toBe('00000001');
 });
 
 function seedMrmTenantScope(

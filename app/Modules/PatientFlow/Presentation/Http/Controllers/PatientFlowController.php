@@ -3,9 +3,13 @@
 namespace App\Modules\PatientFlow\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\PatientFlow\Application\UseCases\ClaimPatientForNursingUseCase;
 use App\Modules\PatientFlow\Application\UseCases\GetActiveVisitJourneyUseCase;
 use App\Modules\PatientFlow\Application\UseCases\GetOrderCompletionNotificationsForClinicianUseCase;
+use App\Modules\PatientFlow\Application\UseCases\GetPatientFlowTimelineUseCase;
+use App\Modules\PatientFlow\Application\UseCases\ReleasePatientFromNursingUseCase;
 use App\Modules\PatientFlow\Presentation\Http\Transformers\OrderCompletionNotificationResponseTransformer;
+use App\Modules\PatientFlow\Presentation\Http\Transformers\PatientFlowTimelineEntryResponseTransformer;
 use App\Modules\PatientFlow\Presentation\Http\Transformers\VisitJourneyEntryResponseTransformer;
 use App\Modules\Staff\Application\UseCases\ListStaffProfilesUseCase;
 use App\Modules\Staff\Presentation\Http\Transformers\StaffProfileResponseTransformer;
@@ -59,6 +63,73 @@ class PatientFlowController extends Controller
             'data' => $userId === null ? [] : array_map(
                 [OrderCompletionNotificationResponseTransformer::class, 'transform'],
                 $useCase->execute($userId),
+            ),
+        ]);
+    }
+
+    /**
+     * The per-patient activity log — "who did what, when" for a patient's
+     * journey. Shared by every workspace rather than duplicated per prefix:
+     * the answer is identical regardless of who asks, and the route-level
+     * `can:` guard is what differs.
+     */
+    public function patientTimeline(string $patientId, Request $request, GetPatientFlowTimelineUseCase $useCase): JsonResponse
+    {
+        $result = $useCase->forPatient(
+            patientId: $patientId,
+            page: $request->integer('page', 1),
+            perPage: $request->filled('perPage') ? $request->integer('perPage') : null,
+        );
+
+        return response()->json([
+            'data' => array_map(
+                [PatientFlowTimelineEntryResponseTransformer::class, 'transform'],
+                $result['data'],
+            ),
+            'meta' => $result['meta'],
+        ]);
+    }
+
+    /**
+     * One visit's sequence, oldest first — what a staff member reads on the
+     * patient card without having to ask a colleague what already happened.
+     */
+    public function visitTimeline(Request $request, GetPatientFlowTimelineUseCase $useCase): JsonResponse
+    {
+        $appointmentId = $request->string('appointmentId')->toString() ?: null;
+        $serviceRequestId = $request->string('serviceRequestId')->toString() ?: null;
+
+        if ($appointmentId === null && $serviceRequestId === null) {
+            return response()->json([
+                'message' => 'Provide the appointment or service request whose timeline you want.',
+                'errors' => [
+                    'appointmentId' => ['Specify appointmentId or serviceRequestId.'],
+                ],
+            ], 422);
+        }
+
+        return response()->json([
+            'data' => array_map(
+                [PatientFlowTimelineEntryResponseTransformer::class, 'transform'],
+                $useCase->forVisit($appointmentId, $serviceRequestId),
+            ),
+        ]);
+    }
+
+    public function claimForNursing(string $encounterId, Request $request, ClaimPatientForNursingUseCase $useCase): JsonResponse
+    {
+        return response()->json([
+            'data' => $useCase->execute($encounterId, $request->user()?->id),
+        ]);
+    }
+
+    public function releaseFromNursing(string $encounterId, Request $request, ReleasePatientFromNursingUseCase $useCase): JsonResponse
+    {
+        return response()->json([
+            'data' => $useCase->execute(
+                encounterId: $encounterId,
+                actorId: $request->user()?->id,
+                reason: $request->string('reason')->toString() ?: null,
             ),
         ]);
     }

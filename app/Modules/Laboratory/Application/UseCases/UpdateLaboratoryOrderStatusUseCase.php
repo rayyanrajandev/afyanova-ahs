@@ -2,6 +2,7 @@
 
 namespace App\Modules\Laboratory\Application\UseCases;
 
+use App\Modules\Laboratory\Application\Services\RecordLaboratoryFlowTransitionService;
 use App\Modules\Laboratory\Domain\Events\LaboratoryOrderCompleted;
 use App\Modules\Laboratory\Domain\Repositories\LaboratoryOrderAuditLogRepositoryInterface;
 use App\Modules\Laboratory\Domain\Repositories\LaboratoryOrderRepositoryInterface;
@@ -20,7 +21,18 @@ class UpdateLaboratoryOrderStatusUseCase
         private readonly LaboratoryOrderAuditLogRepositoryInterface $auditLogRepository,
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
         private readonly ClinicalCatalogRecipeStockConsumptionService $recipeStockConsumptionService,
+        private readonly RecordLaboratoryFlowTransitionService $recordFlowTransition,
     ) {}
+
+    /**
+     * Staff-facing write paths for the flow log. Keys are the status being
+     * moved *to*; `completed` is what the workspace calls entering a result.
+     */
+    private const FLOW_SOURCES_BY_STATUS = [
+        LaboratoryOrderStatus::COLLECTED->value => 'laboratory.specimen_collected',
+        LaboratoryOrderStatus::IN_PROGRESS->value => 'laboratory.testing_started',
+        LaboratoryOrderStatus::COMPLETED->value => 'laboratory.result_entered',
+    ];
 
     public function execute(
         string $id,
@@ -111,6 +123,21 @@ class UpdateLaboratoryOrderStatusUseCase
                     ],
                 ],
             );
+
+            // Recorded after the update, so the shared resolver sees the new
+            // status when it works out where the visit now stands. Cancellation
+            // is deliberately not recorded: it withdraws work rather than
+            // advancing it, and nothing in the flow vocabulary describes that
+            // yet.
+            $flowSource = self::FLOW_SOURCES_BY_STATUS[$status] ?? null;
+            if ($flowSource !== null) {
+                $this->recordFlowTransition->recordForOrder(
+                    order: $updated,
+                    source: $flowSource,
+                    actorId: $actorId,
+                    metadata: ['laboratory_order_id' => $id],
+                );
+            }
 
             if ($status === LaboratoryOrderStatus::COMPLETED->value) {
                 DB::afterCommit(function () use ($id, $updated, $actorId): void {

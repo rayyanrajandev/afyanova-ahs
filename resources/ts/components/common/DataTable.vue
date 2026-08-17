@@ -83,6 +83,28 @@ const props = withDefaults(
     emptyTitle?: string;
     emptyDescription?: string;
     emptyActionLabel?: string;
+    emptyIllustration?:
+      | 'users'
+      | 'stethoscope'
+      | 'clipboard'
+      | 'flask'
+      | 'activity'
+      | 'pill'
+      | 'receipt'
+      | 'package'
+      | 'search'
+      | 'inbox'
+      | 'calendar';
+    emptyBadge?: string;
+    compact?: boolean;
+    /**
+     * Row key of the record currently open elsewhere (e.g. reception's main
+     * pane). Distinct from `selectable`/`selectedKeys` below — that's a
+     * checkbox multi-select the row-actions/bulk-ops feature owns; this is
+     * a single "you are looking at this one right now" indicator a
+     * consumer can set independently of (and alongside) multi-select.
+     */
+    activeRowKey?: string | null;
   }>(),
   {
     onRowClick: undefined,
@@ -97,6 +119,7 @@ const props = withDefaults(
     emptyTitle: undefined,
     emptyDescription: undefined,
     emptyActionLabel: undefined,
+    activeRowKey: null,
   },
 );
 
@@ -425,7 +448,8 @@ const SKELETON_ROWS = 6;
       </div>
     </div>
 
-    <div v-if="loading && !error" class="flex-1 overflow-auto" aria-busy="true">
+    <!-- Loading state — skeleton rows on initial mount with 0 items -->
+    <div v-if="loading && !error && processedRows.length === 0" class="flex-1 overflow-auto" aria-busy="true">
       <table class="w-full border-collapse text-sm">
         <thead>
           <tr class="border-b border-border bg-muted/50">
@@ -434,6 +458,10 @@ const SKELETON_ROWS = 6;
               v-for="col in visibleColumns"
               :key="col.key"
               class="px-2 py-2 text-left text-xs font-medium text-muted-foreground"
+              :class="{
+                'text-center': col.align === 'center',
+                'text-right': col.align === 'right',
+              }"
             >
               {{ col.label }}
             </th>
@@ -459,12 +487,16 @@ const SKELETON_ROWS = 6;
       class="flex-1"
       :title="emptyTitle ?? t('common.no_data')"
       :description="emptyDescription"
+      :illustration="emptyIllustration ?? 'search'"
+      :badge="emptyBadge"
+      :compact="compact ?? true"
       :action-label="emptyActionLabel"
       @action="emit('emptyAction')"
     />
 
+    <!-- Loaded table (preserved during background refetches) -->
     <div
-      v-if="!error && !loading && processedRows.length > 0"
+      v-if="!error && processedRows.length > 0"
       class="flex flex-1 flex-col overflow-hidden"
     >
       <div
@@ -536,7 +568,13 @@ const SKELETON_ROWS = 6;
                 "
                 @click="toggleSort(col)"
               >
-                <div class="flex items-center gap-1">
+                <div
+                  class="flex items-center gap-1"
+                  :class="{
+                    'justify-end': col.align === 'right',
+                    'justify-center': col.align === 'center',
+                  }"
+                >
                   <span>{{ col.label }}</span>
                   <span v-if="col.sortable !== false" class="shrink-0">
                     <ChevronUp
@@ -581,11 +619,16 @@ const SKELETON_ROWS = 6;
               class="border-b border-border transition-colors hover:bg-muted/50"
               :class="[
                 rowHeightClass,
-                selectedKeys.has(rowKey(row)) ? 'bg-primary/5' : '',
+                rowKey(row) === activeRowKey
+                  ? 'bg-accent'
+                  : selectedKeys.has(rowKey(row))
+                    ? 'bg-primary/5'
+                    : '',
                 props.onRowClick ? 'cursor-pointer' : '',
               ]"
               tabindex="0"
               :aria-selected="selectedKeys.has(rowKey(row))"
+              :aria-current="rowKey(row) === activeRowKey ? 'true' : undefined"
               @click="
                 props.onRowClick?.(row);
                 emit('rowClick', row);

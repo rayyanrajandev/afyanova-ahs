@@ -8,523 +8,546 @@
  * for MAR. Composed entirely from Tier 1 components — no new tokens,
  * primitives, or components.
  *
- * Principles: P1 (safety), P2 (one system), P3 (cognitive load),
- * P4 (interruption), P5 (keyboard), P8 (offline)
+ * Refactored 2026-08-13 for component decomposition and separation of
+ * concerns (Reception-style): all feature logic lives in
+ * `pages/nursing/composables/*`, all presentation in `pages/nursing/
+ * components/*`, and this page is a thin orchestrator that wires them
+ * together (cross-composable effects, keyboard shortcuts, split-ratio).
  */
 
 <script setup lang="ts">
-import { CircleCheck, TriangleAlert } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
-import { useI18n } from 'vue-i18n';
-import Alert from '@/components/common/Alert.vue';
-import DataTable, { type DataTableColumn } from '@/components/common/DataTable.vue';
-import EmptyState from '@/components/common/EmptyState.vue';
-import Queue, { type QueueItem } from '@/components/common/Queue.vue';
-import StatusBadge from '@/components/common/StatusBadge.vue';
-import AppShell from '@/components/shell/AppShell.vue';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Textarea } from '@/components/ui/textarea';
-import { useMedicationStore } from '@/stores/medicationStore';
-import { useQueueStore } from '@/stores/queueStore';
+import { Activity, ClipboardList, Contact, Users } from "lucide-vue-next";
+import { computed, onBeforeUnmount, onMounted, ref, watch, type Ref } from "vue";
+import { useI18n } from "vue-i18n";
+import EmptyState from "@/components/common/EmptyState.vue";
+import SplitPane from "@/components/common/SplitPane.vue";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePatientFlowLiveSync } from "@/composables/usePatientFlowLiveSync";
+import { useShortcuts } from "@/composables/useShortcuts";
+import { useToast } from "@/composables/useToast";
+import { useWorkspaceUrlSync } from "@/composables/useWorkspaceUrlSync";
+import { usePatientStore } from "@/stores/patientStore";
+import { useQueueStore } from "@/stores/queueStore";
+import AdmissionForm from "@/pages/nursing/components/AdmissionForm.vue";
+import AssessmentForm from "@/pages/nursing/components/AssessmentForm.vue";
+import MarPanel from "@/pages/nursing/components/MarPanel.vue";
+import NursingNotesForm from "@/pages/nursing/components/NursingNotesForm.vue";
+import NursingPatientProfileTab from "@/pages/nursing/components/NursingPatientProfileTab.vue";
+import PatientHeader from "@/pages/nursing/components/PatientHeader.vue";
+import PatientListPanel from "@/pages/nursing/components/PatientListPanel.vue";
+import RecentVitalsView from "@/pages/nursing/components/RecentVitalsView.vue";
+import ReturnToReceptionDialog from "@/pages/nursing/components/ReturnToReceptionDialog.vue";
+import TaskQueuePanel from "@/pages/nursing/components/TaskQueuePanel.vue";
+import VitalsForm from "@/pages/nursing/components/VitalsForm.vue";
+import { useMar } from "@/pages/nursing/composables/useMar";
+import { useNursingAdmission } from "@/pages/nursing/composables/useNursingAdmission";
+import { useNursingAssessment } from "@/pages/nursing/composables/useNursingAssessment";
+import { useNursingContact } from "@/pages/nursing/composables/useNursingContact";
+import { useNursingNotes } from "@/pages/nursing/composables/useNursingNotes";
+import { useNursingPatientList } from "@/pages/nursing/composables/useNursingPatientList";
+import { useNursingTasks } from "@/pages/nursing/composables/useNursingTasks";
+import { useVitals } from "@/pages/nursing/composables/useVitals";
+import { usePatientProfile } from "@/pages/reception/composables/usePatientProfile";
 
 const { t } = useI18n();
-const medicationStore = useMedicationStore();
+const toast = useToast();
+const patientStore = usePatientStore();
 const queueStore = useQueueStore();
 
-// ---- Types (Volume 2.3 §12) ----
-interface Patient {
-    id: string;
-    name: string;
-    mrn: string;
-    age: number;
-    sex: string;
-    ward: string;
-    bed: string;
-    allergies: string[];
+// ---- Context pane tabs — persisted per-browser (matching Reception's pattern) ----
+const NURSING_ACTIVE_TAB_KEY = "afyanova:nursing:active-tab";
+type NursingTab = "patients" | "tasks";
+function loadActiveTab(): NursingTab {
+  try {
+    const stored = localStorage.getItem(NURSING_ACTIVE_TAB_KEY);
+    if (stored === "patients" || stored === "tasks") return stored;
+  } catch {
+    // ignore — falls through to default
+  }
+  return "patients";
 }
-
-interface Vital {
-    id: string;
-    patientId: string;
-    temperature: number;
-    heartRate: number;
-    respiratoryRate: number;
-    sbp: number;
-    dbp: number;
-    spo2: number;
-    painScore: number;
-    weight: number;
-    recordedAt: string;
-}
-
-interface MarMedication {
-    id: string;
-    name: string;
-    dose: string;
-    route: string;
-    dueTime: string;
-    status: 'due' | 'given' | 'missed' | 'omitted' | 'held' | 'refused' | 'overdue';
-}
-
-interface Task {
-    id: string;
-    description: string;
-    patientName: string;
-    dueTime: string;
-    priority: 'critical' | 'urgent' | 'normal';
-    status: 'pending' | 'in_progress' | 'complete';
-}
-
-// ---- Context pane: patient list (Volume 2.3 §4.1) ----
-const patients: Patient[] = [
-    { id: 'p1', name: 'John Mwangi', mrn: 'MRN-1001', age: 45, sex: 'M', ward: 'Ward A', bed: 'A-101', allergies: ['Penicillin'] },
-    { id: 'p2', name: 'Sarah Joseph', mrn: 'MRN-1002', age: 32, sex: 'F', ward: 'Ward A', bed: 'A-102', allergies: [] },
-    { id: 'p3', name: 'Ali Hassan', mrn: 'MRN-1003', age: 58, sex: 'M', ward: 'Ward B', bed: 'B-201', allergies: ['Sulfa'] },
-    { id: 'p4', name: 'Grace Kimaro', mrn: 'MRN-1004', age: 27, sex: 'F', ward: 'Ward B', bed: 'B-202', allergies: [] },
-    { id: 'p5', name: 'Peter Mushi', mrn: 'MRN-1005', age: 61, sex: 'M', ward: 'Ward A', bed: 'A-103', allergies: [] },
-];
-
-const patientColumns: DataTableColumn<Patient>[] = [
-    { key: 'name', label: t('patient.name'), accessor: (r) => r.name, sticky: true },
-    { key: 'mrn', label: t('patient.mrn'), accessor: (r) => r.mrn, clinical: true },
-    { key: 'ward', label: t('nursing.ward'), accessor: (r) => r.ward },
-    { key: 'bed', label: t('nursing.bed'), accessor: (r) => r.bed },
-];
-
-const selectedPatient = ref<Patient | null>(null);
-
-function selectPatient(patient: Patient) {
-    selectedPatient.value = patient;
-}
-
-// ---- Context pane: task list (Volume 2.3 §4.1, §9) — fetched from GET /nursing/tasks ----
-const tasks = computed(() => queueStore.tasks);
-
-queueStore.fetchTasks();
-
-const taskQueue = computed<QueueItem[]>(() =>
-    tasks.value.map((task) => ({
-        id: task.id,
-        name: task.description,
-        waitTime: task.dueTime,
-        waitMinutes: 0,
-        priority: task.priority,
-        status: task.status === 'complete' ? 'complete' : task.status === 'in_progress' ? 'in_progress' : 'pending',
-        category: task.patientName,
-    })),
-);
-
-function handleTaskOpen(item: QueueItem) {
-    queueStore.markInProgress(item.id);
-}
-
-// ---- Main pane: vitals collection (Volume 2.3 §7) ----
-const mainView = ref<'vitals' | 'assessment' | 'notes' | 'none'>('none');
-
-const vitals = ref<Vital[]>([
-    {
-        id: 'v1',
-        patientId: 'p1',
-        temperature: 36.8,
-        heartRate: 78,
-        respiratoryRate: 16,
-        sbp: 145,
-        dbp: 90,
-        spo2: 97,
-        painScore: 2,
-        weight: 72,
-        recordedAt: '2026-08-08T08:00:00',
-    },
-]);
-
-// Vitals form state
-const vitalForm = ref({
-    temperature: 36.5,
-    heartRate: 75,
-    respiratoryRate: 16,
-    sbp: 120,
-    dbp: 80,
-    spo2: 98,
-    painScore: 0,
-    weight: 70,
+const activeTab = ref<NursingTab>(loadActiveTab());
+watch(activeTab, (tab) => {
+  try {
+    localStorage.setItem(NURSING_ACTIVE_TAB_KEY, tab);
+  } catch {
+    // ignore
+  }
 });
 
-// Out-of-range flags (Volume 2.3 §7.2 — icon + label, never color alone)
-// Only returns a status for out-of-range values; normal values return null (no badge).
-function vitalFlag(vital: keyof typeof vitalForm.value, value: number): 'warning' | 'critical' | null {
-    switch (vital) {
-        case 'temperature':
-            if (value < 35 || value > 38.5) return 'critical';
-            if (value < 36.1 || value > 37.2) return 'warning';
-            return null;
-        case 'heartRate':
-            if (value < 40 || value > 130) return 'critical';
-            if (value < 60 || value > 100) return 'warning';
-            return null;
-        case 'respiratoryRate':
-            if (value < 8 || value > 30) return 'critical';
-            if (value < 12 || value > 20) return 'warning';
-            return null;
-        case 'sbp':
-            if (value < 80 || value > 180) return 'critical';
-            if (value < 90 || value > 120) return 'warning';
-            return null;
-        case 'dbp':
-            if (value < 50 || value > 110) return 'critical';
-            if (value < 60 || value > 80) return 'warning';
-            return null;
-        case 'spo2':
-            if (value < 90) return 'critical';
-            if (value < 95) return 'warning';
-            return null;
-        case 'painScore':
-            if (value >= 7) return 'critical';
-            if (value >= 4) return 'warning';
-            return null;
-        default:
-            return null;
+// ---- Feature composables (Volume 3.8 decomposition, 2026-08-13) ----
+const activeWorkbenchTab = ref<"vitals" | "profile">("vitals");
+
+const patientList = useNursingPatientList({
+  // On selection/deselection: close any open form, hide the MAR pane, and
+  // load the newly selected patient's latest vitals.
+  onSelectionChange: (patient) => {
+    mainView.value = "none";
+    activeWorkbenchTab.value = "vitals";
+    mar.showMar.value = false;
+    if (patient) vitals.loadLatest(patient.id);
+  },
+});
+
+const profile = usePatientProfile(computed(() => patientList.selectedPatient.value));
+
+const tasks = useNursingTasks({
+  // Opening a task selects its patient with an active-encounter context.
+  onOpen: (patientId, encounterId, visit, readiness) => {
+    const patient =
+      patientList.patients.value.find((p) => p.id === patientId) ??
+      patientStore.patients.get(patientId);
+    if (!patient) {
+      toast.warning(t("nursing.task_patient_not_found"));
+      return;
     }
+    patientList.selectPatient(patient, encounterId, visit, readiness);
+  },
+});
+
+const patientId = () => patientList.selectedPatient.value?.id ?? null;
+const encounterId = () => patientList.selectedEncounterId.value;
+
+const vitals = useVitals({
+  patientId,
+  onSaved: () => {
+    mainView.value = "none";
+    // Recording vitals advances the appointment from waiting_triage →
+    // waiting_provider server-side. Refetch tasks so the queue reflects the
+    // new status and refresh the visit context in PatientHeader (stage:
+    // "In Triage" → "Waiting for Clinician").
+    void tasks.refetchTasks();
+    const current = patientList.selectedPatient.value;
+    if (current) {
+      patientList.refreshVisitContext(current.id);
+    }
+  },
+});
+
+const assessment = useNursingAssessment({
+  encounterId,
+  onSaved: () => {
+    mainView.value = "none";
+    // Completing the assessment clears this encounter off the Tasks queue
+    // server-side — refresh so the Tasks tab reflects it.
+    void tasks.refetchTasks();
+  },
+});
+
+const notes = useNursingNotes({
+  encounterId,
+  onSaved: () => {
+    mainView.value = "none";
+  },
+});
+
+// Explicit nursing pickup/hand-back (2026-08-16 flow audit, finding 04) — makes
+// "a nurse is with this patient right now" a recorded step instead of something
+// other staff had to infer or ask about.
+const contact = useNursingContact({
+  encounterId,
+  onChanged: () => {
+    void tasks.refetchTasks();
+    const current = patientList.selectedPatient.value;
+    if (current) {
+      patientList.refreshVisitContext(current.id);
+    }
+  },
+});
+
+// Selecting a different patient means this nurse is no longer holding the
+// previous one, so the optimistic pickup indicator must not carry over.
+watch(() => patientList.selectedEncounterId.value, () => contact.resetContact());
+
+/**
+ * Whether this patient is currently picked up, preferring the server-resolved
+ * step over local state so the indicator survives a reload and reflects a
+ * release made from another session. `contact.hasPatient` remains only as an
+ * optimistic overlay for the moment between clicking and the queue refetch
+ * landing.
+ */
+const hasPatientInContact = computed(
+  () => patientList.selectedVisit.value?.stage === "with_nurse" || contact.hasPatient.value,
+);
+
+// Live board sync (finding 03) — the nursing workspace never subscribed, so a
+// doctor starting a consultation or reception checking someone in never
+// reached this screen without a manual reload.
+usePatientFlowLiveSync({
+  onBoardUpdated: () => {
+    void tasks.refetchTasks();
+  },
+});
+
+const admission = useNursingAdmission({
+  patientId,
+  encounterId,
+  visit: () => patientList.selectedVisit.value,
+  onSaved: () => {
+    mainView.value = "none";
+    void tasks.refetchTasks();
+    const current = patientList.selectedPatient.value;
+    if (current) {
+      patientList.refreshVisitContext(current.id);
+      void patientStore.fetchPatientSummary(current.id);
+    }
+  },
+});
+
+const mar = useMar({ patientId });
+
+// Sync selected patient and active tab with URL query params (?patient=...&tab=...)
+const urlSync = useWorkspaceUrlSync({
+  activeTab: activeTab as Ref<string>,
+  selectedPatientId: computed(() => patientList.selectedPatient.value?.id),
+  onHydrateTab: (tab) => {
+    if (tab === "patients" || tab === "tasks") {
+      activeTab.value = tab as NursingTab;
+    }
+  },
+  onHydratePatient: async (patientId) => {
+    if (!patientId) return;
+    const patient =
+      patientList.patients.value.find((p) => p.id === patientId) ??
+      patientStore.patients.get(patientId) ??
+      (await patientStore.fetchPatient(patientId));
+    if (patient) {
+      patientList.selectPatient(patient);
+      return;
+    }
+    // Linked patient no longer exists (deleted record, stale bookmark). Drop
+    // the dead id from the URL so the workspace settles on its empty state
+    // rather than retrying it on every reload.
+    urlSync.clearPatientSelectionFromUrl();
+  },
+});
+
+// ---- Main pane: which view is open (Volume 2.3 §7/§6/§10) ----
+const mainView = ref<"vitals" | "assessment" | "notes" | "admission" | "none">("none");
+
+/**
+ * Starting any hands-on nursing action claims the patient.
+ *
+ * The claim used to be its own "Start With Patient" button sitting beside
+ * "Record Vitals", which left a nurse choosing between two unranked calls to
+ * action with no stated relationship — and created the exact failure the claim
+ * exists to prevent: record vitals without claiming, and the board still shows
+ * the patient waiting while a nurse is stood in front of them.
+ *
+ * A nurse opening the vitals or assessment form is, definitionally, with the
+ * patient. So the step is recorded as a consequence of real work rather than as
+ * bookkeeping staff must remember. Ending contact keeps an explicit control,
+ * because nothing else marks it (see PatientHeader's release button).
+ */
+function beginNursingContact() {
+  if (!hasPatientInContact.value) {
+    void contact.claimPatient({ silent: true });
+  }
 }
 
 function openVitals() {
-    mainView.value = 'vitals';
+  activeWorkbenchTab.value = "vitals";
+  mainView.value = "vitals";
+  beginNursingContact();
+  // Routing targets are loaded lazily, on the one form that offers the choice.
+  void vitals.loadDepartmentOptions();
 }
-
-function saveVitals() {
-    if (!selectedPatient.value) return;
-    vitals.value.push({
-        id: `v${Date.now()}`,
-        patientId: selectedPatient.value.id,
-        ...vitalForm.value,
-        recordedAt: new Date().toISOString(),
-    });
-    mainView.value = 'none';
-}
-
-// ---- MAR (Volume 2.3 §8) — fetched from GET /nursing/mar ----
-const mar = computed(() => medicationStore.mar);
-
-function loadMar() {
-    if (selectedPatient.value) {
-        medicationStore.fetchMar(selectedPatient.value.id);
-    }
-}
-
-const showMar = ref(false);
-
-function marStatusVariant(status: MarMedication['status']): 'critical' | 'warning' | 'success' | 'info' {
-    switch (status) {
-        case 'given': return 'success';
-        case 'overdue': return 'critical';
-        case 'missed': return 'warning';
-        case 'held': return 'warning';
-        case 'due': return 'warning';
-        case 'omitted': return 'info';
-        case 'refused': return 'info';
-    }
-}
-
-async function administerMedication(med: MarMedication) {
-    // Volume 2.3 §8.2 — 5 Rights verification
-    // In production: scan patient wristband + medication barcode
-    await medicationStore.administerMedication(med.id, {
-        rightPatient: true,
-        rightMedication: true,
-        rightDose: true,
-        rightRoute: true,
-        rightTime: true,
-    });
-}
-
-// ---- Nursing notes (Volume 2.3 §10) ----
-const noteForm = ref({
-    situation: '',
-    background: '',
-    assessment: '',
-    recommendation: '',
-});
-
-const notes = ref<{ id: string; patientId: string; title: string; date: string; status: 'draft' | 'signed' }[]>([
-    { id: 'n1', patientId: 'p1', title: 'Shift note', date: '2026-08-08', status: 'signed' },
-]);
-
-function openNotes() {
-    mainView.value = 'notes';
-}
-
-function saveNote() {
-    if (!selectedPatient.value) return;
-    notes.value.push({
-        id: `n${Date.now()}`,
-        patientId: selectedPatient.value.id,
-        title: 'Shift note',
-        date: new Date().toISOString().slice(0, 10),
-        status: 'draft',
-    });
-    noteForm.value = { situation: '', background: '', assessment: '', recommendation: '' };
-    mainView.value = 'none';
-}
-
-// ---- Assessment (Volume 2.3 §6) ----
-const assessmentForm = ref({
-    type: 'shift' as 'admission' | 'shift' | 'focused',
-    reason: '',
-    findings: '',
-    riskNotes: '',
-});
-
 function openAssessment() {
-    mainView.value = 'assessment';
+  activeWorkbenchTab.value = "vitals";
+  mainView.value = "assessment";
+  beginNursingContact();
+}
+function openNotes() {
+  activeWorkbenchTab.value = "vitals";
+  mainView.value = "notes";
+}
+function openAdmission() {
+  activeWorkbenchTab.value = "vitals";
+  mainView.value = "admission";
 }
 
-function saveAssessment() {
-    mainView.value = 'none';
-    assessmentForm.value = { type: 'shift', reason: '', findings: '', riskNotes: '' };
+// ---- Return to Reception dialog ----
+const showReturnDialog = ref(false);
+const isReturningToReception = ref(false);
+
+function openReturnToReception() {
+  showReturnDialog.value = true;
 }
+
+async function handleConfirmReturn(reason: string) {
+  const currentPatientId = patientList.selectedPatient.value?.id;
+  const taskMatch = tasks.tasks.value.find((t) => t.patientId === currentPatientId);
+  const appointmentId = patientList.selectedVisit.value?.appointmentId ?? taskMatch?.visit?.appointmentId ?? taskMatch?.id ?? null;
+
+  if (!appointmentId) {
+    toast.warning(t("nursing.task_patient_not_found"));
+    return;
+  }
+
+  isReturningToReception.value = true;
+  const ok = await queueStore.returnToReception(appointmentId, reason);
+  isReturningToReception.value = false;
+
+  if (ok) {
+    toast.success(t("nursing.return_success"));
+    showReturnDialog.value = false;
+    mainView.value = "none";
+    patientList.deselectPatient();
+    void tasks.refetchTasks();
+  } else {
+    toast.warning(t("nursing.return_failed"));
+  }
+}
+
+// ---- Context-pane split ratio (Volume 3.8 Phase 7) ----
+const CONTEXT_PANE_RATIO_EMPTY = 0.38;
+const CONTEXT_PANE_RATIO_SELECTED = 0.45;
+const splitPaneRef = ref<InstanceType<typeof SplitPane> | null>(null);
+watch(
+  () => patientList.selectedPatient.value?.id,
+  (id) => {
+    splitPaneRef.value?.applyAutoRatio(id ? CONTEXT_PANE_RATIO_SELECTED : CONTEXT_PANE_RATIO_EMPTY);
+  },
+);
+
+// ---- Keyboard shortcuts (Volume 2.3 §14, Volume 3.8 Phase 7) ----
+const shortcuts = useShortcuts();
+
+function saveCurrentForm() {
+  if (mainView.value === "vitals") return void vitals.saveVitals();
+  if (mainView.value === "assessment") return void assessment.saveAssessment();
+  if (mainView.value === "notes") return void notes.saveNote();
+}
+
+onMounted(() => {
+  shortcuts.registerShortcuts([
+    {
+      key: "ctrl+v",
+      action: "record-vitals",
+      label: t("nursing.record_vitals"),
+      scope: "workspace",
+      handler: () => {
+        if (patientList.selectedEncounterId.value) openVitals();
+      },
+    },
+    {
+      key: "ctrl+m",
+      action: "mar",
+      label: t("nursing.mar"),
+      scope: "workspace",
+      handler: () => {
+        if (patientList.selectedEncounterId.value) mar.toggleMar();
+      },
+    },
+    {
+      key: "ctrl+a",
+      action: "new-assessment",
+      label: t("nursing.new_assessment"),
+      scope: "workspace",
+      handler: () => {
+        if (patientList.selectedEncounterId.value) openAssessment();
+      },
+    },
+    {
+      key: "ctrl+s",
+      action: "save-form",
+      label: t("common.save"),
+      scope: "workspace",
+      handler: saveCurrentForm,
+    },
+  ]);
+});
+
+onBeforeUnmount(() => {
+  shortcuts.unregisterShortcuts(["ctrl+v", "ctrl+m", "ctrl+a", "ctrl+s"]);
+});
 </script>
 
 <template>
-    <AppShell>
+  <SplitPane
+    ref="splitPaneRef"
+      direction="horizontal"
+      :initial-ratio="CONTEXT_PANE_RATIO_EMPTY"
+      :min-size="324"
+      persist-key="nursing-context-pane"
+      class="h-full"
+    >
+      <template #start>
+        <!-- ============================================================
+             CONTEXT PANE (Volume 2.3 §4.1)
+             ============================================================ -->
+        <aside class="flex h-full flex-col rounded-lg border border-border bg-surface overflow-hidden">
+          <Tabs v-model="activeTab" class="flex flex-1 flex-col overflow-hidden">
+            <div class="border-b border-border bg-surface px-3 pt-1 shrink-0">
+              <TabsList class="h-8 gap-1 bg-transparent p-0 justify-start w-auto border-b-0 -mb-px">
+                <TabsTrigger
+                  value="patients"
+                  class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                >
+                  <Users class="size-3.5" aria-hidden="true" />
+                  <span>{{ t("clinician.patients") }}</span>
+                  <Badge
+                    v-if="patientList.patients.value.length > 0"
+                    variant="secondary"
+                    class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
+                    :class="activeTab === 'patients' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+                    :aria-label="
+                      t('patient.count_sr', {
+                        count: patientList.patients.value.length,
+                      })
+                    "
+                  >
+                    {{ patientList.patients.value.length }}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="tasks"
+                  class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                >
+                  <ClipboardList class="size-3.5" aria-hidden="true" />
+                  <span>{{ t("nursing.tasks") }}</span>
+                  <span
+                    v-if="tasks.tasks.value.length > 0"
+                    class="relative flex size-1.5 shrink-0 ml-0.5"
+                    aria-hidden="true"
+                  >
+                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                    <span class="relative inline-flex size-1.5 rounded-full bg-primary" />
+                  </span>
+                  <Badge
+                    v-if="tasks.tasks.value.length > 0"
+                    variant="secondary"
+                    class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
+                    :class="activeTab === 'tasks' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+                    :aria-label="
+                      t('nursing.task_count_sr', {
+                        count: tasks.tasks.value.length,
+                      })
+                    "
+                  >
+                    {{ tasks.tasks.value.length }}
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            <TabsContent value="patients" class="flex flex-1 flex-col overflow-hidden">
+              <PatientListPanel :list="patientList" />
+            </TabsContent>
+
+            <TabsContent value="tasks" class="flex flex-1 flex-col overflow-hidden">
+              <TaskQueuePanel :tasks="tasks" />
+            </TabsContent>
+          </Tabs>
+        </aside>
+      </template>
+
+      <template #end>
         <div class="flex h-full gap-4">
-            <!-- ============================================================
-                 CONTEXT PANE (Volume 2.3 §4.1)
-                 ============================================================ -->
-            <aside class="flex w-80 flex-col rounded-lg border border-border bg-surface">
-                <Tabs default-value="patients" class="flex flex-1 flex-col">
-                    <TabsList class="m-2 mb-0 w-auto justify-start">
-                        <TabsTrigger value="patients">{{ t('clinician.patients') }}</TabsTrigger>
-                        <TabsTrigger value="tasks">{{ t('nursing.tasks') }} ({{ tasks.length }})</TabsTrigger>
-                    </TabsList>
+          <!-- ============================================================
+               MAIN PANE (Volume 2.3 §4.2)
+               ============================================================ -->
+          <main class="flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface">
+            <!-- No patient selected -->
+            <div v-if="!patientList.selectedPatient.value" class="flex flex-1 items-center justify-center p-6">
+              <EmptyState
+                illustration="clipboard"
+                :badge="t('nursing.workspace_badge')"
+                :title="t('nursing.no_patient_selected_title')"
+                :description="t('nursing.no_patient_selected_desc')"
+              />
+            </div>
 
-                    <!-- Patients tab -->
-                    <TabsContent value="patients" class="flex flex-1 flex-col overflow-hidden">
-                        <div class="flex-1 overflow-auto">
-                            <DataTable
-                                :columns="patientColumns"
-                                :rows="patients"
-                                :row-key="(r) => r.id"
-                                :on-row-click="selectPatient"
-                                empty-title="No patients found"
-                            />
-                        </div>
-                    </TabsContent>
+            <!-- Patient selected -->
+            <template v-else>
+              <PatientHeader
+                :patient="patientList.selectedPatient.value"
+                :encounter-id="patientList.selectedEncounterId.value"
+                :allergies="patientList.selectedPatientAllergies.value"
+                :is-loading-allergies="patientList.isLoadingAllergies.value"
+                :has-encounter="!!patientList.selectedEncounterId.value"
+                :visit="patientList.selectedVisit.value"
+                :readiness="patientList.selectedReadiness.value"
+                :display-name="patientList.patientDisplayName"
+                :initials="patientList.patientInitials"
+                :has-patient-in-contact="hasPatientInContact"
+                :is-updating-contact="contact.isUpdating.value"
+                @deselect="patientList.deselectPatient"
+                @open-vitals="openVitals"
+                @open-assessment="openAssessment"
+                @open-notes="openNotes"
+                @open-admission="openAdmission"
+                @return-to-reception="openReturnToReception"
+                @toggle-mar="mar.toggleMar"
+                @claim-patient="contact.claimPatient"
+                @release-patient="() => contact.releasePatient()"
+              />
 
-                    <!-- Tasks tab -->
-                    <TabsContent value="tasks" class="flex flex-1 flex-col overflow-hidden">
-                        <Queue :items="taskQueue" @open="handleTaskOpen" />
-                    </TabsContent>
+              <!-- Workbench Sub-Tabs (Clinical Vitals & Acuity vs Demographics & Coverage) -->
+              <div class="border-b border-border bg-surface px-3.5 pt-1 flex items-center justify-between shrink-0">
+                <Tabs v-model="activeWorkbenchTab" class="w-auto">
+                  <TabsList class="h-8 gap-1 bg-transparent p-0 justify-start w-auto border-b-0 -mb-px">
+                    <TabsTrigger
+                      value="vitals"
+                      class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                      @click="activeWorkbenchTab = 'vitals'"
+                    >
+                      <Activity class="size-3.5" />
+                      <span>Clinical Vitals & Acuity</span>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="profile"
+                      class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                      @click="activeWorkbenchTab = 'profile'"
+                    >
+                      <Contact class="size-3.5" />
+                      <span>Patient Demographics & Coverage</span>
+                    </TabsTrigger>
+                  </TabsList>
                 </Tabs>
-            </aside>
+              </div>
 
-            <!-- ============================================================
-                 MAIN PANE (Volume 2.3 §4.2)
-                 ============================================================ -->
-            <main class="flex flex-1 flex-col rounded-lg border border-border bg-surface">
-                <!-- No patient selected -->
-                <div v-if="!selectedPatient" class="flex flex-1 items-center justify-center">
-                    <EmptyState
-                        title="Select a patient"
-                        description="Choose a patient from the list or tasks to begin."
-                        illustration="users"
-                    />
-                </div>
+              <!-- View 1: Patient Profile & Demographics Tab -->
+              <NursingPatientProfileTab
+                v-if="activeWorkbenchTab === 'profile'"
+                :patient="patientList.selectedPatient.value"
+                :profile="profile"
+              />
 
-                <!-- Patient selected -->
-                <template v-else>
-                    <!-- Patient banner (Volume 1.1 §7) -->
-                    <div class="flex items-center gap-4 border-b border-border px-4 py-3">
-                        <div class="flex items-center gap-2">
-                            <span class="text-sm font-semibold text-foreground">{{ selectedPatient.name }}</span>
-                            <span class="text-xs text-muted-foreground">{{ t('patient.mrn') }}: {{ selectedPatient.mrn }}</span>
-                            <span class="text-xs text-muted-foreground">{{ selectedPatient.ward }} · {{ selectedPatient.bed }}</span>
-                        </div>
-                        <div v-if="selectedPatient.allergies.length > 0" class="flex items-center gap-1.5">
-                            <Badge variant="critical" class="inline-flex items-center gap-1">
-                                <TriangleAlert class="h-3 w-3" aria-hidden="true" />
-                                {{ t('patient.allergies_count', { count: selectedPatient.allergies.length }) }}
-                            </Badge>
-                        </div>
-                        <div v-else>
-                            <Badge variant="success" class="inline-flex items-center gap-1">
-                                <CircleCheck class="h-3 w-3" aria-hidden="true" />
-                                {{ t('patient.no_allergies') }}
-                            </Badge>
-                        </div>
-                    </div>
+              <!-- View 2: Clinical Forms & Vitals Workbench -->
+              <template v-else>
+                <VitalsForm v-if="mainView === 'vitals'" :vitals="vitals" @cancel="mainView = 'none'" />
 
-                    <!-- Action bar -->
-                    <div class="flex flex-wrap gap-2 border-b border-border p-3">
-                        <Button size="sm" @click="openVitals">{{ t('nursing.record_vitals') }}</Button>
-                        <Button size="sm" variant="secondary" @click="openAssessment">{{ t('nursing.new_assessment') }}</Button>
-                        <Button size="sm" variant="secondary" @click="openNotes">{{ t('nursing.new_note') }}</Button>
-                        <Button size="sm" variant="secondary" @click="showMar = !showMar">{{ t('nursing.mar') }}</Button>
-                    </div>
+                <AssessmentForm
+                  v-else-if="mainView === 'assessment'"
+                  :assessment="assessment"
+                  @cancel="mainView = 'none'"
+                />
 
-                    <!-- Vitals collection (Volume 2.3 §7) -->
-                    <div v-if="mainView === 'vitals'" class="flex-1 overflow-auto p-4">
-                        <h3 class="mb-4 text-sm font-semibold text-foreground">{{ t('nursing.record_vitals') }}</h3>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div v-for="(vital, key) in vitalForm" :key="key" class="space-y-1">
-                                <label class="block text-xs font-medium text-muted-foreground">
-                                    {{ t(`nursing.vital_${key}`) }}
-                                </label>
-                                <div class="flex items-center gap-2">
-                                    <Input v-model.number="vitalForm[key as keyof typeof vitalForm]" type="number" class="clinical-value" />
-                                    <span v-if="vitalFlag(key as keyof typeof vitalForm, vital) as string" class="shrink-0">
-                                        <StatusBadge :status="(vitalFlag(key as keyof typeof vitalForm, vital) ?? 'warning') as 'warning' | 'critical'" />
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="mt-4 flex gap-3">
-                            <Button size="sm" @click="saveVitals">{{ t('common.save') }}</Button>
-                            <Button size="sm" variant="secondary" @click="mainView = 'none'">{{ t('common.cancel') }}</Button>
-                        </div>
-                    </div>
+                <NursingNotesForm v-else-if="mainView === 'notes'" :notes="notes" @cancel="mainView = 'none'" />
 
-                    <!-- Assessment (Volume 2.3 §6) -->
-                    <div v-else-if="mainView === 'assessment'" class="flex-1 overflow-auto p-4">
-                        <h3 class="mb-4 text-sm font-semibold text-foreground">{{ t('nursing.new_assessment') }}</h3>
-                        <div class="space-y-4">
-                            <div>
-                                <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('nursing.assessment_type') }}</label>
-                                <div class="flex gap-2">
-                                    <Button
-                                        v-for="type in ['admission', 'shift', 'focused'] as const"
-                                        :key="type"
-                                        size="sm"
-                                        :variant="assessmentForm.type === type ? 'default' : 'outline'"
-                                        @click="assessmentForm.type = type"
-                                    >
-                                        {{ t(`nursing.assessment_${type}`) }}
-                                    </Button>
-                                </div>
-                            </div>
-                            <div>
-                                <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('nursing.reason') }}</label>
-                                <Textarea v-model="assessmentForm.reason" class="min-h-16" :placeholder="t('nursing.reason_placeholder')" />
-                            </div>
-                            <div>
-                                <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('nursing.findings') }}</label>
-                                <Textarea v-model="assessmentForm.findings" class="min-h-24" :placeholder="t('nursing.findings_placeholder')" />
-                            </div>
-                            <div>
-                                <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('nursing.risk_notes') }}</label>
-                                <Textarea v-model="assessmentForm.riskNotes" class="min-h-16" :placeholder="t('nursing.risk_notes_placeholder')" />
-                            </div>
-                            <div class="flex gap-3">
-                                <Button size="sm" @click="saveAssessment">{{ t('common.save') }}</Button>
-                                <Button size="sm" variant="secondary" @click="mainView = 'none'">{{ t('common.cancel') }}</Button>
-                            </div>
-                        </div>
-                    </div>
+                <AdmissionForm v-else-if="mainView === 'admission'" :admission="admission" @cancel="mainView = 'none'" />
 
-                    <!-- Nursing notes (Volume 2.3 §10) -->
-                    <div v-else-if="mainView === 'notes'" class="flex-1 overflow-auto p-4">
-                        <h3 class="mb-4 text-sm font-semibold text-foreground">{{ t('nursing.new_note') }}</h3>
-                        <div class="space-y-4">
-                            <div>
-                                <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('nursing.situation') }}</label>
-                                <Textarea v-model="noteForm.situation" class="min-h-16" :placeholder="t('nursing.situation_placeholder')" />
-                            </div>
-                            <div>
-                                <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('nursing.background') }}</label>
-                                <Textarea v-model="noteForm.background" class="min-h-16" :placeholder="t('nursing.background_placeholder')" />
-                            </div>
-                            <div>
-                                <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('nursing.assessment') }}</label>
-                                <Textarea v-model="noteForm.assessment" class="min-h-16" :placeholder="t('nursing.assessment_placeholder')" />
-                            </div>
-                            <div>
-                                <label class="mb-1 block text-xs font-medium text-muted-foreground">{{ t('nursing.recommendation') }}</label>
-                                <Textarea v-model="noteForm.recommendation" class="min-h-16" :placeholder="t('nursing.recommendation_placeholder')" />
-                            </div>
-                            <div class="flex gap-3">
-                                <Button size="sm" @click="saveNote">{{ t('common.save') }}</Button>
-                                <Button size="sm" variant="secondary" @click="mainView = 'none'">{{ t('common.cancel') }}</Button>
-                            </div>
-                        </div>
-                    </div>
+                <!-- Default: recent vitals -->
+                <RecentVitalsView v-else :vitals="vitals" @record-vitals="openVitals" />
+              </template>
+            </template>
 
-                    <!-- Default: recent vitals -->
-                    <div v-else class="flex-1 overflow-auto p-4">
-                        <h3 class="mb-4 text-sm font-semibold text-foreground">{{ t('nursing.recent_vitals') }}</h3>
-                        <div class="grid grid-cols-2 gap-4">
-                            <Card v-for="v in vitals.filter((v) => v.patientId === selectedPatient?.id).slice(-1)" :key="v.id">
-                                <CardHeader>
-                                    <CardTitle class="text-sm text-muted-foreground">{{ t('nursing.last_vitals') }}</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <dl class="space-y-1 text-sm">
-                                        <div class="flex justify-between">
-                                            <dt class="text-muted-foreground">{{ t('nursing.vital_temperature') }}</dt>
-                                            <dd class="clinical-value font-medium text-foreground">{{ v.temperature }} °C</dd>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <dt class="text-muted-foreground">{{ t('nursing.vital_heartRate') }}</dt>
-                                            <dd class="clinical-value font-medium text-foreground">{{ v.heartRate }} bpm</dd>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <dt class="text-muted-foreground">{{ t('nursing.vital_respiratoryRate') }}</dt>
-                                            <dd class="clinical-value font-medium text-foreground">{{ v.respiratoryRate }}/min</dd>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <dt class="text-muted-foreground">{{ t('nursing.vital_sbp') }}/{{ t('nursing.vital_dbp') }}</dt>
-                                            <dd class="clinical-value font-medium text-foreground">{{ v.sbp }}/{{ v.dbp }} mmHg</dd>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <dt class="text-muted-foreground">{{ t('nursing.vital_spo2') }}</dt>
-                                            <dd class="clinical-value font-medium text-foreground">{{ v.spo2 }}%</dd>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <dt class="text-muted-foreground">{{ t('nursing.vital_painScore') }}</dt>
-                                            <dd class="clinical-value font-medium text-foreground">{{ v.painScore }}/10</dd>
-                                        </div>
-                                    </dl>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </div>
-                </template>
-            </main>
+            <ReturnToReceptionDialog
+              v-model:open="showReturnDialog"
+              :patient-name="patientList.selectedPatient.value ? patientList.patientDisplayName(patientList.selectedPatient.value) : undefined"
+              :is-submitting="isReturningToReception"
+              :readiness="patientList.selectedReadiness.value"
+              @confirm="handleConfirmReturn"
+            />
+          </main>
 
-            <!-- ============================================================
-                 DETAIL PANE — MAR (Volume 2.3 §4.3, §8)
-                 ============================================================ -->
-            <aside v-if="showMar" class="flex w-96 flex-col rounded-lg border border-border bg-surface">
-                <div class="flex items-center justify-between border-b border-border px-4 py-3">
-                    <h3 class="text-sm font-semibold text-foreground">{{ t('nursing.mar') }}</h3>
-                    <Button size="sm" variant="ghost" @click="showMar = false">{{ t('common.close') }}</Button>
-                </div>
-                <div class="flex-1 overflow-auto p-4">
-                    <div class="space-y-2">
-                        <div v-for="med in mar" :key="med.id" class="rounded-md border border-border p-3">
-                            <div class="flex items-center justify-between">
-                                <span class="text-sm font-medium text-foreground">{{ med.name }}</span>
-                                <StatusBadge :status="marStatusVariant(med.status)" />
-                            </div>
-                            <div class="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
-                                <span class="clinical-value">{{ med.dose }}</span>
-                                <span>{{ med.route }}</span>
-                                <span>Due {{ med.dueTime }}</span>
-                            </div>
-                            <Button
-                                v-if="med.status === 'due' || med.status === 'overdue'"
-                                size="sm"
-                                class="mt-2 w-full"
-                                @click="administerMedication(med)"
-                            >
-                                {{ t('nursing.administer') }}
-                            </Button>
-                        </div>
-                    </div>
-                    <Alert v-if="mar.some((m) => m.status === 'overdue')" variant="critical" title="Overdue medications" description="Some medications are past their due window." class="mt-4" />
-                </div>
-            </aside>
+          <!-- ============================================================
+               DETAIL PANE — MAR (Volume 2.3 §4.3, §8)
+               ============================================================ -->
+          <MarPanel v-if="mar.showMar.value" :mar="mar" @close="mar.closeMar" />
         </div>
-    </AppShell>
+      </template>
+    </SplitPane>
 </template>

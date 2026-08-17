@@ -2641,3 +2641,4 @@ function seedAppointmentPlatformScopeFacility(
     return [$tenantId, $facilityId];
 }
 
+

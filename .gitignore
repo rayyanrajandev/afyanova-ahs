@@ -50,3 +50,4 @@ tools/mailpit/README.md
 # not part of the real source tree; left untouched on disk, just untracked)
 /re
 /resour
+/.vite

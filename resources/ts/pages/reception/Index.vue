@@ -5,13 +5,15 @@ split-2 layout (context + main, resizable via SplitPane — Volume 1.1 §4.2),
 Afyanova tokens (Volume 1.2 §4.1). */
 
 <script setup lang="ts">
-import { UserSearch } from "lucide-vue-next";
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { Calendar, Clock, Search, Users, UserSearch } from "lucide-vue-next";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
+import EmptyState from "@/components/common/EmptyState.vue";
 import SplitPane from "@/components/common/SplitPane.vue";
-import AppShell from "@/components/shell/AppShell.vue";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { useCommandPalette } from "@/composables/useCommandPalette";
 import { useShortcuts } from "@/composables/useShortcuts";
 import { useToast } from "@/composables/useToast";
@@ -36,8 +38,12 @@ import { usePatientSearch } from "@/pages/reception/composables/usePatientSearch
 import { useQueueActions } from "@/pages/reception/composables/useQueueActions";
 import { useQueueLiveAnnouncer } from "@/pages/reception/composables/useQueueLiveAnnouncer";
 import { useReceptionLiveSync } from "@/pages/reception/composables/useReceptionLiveSync";
+import ReturnedPatientAlertDialog, {
+  type ReturnedPatientInfo,
+} from "@/pages/reception/components/ReturnedPatientAlertDialog.vue";
 import { printPatientLabel } from "@/pages/reception/patientLabel";
 import { patientInitials } from "@/pages/reception/receptionFormatters";
+import { useWorkspaceUrlSync } from "@/composables/useWorkspaceUrlSync";
 import { usePatientStore } from "@/stores/patientStore";
 import { useRecentStore } from "@/stores/recentStore";
 
@@ -47,8 +53,70 @@ const patientStore = usePatientStore();
 const recentStore = useRecentStore();
 const commandPalette = useCommandPalette();
 
-// ---- Context pane tabs ----
-const activeTab = ref<"patients" | "queue" | "schedule">("patients");
+const showReturnedModal = ref(false);
+const returnedPatientInfo = ref<ReturnedPatientInfo | null>(null);
+
+function handleAcknowledgeReturned(info: ReturnedPatientInfo) {
+  if (info.patientId) {
+    patientStore.setCurrentPatient(info.patientId);
+  }
+  activeTab.value = "queue";
+  void queueActions.refetchQueue();
+}
+
+// ---- Context pane tabs (Volume 1.4 §12.1, Volume 3.7 T7.4) — persisted
+// per-browser like SplitPane's ratio and DataTable's sort/filters/columns
+// already are (same `afyanova:` localStorage namespace, same try/catch
+// guard), not routed through the shared `uiStore` — this is reception-
+// workspace-local state, not shell-level state the way theme/density/nav
+// are.
+const RECEPTION_ACTIVE_TAB_KEY = "afyanova:reception:active-tab";
+type ReceptionTab = "patients" | "queue" | "schedule";
+function loadActiveTab(): ReceptionTab {
+  try {
+    const stored = localStorage.getItem(RECEPTION_ACTIVE_TAB_KEY);
+    if (stored === "patients" || stored === "queue" || stored === "schedule") return stored;
+  } catch {
+    // ignore — falls through to the default below
+  }
+  return "patients";
+}
+const activeTab = ref<ReceptionTab>(loadActiveTab());
+watch(activeTab, (tab) => {
+  try {
+    localStorage.setItem(RECEPTION_ACTIVE_TAB_KEY, tab);
+  } catch {
+    // ignore
+  }
+});
+
+// Sync selected patient and active tab with URL query params (?patient=...&tab=...)
+const urlSync = useWorkspaceUrlSync({
+  activeTab: activeTab as Ref<string>,
+  selectedPatientId: computed(() => patientStore.currentPatientId),
+  onHydrateTab: (tab) => {
+    if (tab === "patients" || tab === "queue" || tab === "schedule") {
+      activeTab.value = tab as ReceptionTab;
+    }
+  },
+  onHydratePatient: async (patientId) => {
+    if (!patientId) return;
+    const patient =
+      patientStore.patients.get(patientId) ??
+      (await patientStore.fetchPatient(patientId));
+    if (patient) {
+      patientStore.cachePatient(patient);
+      patientStore.setCurrentPatient(patient.id);
+      recentStore.addRecent(patient);
+      return;
+    }
+    // Linked patient no longer exists (deleted record, stale bookmark). Forget
+    // it and drop the dead id from the URL so the workspace settles on its
+    // empty state rather than retrying it on every reload.
+    recentStore.removeRecent(patientId);
+    urlSync.clearPatientSelectionFromUrl();
+  },
+});
 
 // ---- Patient search + recent patients (Volume 2.1 §7.2, Volume 1.3
 // §6.3/§9.1, Volume 1.2 §6). Extracted to composables/usePatientSearch.ts
@@ -59,6 +127,30 @@ const patientSearch = usePatientSearch();
 // ---- Selected patient ----
 const selectedPatient = computed(() => patientStore.currentPatient);
 
+// ---- Context-pane split ratio (Volume 1.1 §4.2 follow-up, reception UI
+// audit) — SplitPane's default 38/62 favors the detail pane even with
+// nothing selected (today's empty state has little to show). Once a
+// patient IS selected the detail pane has real content competing for room
+// against the list, so this nudges the ratio toward a more even split —
+// and back to the empty-state ratio on deselect, so the split isn't a
+// one-way ratchet. `applyAutoRatio` is a no-op once the user has resized
+// by hand (this session or a persisted one) — see its own docblock in
+// SplitPane.vue — so this only shapes the out-of-the-box experience and
+// never fights a deliberate manual width. Watches the id (not the whole
+// object) so switching between two already-selected patients re-applies
+// it too, while re-renders of the same patient don't.
+const CONTEXT_PANE_RATIO_EMPTY = 0.38;
+const CONTEXT_PANE_RATIO_SELECTED = 0.45;
+const splitPaneRef = ref<InstanceType<typeof SplitPane> | null>(null);
+watch(
+  () => selectedPatient.value?.id,
+  (id) => {
+    splitPaneRef.value?.applyAutoRatio(
+      id ? CONTEXT_PANE_RATIO_SELECTED : CONTEXT_PANE_RATIO_EMPTY,
+    );
+  },
+);
+
 // ---- Patient profile (Volume 2.1 §8) ----
 // Extracted to composables/usePatientProfile.ts (2026-08-10, component-
 // library audit) — pure extraction, no behavior change.
@@ -68,7 +160,14 @@ const patientProfile = usePatientProfile(selectedPatient);
 // Volume 3.7 T2.4/T7.4). Extracted to composables/usePatientRegistration.ts
 // (2026-08-10, component-library audit) — pure extraction, no behavior
 // change.
-const registration = usePatientRegistration();
+const registration = usePatientRegistration({
+  onRegistered: (_patientId, andCheckedIn) => {
+    if (andCheckedIn) {
+      void queueActions.refetchQueue();
+      activeTab.value = "queue";
+    }
+  },
+});
 
 // ---- Edit demographics (Volume 2.1 §8.3, Volume 3.7 audit 2026-08-10) ----
 // Extracted to composables/useEditDemographics.ts (2026-08-10, component-
@@ -112,6 +211,7 @@ const arrivalIntake = useArrivalIntake({
       void patientProfile.fetchPatientActivityFeed(patientId);
     }
     scheduling.refreshScheduleIfLoaded();
+    void queueActions.refetchQueue();
     // Jump to Queue after check-in (2026-08-12, direct user feedback: had
     // to switch tabs manually to see the patient land there). Fires for
     // both check-in paths — submitArrival (walk-in/emergency) and
@@ -273,6 +373,15 @@ useReceptionLiveSync({
   onPatientCalled: (payload) => {
     toast.warning(t("queue.now_calling", { name: payload.patientName }));
   },
+  onPatientReturned: (payload) => {
+    returnedPatientInfo.value = {
+      appointmentId: payload.appointmentId,
+      patientId: payload.patientId,
+      patientName: payload.patientName,
+      reason: payload.reason,
+    };
+    showReturnedModal.value = true;
+  },
 });
 
 // `aria-live` counterpart to the sync above (§10.4, T5.7) — see
@@ -283,14 +392,14 @@ const queueLiveAnnouncer = useQueueLiveAnnouncer();
 </script>
 
 <template>
-  <AppShell>
+  <TooltipProvider :delay-duration="200">
     <!-- Live-region announcer (§10.4, T5.7) — visually hidden, always
-         mounted regardless of which context-pane tab is active, so a new
-         arrival is announced to a screen-reader user even while they're
-         looking at Patients or Appointments, not only while Queue happens
-         to be open. `role="status"`/`aria-live="polite"` (not "assertive"):
-         a new patient in the queue is informational, not urgent enough to
-         interrupt whatever the receptionist is doing right now. -->
+          mounted regardless of which context-pane tab is active, so a new
+          arrival is announced to a screen-reader user even while they're
+          looking at Patients or Appointments, not only while Queue happens
+          to be open. `role="status"`/`aria-live="polite"` (not "assertive"):
+          a new patient in the queue is informational, not urgent enough to
+          interrupt whatever the receptionist is doing right now. -->
     <div role="status" aria-live="polite" class="sr-only">
       {{ queueLiveAnnouncer.announcement.value }}
     </div>
@@ -319,8 +428,9 @@ const queueLiveAnnouncer = useQueueLiveAnnouncer();
          tabs simultaneously, at the true drag-to-floor minimum, both
          locales — rather than sitting exactly on the boundary. -->
     <SplitPane
+      ref="splitPaneRef"
       direction="horizontal"
-      :initial-ratio="0.38"
+      :initial-ratio="CONTEXT_PANE_RATIO_EMPTY"
       :min-size="324"
       persist-key="reception-context-pane"
       class="h-full"
@@ -329,98 +439,90 @@ const queueLiveAnnouncer = useQueueLiveAnnouncer();
         <!-- ============================================================
                    CONTEXT PANE (Volume 2.1 §4.1)
                    ============================================================ -->
-        <aside class="flex h-full flex-col rounded-lg border border-border bg-surface">
-          <!-- Tabs (shadcn-vue, Volume 1.2 §4.1). Underline style
-               (2026-08-11, direct user feedback + design research — see
-               TabsList.vue/TabsTrigger.vue docblocks for the NN/g +
-               uxpatterns.dev sourcing): the segmented-pill look this
-               replaced needed constant reception-only padding/margin
-               overrides all session just to keep 3 equal-width-stretched
-               tabs from truncating in a narrow pane (history below, kept
-               for the overflow-bug lesson, which is still real even
-               though the pill fitting-fight itself is gone) — natural-
-               width tabs (TabsTrigger's new default) don't compete for a
-               forced-equal share of the row, so that fight doesn't
-               recur: this section carries zero trigger-level overrides
-               now, first tried with none at all and confirmed live
-               rather than assumed. -->
-          <Tabs v-model="activeTab" class="flex flex-1 flex-col">
-            <!-- Spacing moved from TabsList's own margin to padding on
-                 this wrapper (2026-08-11 — root-caused a horizontal
-                 overflow bug, live-confirmed with getBoundingClientRect,
-                 not just visual guessing). The old `<TabsList class="m-2
-                 mb-0 w-full">` overflowed: a percentage width is computed
-                 against the containing block, and margin sits *outside*
-                 that box, not subtracted from it — so 100% + 8px left +
-                 8px right margin genuinely rendered 16px wider than the
-                 pane. Padding is safe here because Tailwind's preflight
-                 sets `box-sizing: border-box` — padding is included
-                 inside a percentage width, margin never is. -->
-            <div class="p-2 pb-0">
-              <!-- `w-full` on the list (not the pill-era `w-fit` default)
-                   so the underline baseline runs the full pane width —
-                   common pattern in real underline-tab implementations
-                   (GitHub, Linear): the row of natural-width, left-
-                   clustered tabs sits on top of a border that continues
-                   past the last tab, not one that stops abruptly where
-                   "Appointments" ends. -->
-              <TabsList class="w-full">
-                <!-- "Patients" (clinician.patients), not "Search patients" —
-                     tab labels are conventionally terse, and clinician's/
-                     nursing's own patients tab already uses this exact
-                     key, so this also makes reception consistent with
-                     both instead of uniquely saying something longer for
-                     the same concept (2026-08-11, tabs-overflow fix). -->
-                <!-- Count badges (2026-08-11 UX pass): all 3 tabs now show
-                     a compact pill instead of "(N)" plain text (Queue's old
-                     format) or no count at all (Patients/Appointments' old
-                     state) — a real badge reads as a count at a glance
-                     instead of parsing as part of the label string.
-                     `bg-primary`/`text-primary-foreground` (not `bg-muted`,
-                     tried first and reported hard to see in both themes:
-                     that token pair is also what TabsList's own inactive-
-                     state background used to be, so an inactive tab's
-                     badge blended into the surface behind it). Solid
-                     primary (same shape/weight as AppShell's notification-
-                     count badge, Volume 1.1 §8.2) reads clearly against
-                     both trigger states in light and dark, live-compared
-                     against a tinted-primary and a neutral candidate
-                     before choosing this one. No whitespace between the
-                     label interpolation and `<span` (deliberate, not a
-                     formatting slip): Vue's template compiler condenses
-                     adjacent whitespace into one real space character in
-                     the rendered text node, which was stacking with the
-                     badge's own `ml-0.5` margin. -->
-                <TabsTrigger value="patients">{{
-                  t("clinician.patients")
-                }}<span
-                    class="ml-1 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-lg bg-secondary px-1 text-xs leading-none font-medium tabular-nums text-secondary-foreground"
-                    >{{ patientSearch.totalPatients.value }}</span
-                  ></TabsTrigger>
-                <TabsTrigger value="queue">{{
-                  t("queue.label")
-                }}<span
-                    class="ml-1 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-secondary px-1 text-xs leading-none font-medium tabular-nums text-secondary-foreground"
-                    >{{ queueActions.queue.value.length }}</span
-                  ></TabsTrigger>
-                <TabsTrigger value="schedule">{{
-                  t("appointment.schedule_tab")
-                }}<span
-                    class="ml-1 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-secondary px-1 text-xs leading-none font-medium tabular-nums text-secondary-foreground"
-                    >{{ scheduling.scheduleAppointments.value.length }}</span
-                  ></TabsTrigger>
+        <aside class="flex h-full flex-col rounded-lg border border-border bg-surface overflow-hidden">
+          <Tabs v-model="activeTab" class="flex flex-1 flex-col overflow-hidden">
+            <div class="border-b border-border bg-surface px-3 pt-1 shrink-0">
+              <TabsList class="h-8 gap-1 bg-transparent p-0 justify-start w-auto border-b-0 -mb-px">
+                <TabsTrigger
+                  value="patients"
+                  class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                >
+                  <Users class="size-3.5" aria-hidden="true" />
+                  <span>{{ t("clinician.patients") }}</span>
+                  <Badge
+                    v-if="patientSearch.totalPatients.value > 0"
+                    variant="secondary"
+                    class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
+                    :class="activeTab === 'patients' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+                    :aria-label="
+                      t('patient.count_sr', {
+                        count: patientSearch.totalPatients.value,
+                      })
+                    "
+                  >
+                    {{ patientSearch.totalPatients.value }}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="queue"
+                  class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                >
+                  <Clock class="size-3.5" aria-hidden="true" />
+                  <span>{{ t("queue.label") }}</span>
+                  <span
+                    v-if="(queueActions.stageCounts.value?.total ?? queueActions.queue.value?.length ?? 0) > 0"
+                    class="relative flex size-1.5 shrink-0 ml-0.5"
+                    aria-hidden="true"
+                  >
+                    <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                    <span class="relative inline-flex size-1.5 rounded-full bg-primary" />
+                  </span>
+                  <Badge
+                    v-if="(queueActions.stageCounts.value?.total ?? queueActions.queue.value?.length ?? 0) > 0"
+                    variant="secondary"
+                    class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
+                    :class="activeTab === 'queue' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+                    :aria-label="
+                      t('queue.waiting_count_sr', {
+                        count: queueActions.stageCounts.value?.total ?? queueActions.queue.value?.length ?? 0,
+                      })
+                    "
+                  >
+                    {{ queueActions.stageCounts.value?.total ?? queueActions.queue.value?.length ?? 0 }}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="schedule"
+                  class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                >
+                  <Calendar class="size-3.5" aria-hidden="true" />
+                  <span>{{ t("appointment.schedule_tab") }}</span>
+                  <Badge
+                    v-if="scheduling.scheduleAppointments.value.length > 0"
+                    variant="secondary"
+                    class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
+                    :class="activeTab === 'schedule' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+                    :aria-label="
+                      t('appointment.count_sr', {
+                        count: scheduling.scheduleAppointments.value.length,
+                      })
+                    "
+                  >
+                    {{ scheduling.scheduleAppointments.value.length }}
+                  </Badge>
+                </TabsTrigger>
               </TabsList>
             </div>
 
             <!-- Patients tab. Extracted to PatientSearchPanel.vue (2026-08-10,
                  component-library audit). -->
-            <TabsContent value="patients" class="flex flex-col overflow-hidden">
+            <TabsContent value="patients" class="flex flex-1 flex-col overflow-hidden">
               <PatientSearchPanel :search="patientSearch" :open-registration="registration.openRegistration" />
             </TabsContent>
 
             <!-- Queue tab (Volume 1.2 §9 — Queue composite). Extracted to
                  QueuePanel.vue (2026-08-10, component-library audit). -->
-            <TabsContent value="queue" class="flex flex-col overflow-hidden">
+            <TabsContent value="queue" class="flex flex-1 flex-col overflow-hidden">
               <QueuePanel :queue-actions="queueActions" />
             </TabsContent>
 
@@ -428,47 +530,38 @@ const queueLiveAnnouncer = useQueueLiveAnnouncer();
                  entry path (§9 intro), so a compact list + dialog rather than
                  a full calendar grid. Extracted to ScheduleView.vue
                  (2026-08-10, component-library audit). -->
-            <TabsContent value="schedule" class="flex flex-col overflow-hidden">
-              <ScheduleView :scheduling="scheduling" />
+            <TabsContent value="schedule" class="flex flex-1 flex-col overflow-hidden">
+              <ScheduleView :scheduling="scheduling" :arrival-intake="arrivalIntake" />
             </TabsContent>
           </Tabs>
         </aside>
       </template>
 
       <template #end>
-        <!-- ============================================================
-                   MAIN PANE (Volume 2.1 §4.2)
-                   ============================================================ -->
-        <main class="flex h-full min-h-0 flex-col overflow-y-auto rounded-lg border border-border bg-surface p-3">
-          <!-- `min-h-0 overflow-y-auto` (2026-08-12, layout audit — the
-               registration form's new grouped sections + Emergency
-               Contact box made this the first content tall enough to
-               expose it): this card previously relied on `overflow:
-               visible` (the default) with a fixed `h-full`, which was
-               harmless while every consumer's content happened to fit —
-               once it didn't, content kept rendering past the card's own
-               border/background instead of scrolling inside it, breaking
-               the card's visual containment even though the resizable
-               pane's own ancestor already scrolls the page around it.
-               `min-h-0` is the standard flex-item fix alongside
-               `overflow-y-auto` — without it a flex child's default
-               `min-height: auto` stops it from ever shrinking to trigger
-               its own scrollbar. -->
-          <!-- Registration form. Extracted to RegistrationForm.vue
-               (2026-08-10, component-library audit). -->
-          <RegistrationForm v-if="registration.showRegistration.value" :registration="registration" />
+        <div class="flex h-full gap-4">
+          <!-- ============================================================
+                     MAIN PANE (Volume 2.1 §4.2)
+                     ============================================================ -->
+          <main class="flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface">
+            <!-- Registration form. Extracted to RegistrationForm.vue
+                 (2026-08-10, component-library audit). -->
+            <div v-if="registration.showRegistration.value" class="flex flex-1 flex-col overflow-hidden">
+              <RegistrationForm :registration="registration" />
+            </div>
 
-          <!-- Edit demographics (Volume 2.1 §8.3). Extracted to
-               EditDemographicsForm.vue (2026-08-10, component-library audit). -->
-          <EditDemographicsForm
-            v-else-if="editDemographics.isEditingDemographics.value && selectedPatient"
-            :edit="editDemographics"
-          />
+            <!-- Edit demographics (Volume 2.1 §8.3). Extracted to
+                 EditDemographicsForm.vue (2026-08-10, component-library audit). -->
+            <div
+              v-else-if="editDemographics.isEditingDemographics.value && selectedPatient"
+              class="flex-1 overflow-y-auto p-3"
+            >
+              <EditDemographicsForm :edit="editDemographics" />
+            </div>
 
-          <!-- Patient profile (Volume 2.1 §8). Extracted to
-               PatientProfileView.vue (2026-08-10, component-library audit). -->
-          <div v-else-if="selectedPatient">
+            <!-- Patient profile (Volume 2.1 §8). Extracted to
+                 PatientProfileView.vue (2026-08-10, component-library audit). -->
             <PatientProfileView
+              v-else-if="selectedPatient"
               :patient="selectedPatient"
               :profile="patientProfile"
               :arrival-intake="arrivalIntake"
@@ -477,31 +570,30 @@ const queueLiveAnnouncer = useQueueLiveAnnouncer();
               :open-edit-demographics="editDemographics.openEditDemographics"
               :print-selected-label="printSelectedLabel"
               @view-in-queue="activeTab = 'queue'"
+              @register-new="registration.openRegistration"
             />
-          </div>
 
-          <!-- Empty state (Volume 1.2 §14) -->
-          <div
-            v-else
-            class="flex flex-1 flex-col items-center justify-center text-center"
-          >
-            <UserSearch
-              class="mb-4 h-10 w-10 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <h2 class="mb-2 text-lg font-semibold text-foreground">
-              {{ t("patient.search") }}
-            </h2>
-            <p class="mb-4 text-sm text-muted-foreground">
-              {{ t("patient.empty_hint") }}
-            </p>
-            <Button @click="registration.openRegistration">
-              {{ t("patient.register") }}
-            </Button>
-          </div>
-        </main>
+            <!-- Empty state (Volume 1.2 §14) -->
+            <div
+              v-else
+              class="flex flex-1 items-center justify-center p-6"
+            >
+              <EmptyState
+                illustration="users"
+                :badge="t('patient.workspace_badge')"
+                :title="t('patient.reception_empty_title')"
+                :description="t('patient.reception_empty_desc')"
+                :action-label="t('patient.register')"
+                :secondary-action-label="t('patient.search')"
+                @action="registration.openRegistration"
+                @secondary-action="focusPatientSearch"
+              />
+            </div>
+          </main>
+        </div>
       </template>
     </SplitPane>
+    </TooltipProvider>
 
     <!-- Duplicate-check dialog (Volume 2.1 §6.2 / §7.3, Volume 1.2 §10 —
          Volume 3.7 T2.4). Extracted to DuplicatePatientDialog.vue
@@ -512,10 +604,12 @@ const queueLiveAnnouncer = useQueueLiveAnnouncer();
          CancelQueueItemDialog.vue (2026-08-10, component-library audit). -->
     <CancelQueueItemDialog :queue-actions="queueActions" />
 
-    <!-- Arrival intake dialog: Walk-in / Emergency (Volume 2.1 §10.1).
-         Extracted to ArrivalIntakeDialog.vue (2026-08-10, component-library
-         audit). -->
-    <ArrivalIntakeDialog :arrival="arrivalIntake" :patient="selectedPatient" />
+    <ArrivalIntakeDialog
+      :arrival="arrivalIntake"
+      :patient="selectedPatient"
+      :insurance="patientProfile.profileSummary.value?.insurance"
+      :insurance-form="insuranceForm"
+    />
 
     <!-- Schedule appointment dialog: create (Volume 2.1 §9.2/§9.3).
          Extracted to ScheduleAppointmentDialog.vue (2026-08-10,
@@ -524,5 +618,11 @@ const queueLiveAnnouncer = useQueueLiveAnnouncer();
 
     <!-- Insurance add/edit dialog (Volume 2.1 §8.1, Volume 3.7 §16 #10). -->
     <InsuranceFormDialog :insurance-form="insuranceForm" />
-  </AppShell>
+
+    <!-- Returned patient alert modal dialog -->
+    <ReturnedPatientAlertDialog
+      v-model:open="showReturnedModal"
+      :patient-info="returnedPatientInfo"
+      @acknowledge="handleAcknowledgeReturned"
+    />
 </template>

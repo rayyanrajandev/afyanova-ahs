@@ -81,12 +81,12 @@ const forwardedProps = useForwardProps(delegatedProps)
   <TabsTrigger
     data-slot="tabs-trigger"
     :class="cn(
-      `data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:font-semibold focus-visible:ring-ring/50 text-muted-foreground inline-flex h-[calc(100%-1px)] min-w-0 flex-initial items-center justify-start gap-1.5 border-b-2 border-transparent px-2 py-1 text-sm font-medium transition-[color,border-color] focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4`,
+      `data-[state=active]:text-foreground data-[state=active]:border-primary data-[state=active]:font-semibold focus-visible:ring-ring/50 text-muted-foreground hover:text-foreground inline-flex h-full min-w-0 flex-initial items-center justify-start gap-1.5 border-b-2 border-transparent px-2.5 py-1.5 text-xs font-medium transition-all focus-visible:ring-2 disabled:pointer-events-none disabled:opacity-50 -mb-px cursor-pointer [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5`,
       props.class,
     )"
     v-bind="forwardedProps"
   >
-    <span class="min-w-0 whitespace-nowrap">
+    <span class="inline-flex items-center gap-1.5 min-w-0 whitespace-nowrap">
       <slot />
     </span>
   </TabsTrigger>

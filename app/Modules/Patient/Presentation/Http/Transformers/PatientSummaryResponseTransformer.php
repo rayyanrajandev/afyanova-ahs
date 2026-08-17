@@ -4,6 +4,7 @@ namespace App\Modules\Patient\Presentation\Http\Transformers;
 
 use App\Modules\Billing\Presentation\Http\Transformers\PatientInsuranceRecordResponseTransformer;
 use App\Modules\Encounter\Presentation\Http\Transformers\EncounterListItemResponseTransformer;
+use App\Modules\PatientFlow\Application\UseCases\ResolveVisitStagesUseCase;
 
 class PatientSummaryResponseTransformer
 {
@@ -97,6 +98,20 @@ class PatientSummaryResponseTransformer
                 'id' => $activeAppointment['id'] ?? null,
                 'appointmentNumber' => $activeAppointment['appointment_number'] ?? null,
                 'status' => $activeAppointment['status'] ?? null,
+                /**
+                 * The resolved flow step, from the same PatientFlowStep mapping
+                 * every queue row uses. The reception patient profile derived its
+                 * badge from `status` alone, which cannot express a nursing
+                 * pickup — so a patient the queue correctly showed as "With
+                 * Nurse" still read "Waiting for Triage" in the profile pane
+                 * beside it (2026-08-16).
+                 *
+                 * Resolved through ResolveVisitStagesUseCase, which also folds in
+                 * open diagnostic orders: forAppointment() alone could not see
+                 * them, so a patient the board showed as "Waiting for Lab" read
+                 * "With Doctor" in this very pane.
+                 */
+                'visitStage' => app(ResolveVisitStagesUseCase::class)->forAppointment($activeAppointment),
                 'scheduledAt' => $activeAppointment['scheduled_at'] ?? null,
                 'department' => $activeAppointment['department'] ?? null,
             ] : null,

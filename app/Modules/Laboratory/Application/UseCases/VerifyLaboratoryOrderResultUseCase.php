@@ -30,6 +30,19 @@ class VerifyLaboratoryOrderResultUseCase
 
         ClinicalOrderLifecycle::assertActiveForWorkflow($existing, 'laboratory order');
 
+        // Two-person rule, enforced before anything is written.
+        //
+        // This lived in the controller and ran *after* execute() had already
+        // committed the verification and recorded the flow transition, so the
+        // caller got a 422 while the database said the result was verified and
+        // released. Checking who the actor is costs nothing and belongs with
+        // the other preconditions, ahead of every side effect.
+        if ($this->isOwnOrder($existing, $actorId)) {
+            throw new LaboratoryOrderVerificationNotAllowedException(
+                'You cannot verify your own laboratory order.'
+            );
+        }
+
         if (($existing['status'] ?? null) !== LaboratoryOrderStatus::COMPLETED->value) {
             throw new LaboratoryOrderVerificationNotAllowedException(
                 'Only completed laboratory orders can be verified.'
@@ -113,5 +126,25 @@ class VerifyLaboratoryOrderResultUseCase
     private function isCriticalResultSummary(string $resultSummary): bool
     {
         return str_contains(strtolower($resultSummary), 'result flag: critical');
+    }
+
+    /**
+     * Whether the actor is the same user the order was placed by.
+     *
+     * Compared as strings because the ordering user id reaches us through the
+     * repository array, where the driver may hand back an int or a numeric
+     * string; a strict comparison silently passed whenever the types differed.
+     *
+     * @param  array<string, mixed>  $order
+     */
+    private function isOwnOrder(array $order, ?int $actorId): bool
+    {
+        $orderedBy = $order['ordered_by_user_id'] ?? null;
+
+        if ($orderedBy === null || $actorId === null) {
+            return false;
+        }
+
+        return (string) $orderedBy === (string) $actorId;
     }
 }

@@ -129,28 +129,45 @@ function laboratoryOrderPayload(string $patientId, array $overrides = []): array
     ], $overrides);
 }
 
+/**
+ * These helpers grant the abilities the routes actually declare.
+ *
+ * They used to grant `laboratory.orders.create`, `laboratory.orders.update-status`
+ * and `laboratory.orders.verify-result` — names that appear in no role in
+ * config/roles.php and in no route, so every write in this file 403'd. The
+ * canonical vocabulary for lab *actions* is the granular `lab.*` set listed in
+ * EffectivePermissionNameResolver::RESOLVED_ABILITIES; `laboratory.orders.*`
+ * survives only for reads and audit-log access.
+ */
 function grantLaboratoryReadPermission(User $user): void
 {
-    Permission::query()->firstOrCreate(['name' => 'laboratory.orders.read']);
-    $user->givePermissionTo('laboratory.orders.read');
+    grantLaboratoryAbility($user, 'laboratory.orders.read');
 }
 
 function grantLaboratoryCreatePermission(User $user): void
 {
-    Permission::query()->firstOrCreate(['name' => 'laboratory.orders.create']);
-    $user->givePermissionTo('laboratory.orders.create');
+    grantLaboratoryAbility($user, 'lab.order');
 }
 
 function grantLaboratoryUpdateStatusPermission(User $user): void
 {
-    Permission::query()->firstOrCreate(['name' => 'laboratory.orders.update-status']);
-    $user->givePermissionTo('laboratory.orders.update-status');
+    grantLaboratoryAbility($user, 'lab.sample.collect');
 }
 
 function grantLaboratoryVerifyResultPermission(User $user): void
 {
-    Permission::query()->firstOrCreate(['name' => 'laboratory.orders.verify-result']);
-    $user->givePermissionTo('laboratory.orders.verify-result');
+    grantLaboratoryAbility($user, 'lab.result.verify');
+}
+
+function grantLaboratoryAuditLogPermission(User $user): void
+{
+    grantLaboratoryAbility($user, 'laboratory.orders.audit-logs.view');
+}
+
+function grantLaboratoryAbility(User $user, string $ability): void
+{
+    Permission::query()->firstOrCreate(['name' => $ability]);
+    $user->givePermissionTo($ability);
 }
 
 function makeLaboratoryUser(): User
@@ -160,6 +177,21 @@ function makeLaboratoryUser(): User
     grantLaboratoryCreatePermission($user);
     grantLaboratoryUpdateStatusPermission($user);
     grantLaboratoryVerifyResultPermission($user);
+
+    return $user;
+}
+
+/**
+ * A lab scientist who did not place the order — the only actor allowed to
+ * verify a result, since VerifyLaboratoryOrderResultUseCase enforces the
+ * two-person rule against `ordered_by_user_id`.
+ */
+function makeLaboratoryVerifier(): User
+{
+    $user = User::factory()->create();
+    grantLaboratoryReadPermission($user);
+    grantLaboratoryVerifyResultPermission($user);
+    grantLaboratoryAuditLogPermission($user);
 
     return $user;
 }
@@ -598,6 +630,9 @@ it('forbids laboratory order verification without verification permission', func
 
 it('verifies completed laboratory order result and stores verification metadata', function (): void {
     $user = makeLaboratoryUser();
+    // Verification is a two-person step: whoever placed the order may not sign
+    // it off, so the result is released by a second scientist.
+    $verifier = makeLaboratoryVerifier();
     $patient = makeLaboratoryPatient();
 
     $created = $this->actingAs($user)
@@ -612,17 +647,17 @@ it('verifies completed laboratory order result and stores verification metadata'
     )
         ->assertOk();
 
-    $this->actingAs($user)
+    $this->actingAs($verifier)
         ->patchJson('/api/v1/laboratory-orders/'.$created['id'].'/verify', [
             'verificationNote' => 'Reviewed and released by technologist.',
         ])
         ->assertOk()
-        ->assertJsonPath('data.verifiedByUserId', $user->id)
+        ->assertJsonPath('data.verifiedByUserId', $verifier->id)
         ->assertJsonPath('data.verificationNote', 'Reviewed and released by technologist.');
 
     $record = LaboratoryOrderModel::query()->find($created['id']);
     expect($record?->verified_at)->not->toBeNull();
-    expect($record?->verified_by_user_id)->toBe($user->id);
+    expect($record?->verified_by_user_id)->toBe($verifier->id);
     expect($record?->verification_note)->toBe('Reviewed and released by technologist.');
 
     $verificationAuditLog = LaboratoryOrderAuditLogModel::query()
@@ -641,6 +676,7 @@ it('verifies completed laboratory order result and stores verification metadata'
 
 it('rejects repeat verification for an already verified laboratory result', function (): void {
     $user = makeLaboratoryUser();
+    $verifier = makeLaboratoryVerifier();
     $patient = makeLaboratoryPatient();
 
     $created = $this->actingAs($user)
@@ -655,13 +691,13 @@ it('rejects repeat verification for an already verified laboratory result', func
     )
         ->assertOk();
 
-    $this->actingAs($user)
+    $this->actingAs($verifier)
         ->patchJson('/api/v1/laboratory-orders/'.$created['id'].'/verify', [
             'verificationNote' => 'First verification.',
         ])
         ->assertOk();
 
-    $this->actingAs($user)
+    $this->actingAs($verifier)
         ->patchJson('/api/v1/laboratory-orders/'.$created['id'].'/verify', [
             'verificationNote' => 'Second verification should fail.',
         ])
@@ -763,7 +799,7 @@ it('writes laboratory order audit logs for create update and status change', fun
 
 it('lists laboratory order audit logs when authorized', function (): void {
     $user = makeLaboratoryUser();
-    $user->givePermissionTo('laboratory-orders.view-audit-logs');
+    grantLaboratoryAuditLogPermission($user);
     $patient = makeLaboratoryPatient();
 
     $created = $this->actingAs($user)
@@ -797,7 +833,7 @@ it('lists laboratory order audit logs when authorized', function (): void {
 
 it('filters laboratory order audit logs by action text actor type and actor id', function (): void {
     $user = makeLaboratoryUser();
-    $user->givePermissionTo('laboratory-orders.view-audit-logs');
+    grantLaboratoryAuditLogPermission($user);
     $patient = makeLaboratoryPatient();
 
     $created = $this->actingAs($user)
@@ -849,7 +885,7 @@ it('filters laboratory order audit logs by action text actor type and actor id',
 
 it('exports laboratory order audit logs as csv when authorized and applies filters', function (): void {
     $user = makeLaboratoryUser();
-    $user->givePermissionTo('laboratory-orders.view-audit-logs');
+    grantLaboratoryAuditLogPermission($user);
     $patient = makeLaboratoryPatient();
 
     $created = $this->actingAs($user)
@@ -897,7 +933,7 @@ it('creates laboratory order audit log csv export job when authorized', function
     Queue::fake();
 
     $user = makeLaboratoryUser();
-    $user->givePermissionTo('laboratory-orders.view-audit-logs');
+    grantLaboratoryAuditLogPermission($user);
     $patient = makeLaboratoryPatient();
 
     $created = $this->actingAs($user)
@@ -936,7 +972,7 @@ it('creates laboratory order audit log csv export job when authorized', function
 
 it('shows laboratory order audit log csv export job status for creator', function (): void {
     $user = makeLaboratoryUser();
-    $user->givePermissionTo('laboratory-orders.view-audit-logs');
+    grantLaboratoryAuditLogPermission($user);
     $patient = makeLaboratoryPatient();
 
     $created = $this->actingAs($user)
@@ -971,7 +1007,7 @@ it('downloads completed laboratory order audit log csv export job', function ():
     Storage::fake('local');
 
     $user = makeLaboratoryUser();
-    $user->givePermissionTo('laboratory-orders.view-audit-logs');
+    grantLaboratoryAuditLogPermission($user);
     $patient = makeLaboratoryPatient();
 
     $created = $this->actingAs($user)
@@ -1005,7 +1041,7 @@ it('downloads completed laboratory order audit log csv export job', function ():
 
 it('returns 409 when laboratory order audit log csv export job is not ready', function (): void {
     $user = makeLaboratoryUser();
-    $user->givePermissionTo('laboratory-orders.view-audit-logs');
+    grantLaboratoryAuditLogPermission($user);
     $patient = makeLaboratoryPatient();
 
     $created = $this->actingAs($user)
@@ -1027,7 +1063,7 @@ it('returns 409 when laboratory order audit log csv export job is not ready', fu
 
 it('lists laboratory order audit log csv export jobs for creator only', function (): void {
     $user = makeLaboratoryUser();
-    $user->givePermissionTo('laboratory-orders.view-audit-logs');
+    grantLaboratoryAuditLogPermission($user);
     $otherUser = makeLaboratoryUser();
     $patient = makeLaboratoryPatient();
 
@@ -1075,7 +1111,7 @@ it('retries laboratory order audit log csv export job when authorized', function
     Queue::fake();
 
     $user = makeLaboratoryUser();
-    $user->givePermissionTo('laboratory-orders.view-audit-logs');
+    grantLaboratoryAuditLogPermission($user);
     $patient = makeLaboratoryPatient();
 
     $created = $this->actingAs($user)
@@ -1182,10 +1218,10 @@ it('forbids laboratory order audit log csv export access without permission', fu
 });
 
 it('forbids laboratory order audit logs when gate override denies', function (): void {
-    Gate::define('laboratory-orders.view-audit-logs', static fn (): bool => false);
+    Gate::define('laboratory.orders.audit-logs.view', static fn (): bool => false);
 
     $user = makeLaboratoryUser();
-    $user->givePermissionTo('laboratory-orders.view-audit-logs');
+    grantLaboratoryAuditLogPermission($user);
     $patient = makeLaboratoryPatient();
 
     $created = $this->actingAs($user)
@@ -1199,7 +1235,7 @@ it('forbids laboratory order audit logs when gate override denies', function ():
 
 it('returns 404 for laboratory order audit logs of unknown id', function (): void {
     $user = makeLaboratoryUser();
-    $user->givePermissionTo('laboratory-orders.view-audit-logs');
+    grantLaboratoryAuditLogPermission($user);
 
     $this->actingAs($user)
         ->getJson('/api/v1/laboratory-orders/060afc03-2ce9-4b1d-a1c2-326d2722ce25/audit-logs')

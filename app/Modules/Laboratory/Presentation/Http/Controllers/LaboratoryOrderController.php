@@ -477,10 +477,10 @@ class LaboratoryOrderController extends Controller
 
             abort_if($order === null, 404, 'Laboratory order not found.');
 
-            if (($order['ordered_by_user_id'] ?? null) === $request->user()?->id) {
-                return $this->validationError('verification', 'You cannot verify your own laboratory order.');
-            }
-
+            // The two-person rule now lives in the use case, ahead of the
+            // write. It used to be checked here, after execute() had already
+            // committed, which returned 422 over a verification the database
+            // had accepted.
             return response()->json([
                 'data' => LaboratoryOrderResponseTransformer::transform($order),
             ]);

@@ -70,14 +70,13 @@ class SyncRolesFromConfig extends Command
         $perms = $roleDef['permissions'] ?? [];
         unset($roleDef['permissions']);
 
-        $attributes = [
+        $uniqueKeys = [
             'tenant_id' => $tenantId,
             'facility_id' => null,
-            'department_id' => null,
             'code' => $code,
         ];
 
-        $this->upsertRole($attributes, $roleDef, $perms);
+        $this->upsertRole($uniqueKeys, $roleDef, null, $perms);
     }
 
     /**
@@ -95,25 +94,25 @@ class SyncRolesFromConfig extends Command
             $departmentId = $this->resolveDepartmentId($facility->id, $roleKey);
         }
 
-        $attributes = [
+        $uniqueKeys = [
             'tenant_id' => $tenantId,
             'facility_id' => $facility->id,
-            'department_id' => $departmentId,
             'code' => $code,
         ];
 
-        $this->upsertRole($attributes, $roleDef, $perms);
+        $this->upsertRole($uniqueKeys, $roleDef, $departmentId, $perms);
     }
 
     /**
-     * @param  array<string, mixed>  $attributes
+     * @param  array<string, mixed>  $uniqueKeys
      * @param  array<string, mixed>  $roleDef
+     * @param  string|null  $departmentId
      * @param  array<int, string>  $perms
      */
-    private function upsertRole(array $attributes, array $roleDef, array $perms): void
+    private function upsertRole(array $uniqueKeys, array $roleDef, ?string $departmentId, array $perms): void
     {
         $query = DB::table('roles');
-        foreach ($attributes as $column => $value) {
+        foreach ($uniqueKeys as $column => $value) {
             if ($value === null) {
                 $query->whereNull($column);
             } else {
@@ -122,36 +121,29 @@ class SyncRolesFromConfig extends Command
         }
         $existing = $query->first();
 
+        $attributes = [
+            'department_id' => $departmentId,
+            'name' => $roleDef['name'],
+            'description' => $roleDef['description'] ?? null,
+            'access_level' => $roleDef['access_level'] ?? null,
+            'scope_type' => $roleDef['scope_type'] ?? null,
+            'is_system' => $roleDef['is_system'] ?? false,
+            'status' => 'active',
+            'updated_at' => now(),
+        ];
+
         if ($existing) {
-            DB::table('roles')->where('id', $existing->id)->update([
-                'name' => $roleDef['name'],
-                'description' => $roleDef['description'] ?? null,
-                'access_level' => $roleDef['access_level'] ?? null,
-                'scope_type' => $roleDef['scope_type'] ?? null,
-                'is_system' => $roleDef['is_system'] ?? false,
-                'status' => 'active',
-                'updated_at' => now(),
-            ]);
+            DB::table('roles')->where('id', $existing->id)->update($attributes);
+            $roleId = $existing->id;
         } else {
-            DB::table('roles')->insert(array_merge($attributes, [
-                'id' => Str::orderedUuid()->toString(),
-                'name' => $roleDef['name'],
-                'description' => $roleDef['description'] ?? null,
-                'access_level' => $roleDef['access_level'] ?? null,
-                'scope_type' => $roleDef['scope_type'] ?? null,
-                'is_system' => $roleDef['is_system'] ?? false,
-                'status' => 'active',
+            $roleId = Str::orderedUuid()->toString();
+            DB::table('roles')->insert(array_merge($uniqueKeys, $attributes, [
+                'id' => $roleId,
                 'created_at' => now(),
-                'updated_at' => now(),
             ]));
         }
 
         if (empty($perms)) {
-            return;
-        }
-
-        $roleId = DB::table('roles')->where($attributes)->value('id');
-        if (! $roleId) {
             return;
         }
 

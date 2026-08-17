@@ -44,7 +44,27 @@ enum RadiologyOrderStatus: string
     public static function allowedForwardTransitions(string $currentStatus): array
     {
         return match ($currentStatus) {
-            self::ORDERED->value => [self::SCHEDULED->value, self::CANCELLED->value],
+            // Two paths out of `ordered`, deliberately — this is the difference
+            // between an imaging department and a booking system.
+            //
+            //  - **Unscheduled / walk-in** (`ordered -> in_progress`): the common
+            //    case for plain film and ultrasound. A doctor orders a chest
+            //    X-ray mid-consultation and the patient walks to imaging with the
+            //    request, exactly as they would to the lab. Forcing a booking
+            //    first meant inventing an appointment for something happening in
+            //    the next five minutes.
+            //
+            //  - **Scheduled** (`ordered -> scheduled -> in_progress`): for work
+            //    that genuinely needs a slot — CT and MRI, studies needing
+            //    preparation or contrast, or anything booked for a later day.
+            //
+            // Both paths are standard, not a local shortcut: IHE's Radiology
+            // Scheduled Workflow profile defines an explicit *Unscheduled Case*
+            // in which the modality performs a study with no prior scheduled
+            // procedure step, and DICOM keeps MPPS (performed) separate from MWL
+            // (scheduled) for precisely this reason. FHIR agrees —
+            // ServiceRequest.occurrence is optional.
+            self::ORDERED->value => [self::SCHEDULED->value, self::IN_PROGRESS->value, self::CANCELLED->value],
             self::SCHEDULED->value => [self::IN_PROGRESS->value, self::CANCELLED->value],
             self::IN_PROGRESS->value => [self::COMPLETED->value, self::CANCELLED->value],
             self::COMPLETED->value, self::CANCELLED->value => [],

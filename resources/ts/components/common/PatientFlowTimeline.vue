@@ -53,7 +53,9 @@ interface FlowTimelineEntry {
 const props = defineProps<{
   patientId: string | null;
   /** Which scoped API prefix to read from. */
-  workspace: "clinician" | "nursing" | "reception" | "laboratory";
+  // Each workspace reads the timeline through its own scoped route, so this
+  // union must list every workspace that has one registered.
+  workspace: "clinician" | "nursing" | "reception" | "laboratory" | "radiology";
 }>();
 
 const { t } = useI18n({ useScope: "global" });

@@ -14,10 +14,11 @@ import {
   FileCheck,
   FlaskConical,
   Radio,
+  Lock,
   RefreshCw,
   ShieldAlert,
 } from "lucide-vue-next";
-import { onMounted } from "vue";
+import { computed, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,20 @@ import type { useClinicianResults } from "../composables/useClinicianResults";
 const props = defineProps<{
   patientId: string | null;
   resultsManager: ReturnType<typeof useClinicianResults>;
+  /**
+   * Reading results is always allowed — a doctor deciding whether to call this
+   * patient in needs to see what came back. Acknowledging one is a clinical
+   * act, signed in their name, and belongs to an open consultation.
+   *
+   * This tab was the last mutation surface in the workspace that ignored the
+   * mode, so a patient returning from the lab (waiting_clinician_review, which
+   * resolves to `awaiting_start`) could have their results signed off without
+   * anyone calling them in (2026-08-17).
+   */
+  clinicalMode?: "active" | "awaiting_start" | "triage_pending" | "read_only" | "completed";
 }>();
+
+const canAcknowledge = computed<boolean>(() => props.clinicalMode === "active");
 
 const { t } = useI18n({ useScope: "global" });
 
@@ -108,10 +122,13 @@ onMounted(() => {
               v-if="!result.isAcknowledged"
               size="sm"
               variant="outline"
-              class="h-6 gap-1 px-2 text-[10.5px] font-semibold text-primary border-primary/40 hover:bg-primary/10 cursor-pointer"
-              @click="resultsManager.acknowledgeResult(result.id)"
+              :disabled="!canAcknowledge"
+              :title="canAcknowledge ? undefined : t('clinician.acknowledge_requires_consultation')"
+              class="h-6 gap-1 px-2 text-[10.5px] font-semibold text-primary border-primary/40 hover:bg-primary/10 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+              @click="canAcknowledge && resultsManager.acknowledgeResult(result.id)"
             >
-              <FileCheck class="size-3" />
+              <Lock v-if="!canAcknowledge" class="size-3" />
+              <FileCheck v-else class="size-3" />
               <span>{{ t("clinician.acknowledge_result") }}</span>
             </Button>
             <span v-else class="inline-flex items-center gap-1 text-[10.5px] font-medium text-emerald-600 dark:text-emerald-400">

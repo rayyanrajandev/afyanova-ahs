@@ -779,6 +779,7 @@ usePatientFlowLiveSync({
                 <ResultsReviewTab
                   :patient-id="selectedPatient.id"
                   :results-manager="resultsManager"
+                  :clinical-mode="clinicalMode"
                 />
               </TabsContent>
 

@@ -38,11 +38,18 @@ class UpdateRadiologyOrderStatusUseCase
         RadiologyOrderStatus::COMPLETED->value => 'radiology.report_entered',
     ];
 
-    public function execute(string $id, string $status, ?string $reason, ?string $reportSummary, ?int $actorId = null): ?array
+    /**
+     * @param  string|null  $scheduledFor  The booked slot, carried by the ordered -> scheduled
+     *   transition itself. Booking a study *is* that transition, so the slot belongs to it:
+     *   splitting them meant two calls, two audit rows, and a window where a study was
+     *   'scheduled' for no particular time. The generic edit route can still set it in
+     *   isolation for a reschedule, where there is no status change to attach it to.
+     */
+    public function execute(string $id, string $status, ?string $reason, ?string $reportSummary, ?int $actorId = null, ?string $scheduledFor = null): ?array
     {
         $this->tenantIsolationWriteGuard->assertTenantScopeForWrite();
 
-        return DB::transaction(function () use ($id, $status, $reason, $reportSummary, $actorId): ?array {
+        return DB::transaction(function () use ($id, $status, $reason, $reportSummary, $actorId, $scheduledFor): ?array {
             $existing = $this->radiologyOrderRepository->findById($id);
             if (! $existing) {
                 return null;
@@ -68,6 +75,10 @@ class UpdateRadiologyOrderStatusUseCase
 
             if ($reportSummary !== null) {
                 $payload['report_summary'] = $reportSummary;
+            }
+
+            if ($scheduledFor !== null) {
+                $payload['scheduled_for'] = $scheduledFor;
             }
 
             if ($status === RadiologyOrderStatus::COMPLETED->value) {

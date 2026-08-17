@@ -29,6 +29,7 @@ use App\Modules\Radiology\Presentation\Http\Transformers\RadiologyOrderAuditLogR
 use App\Modules\Radiology\Presentation\Http\Transformers\RadiologyOrderResponseTransformer;
 use App\Support\ClinicalOrders\ClinicalOrderPatientSummaryEnricher;
 use App\Support\ClinicalOrders\ClinicalOrderUserSummaryEnricher;
+use App\Support\ClinicalOrders\ClinicalOrderVisitStageEnricher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -48,6 +49,11 @@ class RadiologyOrderController extends Controller
             $result['data'],
             array_map([RadiologyOrderResponseTransformer::class, 'transform'], $result['data']),
         );
+
+        // Same as the laboratory worklist: a radiographer needs to know whether
+        // this patient is still with a doctor, already waiting at imaging, or
+        // long gone — the order's own status cannot say.
+        $orders = ClinicalOrderVisitStageEnricher::attachToTransformedOrders($result['data'], $orders);
 
         return response()->json([
             'data' => ClinicalOrderUserSummaryEnricher::attachOrderingClinicianToTransformedOrders($result['data'], $orders),
@@ -190,6 +196,7 @@ class RadiologyOrderController extends Controller
                 reason: $request->input('reason'),
                 reportSummary: $request->input('reportSummary'),
                 actorId: $request->user()?->id,
+                scheduledFor: $request->input('scheduledFor'),
             );
         } catch (TenantScopeRequiredForIsolationException $exception) {
             return $this->tenantScopeRequiredError($exception->getMessage());

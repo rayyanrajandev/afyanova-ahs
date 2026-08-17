@@ -621,7 +621,22 @@ it('exposes current care flags for abnormal radiology reports', function (): voi
         ->assertJsonPath('data.currentCare.nextAction.emphasis', 'primary');
 });
 
-it('rejects skipping radiology scheduling before imaging starts', function (): void {
+/**
+ * Replaces an earlier test that required scheduling before imaging could start.
+ *
+ * That rule was wrong for this setting: most outpatient imaging is walk-in. A
+ * doctor orders a chest X-ray or an obstetric ultrasound during a consultation
+ * and the patient walks over with the request, exactly as they would to the
+ * lab. Requiring a booking first meant inventing an appointment for something
+ * happening five minutes later — and it is not what the standards say either:
+ * IHE's Radiology Scheduled Workflow defines an explicit Unscheduled Case, and
+ * DICOM keeps MPPS (performed) separate from MWL (scheduled) precisely so a
+ * study can be performed without a prior scheduled step.
+ *
+ * What must stay impossible is reporting a study nobody performed, which is the
+ * assertion this test now carries (2026-08-17).
+ */
+it('lets a walk-in study start without a booking, but never skip to a report', function (): void {
     $user = makeRadiologyUser();
     $patient = makeRadiologyPatient();
 
@@ -630,13 +645,23 @@ it('rejects skipping radiology scheduling before imaging starts', function (): v
         ->assertCreated()
         ->json('data');
 
+    // Reporting a study that was never performed stays rejected.
+    $this->actingAs($user)
+        ->patchJson('/api/v1/radiology-orders/'.$created['id'].'/status', [
+            'status' => 'completed',
+            'reportSummary' => 'Normal chest.',
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['status']);
+
+    // Performing it straight from `ordered` is the walk-in path, and is allowed.
     $this->actingAs($user)
         ->patchJson('/api/v1/radiology-orders/'.$created['id'].'/status', [
             'status' => 'in_progress',
             'reason' => null,
         ])
-        ->assertStatus(422)
-        ->assertJsonValidationErrors(['status']);
+        ->assertOk()
+        ->assertJsonPath('data.status', 'in_progress');
 });
 
 it('exports radiology audit logs csv when authorized', function (): void {

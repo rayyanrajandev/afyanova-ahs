@@ -277,3 +277,100 @@ it('does not record a flow event when a study is cancelled', function (): void {
     // vocabulary has no word for that yet.
     expect(radFlowEvents($appointment->id))->toHaveCount(0);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Scheduling carries its slot.
+|--------------------------------------------------------------------------
+|
+| `scheduledFor` was settable only through the generic edit route, which
+| prohibits `status`. Booking a study therefore needed two calls to two routes —
+| and between them a study could sit in `scheduled` with no time against it,
+| which the worklist would render as booked. The slot now rides the
+| ordered -> scheduled transition it belongs to (2026-08-17).
+*/
+
+it('stores the booked slot on the transition that books it', function (): void {
+    $user = radFlowUser();
+    $patient = radFlowPatient();
+    $appointment = radFlowAppointment($patient->id);
+    $order = radFlowOrder($patient->id, $appointment->id);
+
+    $slot = now()->addHours(3)->startOfMinute();
+
+    $this->actingAs($user)
+        ->patchJson('/api/v1/radiology/orders/'.$order->id.'/status', [
+            'status' => 'scheduled',
+            'scheduledFor' => $slot->toIso8601String(),
+        ])
+        ->assertOk();
+
+    $order->refresh();
+
+    expect($order->status)->toBe('scheduled');
+    expect($order->scheduled_for)->not->toBeNull();
+});
+
+/*
+|--------------------------------------------------------------------------
+| Walk-in imaging: performing a study that was never booked.
+|--------------------------------------------------------------------------
+|
+| The status machine originally allowed `ordered` to reach only `scheduled`, so
+| a chest X-ray ordered mid-consultation could not be performed without first
+| inventing an appointment for something happening five minutes later. Both
+| paths are standard — IHE's Radiology Scheduled Workflow defines an explicit
+| Unscheduled Case, and DICOM keeps MPPS separate from MWL for exactly this.
+*/
+
+it('performs a walk-in study that was never booked', function (): void {
+    $user = radFlowUser();
+    $patient = radFlowPatient();
+    $appointment = radFlowAppointment($patient->id);
+    $order = radFlowOrder($patient->id, $appointment->id);
+
+    // ordered -> in_progress, with no booking in between.
+    patchRadStatus($this, $user, $order->id, 'in_progress')->assertOk();
+
+    expect($order->fresh()->status)->toBe('in_progress');
+    expect($order->fresh()->scheduled_for)->toBeNull();
+});
+
+it('moves a walk-in patient into imaging on every board', function (): void {
+    $user = radFlowUser();
+    $patient = radFlowPatient();
+    $appointment = radFlowAppointment($patient->id);
+    $order = radFlowOrder($patient->id, $appointment->id);
+
+    patchRadStatus($this, $user, $order->id, 'in_progress')->assertOk();
+
+    // Skipping the booking must not skip the flow event — the patient is
+    // physically in imaging whether or not anyone booked a slot.
+    expect(radFlowEvents($appointment->id)->last()->to_step)->toBe('in_imaging');
+});
+
+it('still supports the booked path for slotted work', function (): void {
+    $user = radFlowUser();
+    $patient = radFlowPatient();
+    $appointment = radFlowAppointment($patient->id);
+    $order = radFlowOrder($patient->id, $appointment->id);
+
+    // CT/MRI and anything needing preparation still book first.
+    patchRadStatus($this, $user, $order->id, 'scheduled')->assertOk();
+    patchRadStatus($this, $user, $order->id, 'in_progress')->assertOk();
+
+    expect($order->fresh()->status)->toBe('in_progress');
+});
+
+it('never lets a study skip straight to a report', function (): void {
+    $user = radFlowUser();
+    $patient = radFlowPatient();
+    $appointment = radFlowAppointment($patient->id);
+    $order = radFlowOrder($patient->id, $appointment->id);
+
+    // Loosening `ordered` must not loosen the rest: a report on a study nobody
+    // performed is the one transition that stays impossible.
+    patchRadStatus($this, $user, $order->id, 'completed', 'Normal chest.')->assertStatus(422);
+
+    expect($order->fresh()->status)->toBe('ordered');
+});

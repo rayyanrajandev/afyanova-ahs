@@ -74,6 +74,13 @@ class WorkspaceTestUsersSeeder extends Seeder
                 'is_platform_admin' => false,
             ],
             [
+                'name' => 'Radiologist / Supervisor Test',
+                'email' => 'radiology.supervisor@local.test',
+                'role_code' => 'RADIOLOGY.SUPERVISOR',
+                'facility_role' => 'radiologist',
+                'is_platform_admin' => false,
+            ],
+            [
                 'name' => 'Pharmacist Test',
                 'email' => 'pharmacy@local.test',
                 'role_code' => 'PHARMACY.STAFF',

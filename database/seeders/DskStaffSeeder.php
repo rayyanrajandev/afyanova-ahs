@@ -36,6 +36,8 @@ class DskStaffSeeder extends Seeder
             ['name' => 'Rajani Diwani', 'tag' => 'kibaso', 'job_title' => 'Cashier', 'department_code' => 'FIN', 'facility_role' => 'cashier'],
             ['name' => 'Kisa Patson', 'tag' => 'kisa', 'job_title' => 'Medical Attendant', 'department_code' => 'NRS', 'facility_role' => 'medical_attendant'],
             ['name' => 'Zaituni Chiundo', 'tag' => 'zaituni', 'job_title' => 'Medical Attendant', 'department_code' => 'NRS', 'facility_role' => 'medical_attendant'],
+            ['name' => 'Neema Mushi', 'tag' => 'neema', 'job_title' => 'Radiographer', 'department_code' => 'RAD', 'facility_role' => 'radiographer'],
+            ['name' => 'Dr. Dennis Kimaro', 'tag' => 'dennis', 'job_title' => 'Consultant Radiologist / Supervisor', 'department_code' => 'RAD', 'facility_role' => 'radiologist'],
         ];
 
         $created = 0;

@@ -250,32 +250,6 @@ function getRelativeTime(dateStr: string | null | undefined): string {
       </div>
     </div>
 
-    <!-- Active Filter Status & Refresh Bar -->
-    <div class="flex items-center justify-between px-3 py-1 bg-muted/20 border-b border-border/50 text-[10.5px] text-muted-foreground shrink-0">
-      <div class="flex items-center gap-1.5 truncate">
-        <span class="font-medium text-foreground">
-          {{
-            radiology.viewMode.value === 'patient'
-              ? t('radiology.patient_count', { count: radiology.filteredPatientGroups.value.length })
-              : t('radiology.study_count', { count: radiology.worklistOrders.value.length })
-          }}
-        </span>
-        <span v-if="radiology.selectedModalityFilter.value !== 'all'" class="font-mono text-primary truncate">
-          • {{ radiology.selectedModalityFilter.value.toUpperCase() }}
-        </span>
-      </div>
-
-      <button
-        type="button"
-        class="inline-flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer shrink-0"
-        :disabled="radiology.isLoadingOrders.value"
-        @click="radiology.fetchOrders()"
-      >
-        <RefreshCw class="size-3" :class="radiology.isLoadingOrders.value ? 'animate-spin text-primary' : ''" />
-        <span>{{ t('radiology.refresh', 'Refresh') }}</span>
-      </button>
-    </div>
-
     <!-- Worklist Content -->
     <div class="flex-1 overflow-y-auto p-2 space-y-1.5">
       <!-- Loading Skeleton / Shimmer -->

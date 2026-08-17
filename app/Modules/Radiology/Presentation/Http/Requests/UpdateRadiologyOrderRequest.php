@@ -20,9 +20,17 @@ class UpdateRadiologyOrderRequest extends FormRequest
         'scheduledFor',
     ];
 
+    /**
+     * Mirrors the route guard on PATCH radiology-orders/{id}.
+     *
+     * This asked for `radiology.orders.update`, which config/roles.php grants to
+     * nobody, so amending an order was refused for every user even once the
+     * route was corrected. Laboratory's twin (UpdateLaboratoryOrderRequest) uses
+     * `lab.order` on the same principle: whoever may place an order may fix it.
+     */
     public function authorize(): bool
     {
-        return $this->user()?->can('radiology.orders.update') ?? false;
+        return $this->user()?->can('imaging.order') ?? false;
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Modules\Radiology\Application\UseCases;
 use App\Modules\Platform\Application\Services\ClinicalCatalogRecipeStockConsumptionService;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
 use App\Modules\Platform\Domain\ValueObjects\ClinicalCatalogType;
+use App\Modules\Radiology\Application\Services\RecordRadiologyFlowTransitionService;
 use App\Modules\Radiology\Domain\Events\RadiologyOrderCompleted;
 use App\Modules\Radiology\Domain\Repositories\RadiologyOrderAuditLogRepositoryInterface;
 use App\Modules\Radiology\Domain\Repositories\RadiologyOrderRepositoryInterface;
@@ -20,7 +21,22 @@ class UpdateRadiologyOrderStatusUseCase
         private readonly RadiologyOrderAuditLogRepositoryInterface $auditLogRepository,
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
         private readonly ClinicalCatalogRecipeStockConsumptionService $recipeStockConsumptionService,
+        private readonly RecordRadiologyFlowTransitionService $recordFlowTransition,
     ) {}
+
+    /**
+     * Staff-facing write paths for the flow log. Keys are the status being moved
+     * *to*; `completed` is what the workspace calls entering a report.
+     *
+     * Cancellation is deliberately absent: it withdraws work rather than
+     * advancing it, and nothing in the flow vocabulary describes that yet —
+     * the same choice the laboratory path makes.
+     */
+    private const FLOW_SOURCES_BY_STATUS = [
+        RadiologyOrderStatus::SCHEDULED->value => 'radiology.study_scheduled',
+        RadiologyOrderStatus::IN_PROGRESS->value => 'radiology.study_started',
+        RadiologyOrderStatus::COMPLETED->value => 'radiology.report_entered',
+    ];
 
     public function execute(string $id, string $status, ?string $reason, ?string $reportSummary, ?int $actorId = null): ?array
     {
@@ -107,6 +123,18 @@ class UpdateRadiologyOrderStatusUseCase
                     'cancellation_reason_provided' => ! blank($reason),
                 ],
             );
+
+            // Recorded after the update, so the shared resolver sees the new
+            // status when it works out where the visit now stands.
+            $flowSource = self::FLOW_SOURCES_BY_STATUS[$status] ?? null;
+            if ($flowSource !== null) {
+                $this->recordFlowTransition->recordForOrder(
+                    order: $updated,
+                    source: $flowSource,
+                    actorId: $actorId,
+                    metadata: ['radiology_order_id' => $id],
+                );
+            }
 
             if ($status === RadiologyOrderStatus::COMPLETED->value) {
                 DB::afterCommit(function () use ($id, $updated, $actorId): void {

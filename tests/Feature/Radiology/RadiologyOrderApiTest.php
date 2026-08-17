@@ -127,14 +127,26 @@ function grantRadiologyPermission(User $user, array $permissions): void
     }
 }
 
+/**
+ * Grants the abilities the routes actually declare.
+ *
+ * These used to be `radiology.orders.create` / `.update` / `.update-status` —
+ * names granted by no role in config/roles.php and consulted by no route, so
+ * every write here 403'd. User::givePermissionTo() firstOrCreate()s the
+ * permission row, so the grant silently "succeeded" while authorizing nothing.
+ * Imaging actions live under the granular `imaging.*` vocabulary listed in
+ * EffectivePermissionNameResolver::RESOLVED_ABILITIES; `radiology.orders.*`
+ * survives only for reads and audit-log access.
+ */
 function makeRadiologyUser(array $permissions = []): User
 {
     $user = User::factory()->create();
     grantRadiologyPermission($user, array_merge([
         'radiology.orders.read',
-        'radiology.orders.create',
-        'radiology.orders.update',
-        'radiology.orders.update-status',
+        // Placing, amending, signing, discarding and cancelling an order.
+        'imaging.order',
+        // Moving a study through scheduled → in_progress → completed.
+        'imaging.perform',
     ], $permissions));
 
     return $user;
@@ -532,7 +544,7 @@ it('blocks radiology status workflow while order remains draft', function (): vo
 });
 
 it('updates radiology status to completed and writes parity metadata in audit log', function (): void {
-    $user = makeRadiologyUser(['radiology.orders.view-audit-logs']);
+    $user = makeRadiologyUser(['radiology.orders.audit-logs.view']);
     $patient = makeRadiologyPatient();
 
     $created = $this->actingAs($user)
@@ -568,7 +580,7 @@ it('updates radiology status to completed and writes parity metadata in audit lo
 });
 
 it('lists radiology audit logs when authorized', function (): void {
-    $user = makeRadiologyUser(['radiology.orders.view-audit-logs']);
+    $user = makeRadiologyUser(['radiology.orders.audit-logs.view']);
     $patient = makeRadiologyPatient();
 
     $created = $this->actingAs($user)
@@ -628,7 +640,7 @@ it('rejects skipping radiology scheduling before imaging starts', function (): v
 });
 
 it('exports radiology audit logs csv when authorized', function (): void {
-    $user = makeRadiologyUser(['radiology.orders.view-audit-logs']);
+    $user = makeRadiologyUser(['radiology.orders.audit-logs.view']);
     $patient = makeRadiologyPatient();
 
     $created = $this->actingAs($user)

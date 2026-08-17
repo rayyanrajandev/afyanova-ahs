@@ -375,6 +375,12 @@ return [
         'status' => 'active',
         'permissions' => [
             'imaging.access',
+            // Without this a radiographer cannot list, open or count the very
+            // worklist their workspace is built on — every read route is
+            // guarded by it, so the screen would 403 on mount. Only clinicians
+            // held it, which was survivable while radiology had no workspace of
+            // its own. LAB.STAFF carries the matching `laboratory.orders.read`.
+            'radiology.orders.read',
             'imaging.order',
             'imaging.perform',
             'imaging.result.enter',
@@ -391,6 +397,7 @@ return [
         'status' => 'active',
         'permissions' => [
             'imaging.access',
+            'radiology.orders.read',
             'imaging.order',
             'imaging.perform',
             'imaging.result.enter',

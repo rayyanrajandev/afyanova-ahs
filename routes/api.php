@@ -1432,8 +1432,12 @@ Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTen
     Route::get('radiology-orders/{id}', [RadiologyOrderController::class, 'show'])
         ->middleware('can:radiology.orders.read')
         ->name('radiology-orders.show');
+    // `radiology.orders.update` is granted to no role in config/roles.php, so
+    // amending a radiology order was unreachable for every user. Guarded like
+    // its laboratory twin (PATCH laboratory-orders/{id} → `lab.order`): whoever
+    // may place the order may correct it.
     Route::patch('radiology-orders/{id}', [RadiologyOrderController::class, 'update'])
-        ->middleware('can:radiology.orders.update')
+        ->middleware('can:imaging.order')
         ->name('radiology-orders.update');
     Route::post('radiology-orders/{id}/sign', [RadiologyOrderController::class, 'sign'])
         ->middleware('can:imaging.order')
@@ -1447,11 +1451,21 @@ Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTen
     Route::post('radiology-orders/{id}/lifecycle', [RadiologyOrderController::class, 'applyLifecycleAction'])
         ->middleware('can:imaging.order')
         ->name('radiology-orders.lifecycle');
+    // Releases a completed report to the patient chart. Kept behind
+    // `imaging.result.verify`, which only RADIOLOGY.SUPERVISOR holds — the same
+    // seniority split that keeps lab result verification with supervisors.
+    Route::patch('radiology-orders/{id}/verify', [RadiologyOrderController::class, 'verifyResult'])
+        ->middleware('can:imaging.result.verify')
+        ->name('radiology-orders.verify-result');
+    // The ability roles.php actually grants is `radiology.orders.audit-logs.view`;
+    // these two demanded `radiology.orders.view-audit-logs`, the same words in a
+    // different order, which no role holds — so radiology audit logs were closed
+    // to everyone. Matches the laboratory twin's `laboratory.orders.audit-logs.view`.
     Route::get('radiology-orders/{id}/audit-logs/export', [RadiologyOrderController::class, 'exportAuditLogsCsv'])
-        ->middleware('can:radiology.orders.view-audit-logs')
+        ->middleware('can:radiology.orders.audit-logs.view')
         ->name('radiology-orders.audit-logs.export');
     Route::get('radiology-orders/{id}/audit-logs', [RadiologyOrderController::class, 'auditLogs'])
-        ->middleware('can:radiology.orders.view-audit-logs')
+        ->middleware('can:radiology.orders.audit-logs.view')
         ->name('radiology-orders.audit-logs');
 
     Route::get('clinical-procedure-orders', [ClinicalProcedureOrderController::class, 'index'])

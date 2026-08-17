@@ -9,6 +9,7 @@ use App\Modules\Radiology\Application\UseCases\CheckRadiologyOrderDuplicatesUseC
 use App\Modules\Radiology\Application\Exceptions\AdmissionNotEligibleForRadiologyOrderException;
 use App\Modules\Radiology\Application\Exceptions\AppointmentNotEligibleForRadiologyOrderException;
 use App\Modules\Radiology\Application\Exceptions\PatientNotEligibleForRadiologyOrderException;
+use App\Modules\Radiology\Application\Exceptions\RadiologyOrderVerificationNotAllowedException;
 use App\Modules\Radiology\Application\Exceptions\RadiologyOrderProcedureCatalogItemNotEligibleException;
 use App\Modules\Radiology\Application\UseCases\CreateRadiologyOrderUseCase;
 use App\Modules\Radiology\Application\UseCases\DiscardRadiologyOrderDraftUseCase;
@@ -18,17 +19,18 @@ use App\Modules\Radiology\Application\UseCases\ListRadiologyOrdersUseCase;
 use App\Modules\Radiology\Application\UseCases\ListRadiologyOrderStatusCountsUseCase;
 use App\Modules\Radiology\Application\UseCases\SignRadiologyOrderUseCase;
 use App\Modules\Radiology\Application\UseCases\UpdateRadiologyOrderStatusUseCase;
+use App\Modules\Radiology\Application\UseCases\VerifyRadiologyOrderResultUseCase;
 use App\Modules\Radiology\Application\UseCases\UpdateRadiologyOrderUseCase;
 use App\Modules\Radiology\Presentation\Http\Requests\StoreRadiologyOrderRequest;
 use App\Modules\Radiology\Presentation\Http\Requests\UpdateRadiologyOrderRequest;
 use App\Modules\Radiology\Presentation\Http\Requests\UpdateRadiologyOrderStatusRequest;
+use App\Modules\Radiology\Presentation\Http\Requests\VerifyRadiologyOrderResultRequest;
 use App\Modules\Radiology\Presentation\Http\Transformers\RadiologyOrderAuditLogResponseTransformer;
 use App\Modules\Radiology\Presentation\Http\Transformers\RadiologyOrderResponseTransformer;
 use App\Support\ClinicalOrders\ClinicalOrderPatientSummaryEnricher;
 use App\Support\ClinicalOrders\ClinicalOrderUserSummaryEnricher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -195,8 +197,19 @@ class RadiologyOrderController extends Controller
 
         abort_if($order === null, 404, 'Radiology order not found.');
 
-        Gate::authorize('perform', $order);
-
+        // A `Gate::authorize('perform', $order)` used to sit here. It threw
+        // "Unknown named parameter $id" on every call: RadiologyOrderPolicy::perform()
+        // expects a RadiologyOrderModel, but the use case returns an array, so
+        // Laravel fell through to treating it as gate callback arguments. The
+        // 403 from the stale route permission masked the 500 until now.
+        //
+        // Nothing is lost by dropping it. The permission half is enforced by the
+        // route (`can:imaging.perform`), and the state half by the use case,
+        // which runs assertActiveForWorkflow() and canTransitionForward() before
+        // it writes. The policy check ran *after* the write, so it inspected the
+        // status the request had just set rather than the one it came from —
+        // it could never have enforced what it claimed. This mirrors
+        // LaboratoryOrderController::updateStatus(), which has no such call.
         return response()->json([
             'data' => RadiologyOrderResponseTransformer::transform($order),
         ]);
@@ -266,6 +279,39 @@ class RadiologyOrderController extends Controller
                 ),
             ],
         ]);
+    }
+
+    /**
+     * Releases a completed report to the patient chart.
+     *
+     * Every precondition — including the two-person rule — is enforced inside
+     * VerifyRadiologyOrderResultUseCase, ahead of the write, so a refusal here
+     * never leaves a half-verified row behind.
+     */
+    public function verifyResult(
+        string $id,
+        VerifyRadiologyOrderResultRequest $request,
+        VerifyRadiologyOrderResultUseCase $useCase
+    ): JsonResponse {
+        try {
+            $order = $useCase->execute(
+                id: $id,
+                verificationNote: $request->input('verificationNote'),
+                actorId: $request->user()?->id,
+            );
+
+            abort_if($order === null, 404, 'Radiology order not found.');
+
+            return response()->json([
+                'data' => RadiologyOrderResponseTransformer::transform($order),
+            ]);
+        } catch (TenantScopeRequiredForIsolationException $exception) {
+            return $this->tenantScopeRequiredError($exception->getMessage());
+        } catch (RadiologyOrderVerificationNotAllowedException $exception) {
+            return $this->validationError('verification', $exception->getMessage());
+        } catch (ValidationException $exception) {
+            return $this->validationExceptionResponse($exception);
+        }
     }
 
     public function auditLogs(string $id, Request $request, ListRadiologyOrderAuditLogsUseCase $useCase): JsonResponse

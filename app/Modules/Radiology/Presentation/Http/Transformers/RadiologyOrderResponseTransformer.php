@@ -29,6 +29,12 @@ class RadiologyOrderResponseTransformer
             'scheduledFor' => $order['scheduled_for'] ?? null,
             'reportSummary' => $order['report_summary'] ?? null,
             'completedAt' => $order['completed_at'] ?? null,
+            // `completedAt` means the report was typed; `verifiedAt` means it
+            // reached the patient chart. A client that treats `completed` as
+            // released will show unreviewed findings to a clinician.
+            'verifiedAt' => $order['verified_at'] ?? null,
+            'verifiedByUserId' => $order['verified_by_user_id'] ?? null,
+            'verificationNote' => $order['verification_note'] ?? null,
             'status' => $order['status'] ?? null,
             'entryState' => $order['entry_state'] ?? null,
             'signedAt' => $order['signed_at'] ?? null,

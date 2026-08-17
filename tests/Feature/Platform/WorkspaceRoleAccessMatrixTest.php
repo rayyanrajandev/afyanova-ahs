@@ -90,6 +90,18 @@ function workspaceAccessMatrix(): array
                 '/api/v1/laboratory/orders/status-counts',
             ],
         ],
+        // Radiology, added with its workspace routes. Both roles were missing
+        // `radiology.orders.read` when those routes went in — only clinicians
+        // held it — so every read the workspace makes on mount would have 403'd
+        // for the radiographers who live in it. Exactly the failure this guard
+        // was written to catch, listed here so it cannot come back.
+        'radiology' => [
+            'roles' => ['RADIOLOGY.STAFF', 'RADIOLOGY.SUPERVISOR'],
+            'endpoints' => [
+                '/api/v1/radiology/orders?perPage=50',
+                '/api/v1/radiology/orders/status-counts',
+            ],
+        ],
     ];
 }
 
@@ -210,14 +222,28 @@ it('lets every workspace role perform the actions its workspace offers', functio
 
         foreach ($actionAbilitiesByPrefix[$workspace] ?? [] as $ability => $uri) {
             $permitted = false;
+            $resourceScoped = false;
+
             foreach ($gates as $gate) {
-                if ($gate->allows($ability)) {
-                    $permitted = true;
+                try {
+                    if ($gate->allows($ability)) {
+                        $permitted = true;
+                        break;
+                    }
+                } catch (ArgumentCountError) {
+                    // A gate that takes the record as an argument — e.g.
+                    // `can:medical.records.draft.update,id`, which allows the
+                    // *author* of a draft to edit it. "Can this role do it?" has
+                    // no answer without a concrete record, so this guard cannot
+                    // decide it and must not pretend otherwise: reporting it as
+                    // denied would be a false alarm, and the resource rule is
+                    // covered by the module's own tests.
+                    $resourceScoped = true;
                     break;
                 }
             }
 
-            if ($permitted) {
+            if ($permitted || $resourceScoped) {
                 continue;
             }
 

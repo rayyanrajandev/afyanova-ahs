@@ -73,6 +73,12 @@ Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTen
         Route::post('reception/patients', [PatientController::class, 'store'])
             ->middleware(['can:patients.create', 'facility.entitlement:patients.registration'])
             ->name('reception.patients.store');
+        // Reception twin of patients/duplicate-check. Same controller, same
+        // middleware as the legacy route — added so registration can stop
+        // reaching into the generic API mid-flow (2026-08-17).
+        Route::post('reception/patients/duplicate-check', [PatientController::class, 'checkDuplicates'])
+            ->middleware(['can:patients.create', 'facility.entitlement:patients.registration'])
+            ->name('reception.patients.duplicate-check');
         Route::get('reception/patients/search', [PatientController::class, 'index'])
             ->middleware(['can:patients.read', 'facility.entitlement:patients.search'])
             ->name('reception.patients.search');
@@ -229,8 +235,14 @@ Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTen
         Route::get('clinician/medical-records/{id}', [MedicalRecordController::class, 'show'])
             ->middleware('can:medical.records.read')
             ->name('clinician.medical-records.show');
+        // Guarded exactly as its legacy twin (medical-records/{id}) is: the
+        // ability is `medical.records.draft.update` and the record id is passed
+        // so the gate can enforce authorship. It previously demanded
+        // `medical.records.update`, which no role in config/roles.php grants —
+        // so a physician could create a note and then got 403 on every save
+        // after the first (2026-08-17, api-surface-consolidation-plan.md §2.1).
         Route::patch('clinician/medical-records/{id}', [MedicalRecordController::class, 'update'])
-            ->middleware('can:medical.records.update')
+            ->middleware('can:medical.records.draft.update,id')
             ->name('clinician.medical-records.update');
         Route::patch('clinician/medical-records/{id}/status', [MedicalRecordController::class, 'updateStatus'])
             ->middleware('can:medical.records.update-status')
@@ -431,10 +443,60 @@ Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTen
         Route::patch('laboratory/orders/{id}/verify', [LaboratoryOrderController::class, 'verifyResult'])
             ->middleware('can:lab.result.verify')
             ->name('laboratory.orders.verify');
+        // Matches the legacy twin's ability. Guarding this with plain
+        // `laboratory.orders.read` let LAB.STAFF read audit logs through the
+        // workspace door but not the legacy one, quietly bypassing the
+        // dedicated audit permission — the same seniority split that keeps
+        // result verification with supervisors.
         Route::get('laboratory/orders/{id}/audit-logs', [LaboratoryOrderController::class, 'auditLogs'])
-            ->middleware('can:laboratory.orders.read')
+            ->middleware('can:laboratory.orders.audit-logs.view')
             ->name('laboratory.orders.audit-logs');
         Route::get('laboratory/patients/{patientId}/flow-timeline', [PatientFlowController::class, 'patientTimeline'])
             ->middleware('can:laboratory.orders.read')
             ->name('laboratory.patients.flow-timeline');
+
+        // ============================================================
+        // RADIOLOGY WORKSPACE ROUTES (Volume 2.5)
+        // ============================================================
+        // Mirrors the laboratory workspace door, action for action, and reuses
+        // RadiologyOrderController unchanged. The imaging workspace *receives*
+        // orders: placing, amending, signing and cancelling stay on the
+        // clinician's side, so `store`/`update`/`sign`/`discardDraft`/
+        // `applyLifecycleAction` are deliberately not exposed here — exactly as
+        // the laboratory block above omits them.
+        //
+        // Abilities match each action's legacy twin in routes/api.php, which is
+        // what RouteAuthorizationContractTest enforces: reads under
+        // `radiology.orders.read`, moving a study under `imaging.perform`, and
+        // audit logs under the dedicated `radiology.orders.audit-logs.view`
+        // rather than plain read, keeping the same seniority split laboratory
+        // uses.
+        //
+        Route::get('radiology/orders', [RadiologyOrderController::class, 'index'])
+            ->middleware('can:radiology.orders.read')
+            ->name('radiology.orders.index');
+        // Declared before `orders/{id}` so "status-counts" is not swallowed as
+        // an order id, matching the laboratory ordering above.
+        Route::get('radiology/orders/status-counts', [RadiologyOrderController::class, 'statusCounts'])
+            ->middleware('can:radiology.orders.read')
+            ->name('radiology.orders.status-counts');
+        Route::get('radiology/orders/{id}', [RadiologyOrderController::class, 'show'])
+            ->middleware('can:radiology.orders.read')
+            ->name('radiology.orders.show');
+        Route::patch('radiology/orders/{id}/status', [RadiologyOrderController::class, 'updateStatus'])
+            ->middleware('can:imaging.perform')
+            ->name('radiology.orders.update-status');
+        // Step 4 of the imaging bench, and the only path to the patient chart.
+        // Separate from update-status on purpose: entering a report and
+        // releasing it must never be one click, which is the defect the
+        // laboratory workspace shipped with.
+        Route::patch('radiology/orders/{id}/verify', [RadiologyOrderController::class, 'verifyResult'])
+            ->middleware('can:imaging.result.verify')
+            ->name('radiology.orders.verify');
+        Route::get('radiology/orders/{id}/audit-logs', [RadiologyOrderController::class, 'auditLogs'])
+            ->middleware('can:radiology.orders.audit-logs.view')
+            ->name('radiology.orders.audit-logs');
+        Route::get('radiology/patients/{patientId}/flow-timeline', [PatientFlowController::class, 'patientTimeline'])
+            ->middleware('can:radiology.orders.read')
+            ->name('radiology.patients.flow-timeline');
     });

@@ -85,7 +85,9 @@ function isDiagnostic(order: PlacedClinicalOrder): boolean {
 
 function orderStatusLabel(order: PlacedClinicalOrder): string {
   if (!isDiagnostic(order)) {
-    return t(`status.${order.status}`) || order.status;
+    // Explicit default: vue-i18n returns the key itself when one is missing, so
+    // `|| order.status` never fired and a gap rendered as "status.dispensed".
+    return t(`status.${order.status}`, order.status);
   }
 
   switch (diagnosticOrderStage(order)) {

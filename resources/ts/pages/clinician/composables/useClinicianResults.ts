@@ -81,8 +81,16 @@ export function useClinicianResults() {
               !!item.labTestCatalogItemId ||
               !!item.specimenType);
 
-          // Strict Medicolegal Gate: Unverified lab work (draft) must NEVER appear on the clinician chart
-          const isVerified = isLab ? !!item.verifiedAt : !!item.verifiedAt || item.status === "completed";
+          // Strict Medicolegal Gate: unreleased diagnostic work (draft) must
+          // NEVER appear on the clinician chart.
+          //
+          // Imaging used to fall back to `status === "completed"` because
+          // radiology had no release step at all. It has one now, and legacy
+          // completions were backfilled
+          // (backfill_radiology_verified_at_for_legacy_completions), so both
+          // disciplines answer the same question the same way — and the orders
+          // list, the badge and "Send for Diagnostics" all agree with this gate.
+          const isVerified = !!item.verifiedAt;
           if (!isVerified) {
             continue;
           }
@@ -157,7 +165,11 @@ export function useClinicianResults() {
       if (radRes && radRes.ok) {
         const radBody = await radRes.json();
         for (const order of radBody.data ?? []) {
-          if (order.reportSummary || order.status === "completed" || order.verifiedAt) {
+          // Same gate as the laboratory branch above. This admitted a study on
+          // `reportSummary` alone, so a report a radiographer had typed but not
+          // released appeared on the chart labelled "Report Completed" — a
+          // draft presented to a clinician as a finding.
+          if (order.verifiedAt) {
             const technicianName = order.verifiedBy || order.orderingClinician || "Radiology Specialist";
             const performedAt = order.verifiedAt || order.completedAt || order.orderedAt || new Date().toISOString();
 
@@ -169,7 +181,7 @@ export function useClinicianResults() {
               category: "imaging",
               modality: order.modality,
               orderNumber: order.orderNumber,
-              value: order.verifiedAt ? "Final Verified Report" : "Report Completed",
+              value: "Final Verified Report",
               unit: (order.modality || "RAD").toUpperCase(),
               referenceRange: `Modality: ${(order.modality || "Imaging").toUpperCase()}`,
               flag: "normal",

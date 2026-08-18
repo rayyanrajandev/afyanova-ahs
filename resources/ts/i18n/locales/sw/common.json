@@ -253,7 +253,10 @@
     "pending": "Inasubiri",
     "in_progress": "Inaendelea",
     "complete": "Imekamilika",
-    "cancelled": "Imeghairiwa"
+    "cancelled": "Imeghairiwa",
+    "in_preparation": "Inaandaliwa",
+    "partially_dispensed": "Imetolewa kwa sehemu",
+    "dispensed": "Imetolewa"
   },
   "common": {
     "save": "Hifadhi",

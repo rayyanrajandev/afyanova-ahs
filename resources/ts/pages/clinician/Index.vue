@@ -577,6 +577,22 @@ const takeoverPatientName = computed<string | null>(() => {
 usePatientFlowLiveSync({
   onBoardUpdated: () => {
     void queueManager.refreshQueue();
+
+    // Refresh the open chart's orders too, not just the queue.
+    //
+    // Releasing a lab or imaging result records a flow transition, so the board
+    // update already fires — but only the queue listened. A doctor with the
+    // chart open watched the badge sit on "Awaiting release" and the "Send for
+    // Diagnostics" button stay up after the result had actually landed, until
+    // they reloaded or reselected the patient.
+    //
+    // fetchOrders() is deliberate here rather than loadEncounterWorkspace():
+    // it touches only activeOrders, whereas reloading the workspace re-hydrates
+    // the SOAP fields and would overwrite a note the doctor is still typing.
+    const patientId = selectedPatient.value?.id;
+    if (patientId) {
+      void ordersManager.fetchOrders(patientId, selectedEncounterId.value ?? undefined);
+    }
   },
 });
 </script>

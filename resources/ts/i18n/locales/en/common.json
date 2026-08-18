@@ -253,7 +253,10 @@
     "pending": "Pending",
     "in_progress": "In progress",
     "complete": "Complete",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "in_preparation": "In preparation",
+    "partially_dispensed": "Partially dispensed",
+    "dispensed": "Dispensed"
   },
   "common": {
     "save": "Save",

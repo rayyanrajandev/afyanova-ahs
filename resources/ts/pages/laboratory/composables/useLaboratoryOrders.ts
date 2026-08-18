@@ -620,7 +620,6 @@ export function useLaboratoryOrders() {
   // Filters
   const searchQuery = ref("");
   const selectedStatusFilter = ref<string>("all");
-  const selectedDepartmentFilter = ref<string>("all");
   const selectedPriorityFilter = ref<string>("all");
 
   const selectedOrder = computed(() => {
@@ -772,9 +771,6 @@ export function useLaboratoryOrders() {
         selectedStatusFilter.value !== "critical"
       ) {
         params.set("status", selectedStatusFilter.value);
-      }
-      if (selectedDepartmentFilter.value !== "all") {
-        params.set("department", selectedDepartmentFilter.value);
       }
       if (selectedPriorityFilter.value !== "all") {
         params.set("priority", selectedPriorityFilter.value);
@@ -959,9 +955,6 @@ export function useLaboratoryOrders() {
   async function fetchStatusCounts() {
     try {
       const params = new URLSearchParams();
-      if (selectedDepartmentFilter.value !== "all") {
-        params.set("department", selectedDepartmentFilter.value);
-      }
       if (selectedPriorityFilter.value !== "all") {
         params.set("priority", selectedPriorityFilter.value);
       }
@@ -1433,12 +1426,9 @@ export function useLaboratoryOrders() {
   // The filters drive the query, so every change re-asks the server — the same
   // rule reception's queue needed: a selection that changes what is shown has to
   // change what is fetched.
-  watch(
-    [selectedStatusFilter, selectedDepartmentFilter, selectedPriorityFilter],
-    () => {
-      void fetchOrders();
-    },
-  );
+  watch([selectedStatusFilter, selectedPriorityFilter], () => {
+    void fetchOrders();
+  });
 
   /**
    * Search re-queries too, debounced so a typed word is one request rather than
@@ -1473,7 +1463,6 @@ export function useLaboratoryOrders() {
     statusCounts,
     searchQuery,
     selectedStatusFilter,
-    selectedDepartmentFilter,
     selectedPriorityFilter,
     filteredOrders,
     fetchOrders,

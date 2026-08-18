@@ -7,17 +7,20 @@ use App\Modules\Department\Infrastructure\Models\DepartmentModel;
 use App\Modules\InventoryProcurement\Application\Exceptions\InventoryItemNotFoundException;
 use App\Modules\InventoryProcurement\Application\Exceptions\InventoryProcurementWorkflowException;
 use App\Modules\InventoryProcurement\Application\Exceptions\InventoryStockOperationValidationException;
+use App\Modules\InventoryProcurement\Application\Services\DepartmentItemCatalogService;
+use App\Modules\InventoryProcurement\Application\Services\DepartmentRequisitionScopeResolver;
+use App\Modules\InventoryProcurement\Application\Services\DepartmentStockService;
+use App\Modules\InventoryProcurement\Application\UseCases\BulkCreateInventoryItemsFromCatalogUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\CreateDispensingClaimLinkUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\CreateInventoryBatchUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\CreateInventoryDepartmentRequisitionUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\CreateMsdOrderUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\CreateWarehouseTransferUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\GetInventoryDepartmentRequisitionUseCase;
+use App\Modules\InventoryProcurement\Application\UseCases\GetShortageQueueUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\GetSupplierPerformanceUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\ListInventoryBatchesUseCase;
-use App\Modules\InventoryProcurement\Application\UseCases\GetShortageQueueUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\ListInventoryDepartmentRequisitionsUseCase;
-use App\Modules\InventoryProcurement\Application\UseCases\BulkCreateInventoryItemsFromCatalogUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\RecordSupplierDeliveryUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\RecordSupplierLeadTimeUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\SyncMsdOrderStatusUseCase;
@@ -25,8 +28,7 @@ use App\Modules\InventoryProcurement\Application\UseCases\UpdateDispensingClaimS
 use App\Modules\InventoryProcurement\Application\UseCases\UpdateInventoryDepartmentRequisitionStatusUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\UpdateWarehouseTransferStatusUseCase;
 use App\Modules\InventoryProcurement\Application\UseCases\UpdateWarehouseTransferVarianceReviewUseCase;
-use App\Modules\InventoryProcurement\Application\Services\DepartmentItemCatalogService;
-use App\Modules\InventoryProcurement\Application\Services\DepartmentRequisitionScopeResolver;
+use App\Modules\InventoryProcurement\Domain\Repositories\DepartmentStockMovementRepositoryInterface;
 use App\Modules\InventoryProcurement\Domain\Repositories\InventoryDispensingClaimLinkRepositoryInterface;
 use App\Modules\InventoryProcurement\Domain\Repositories\InventoryMsdOrderRepositoryInterface;
 use App\Modules\InventoryProcurement\Domain\Repositories\InventorySupplierLeadTimeRepositoryInterface;
@@ -50,6 +52,7 @@ use App\Modules\InventoryProcurement\Presentation\Http\Transformers\InventoryDep
 use App\Modules\InventoryProcurement\Presentation\Http\Transformers\InventoryProcurementRequestResponseTransformer;
 use App\Modules\InventoryProcurement\Presentation\Http\Transformers\InventoryWarehouseTransferResponseTransformer;
 use App\Modules\Platform\Application\Exceptions\TenantScopeRequiredForIsolationException;
+use App\Modules\Platform\Domain\Services\CurrentPlatformScopeContextInterface;
 use App\Modules\Platform\Domain\Services\FeatureFlagResolverInterface;
 use App\Modules\Platform\Domain\ValueObjects\ClinicalCatalogItemStatus;
 use App\Modules\Platform\Domain\ValueObjects\ClinicalCatalogType;
@@ -83,6 +86,16 @@ class InventoryExtendedController extends Controller
             return response()->json(['message' => $exception->getMessage()], 403);
         } catch (InventoryItemNotFoundException $exception) {
             return response()->json(['message' => $exception->getMessage()], 404);
+        } catch (InventoryStockOperationValidationException $exception) {
+            // Same shape the procurement receipt path returns, so the field
+            // lands on the right input rather than as an unhandled 500.
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'code' => 'VALIDATION_ERROR',
+                'errors' => [
+                    $exception->field() => [$exception->getMessage()],
+                ],
+            ], 422);
         }
 
         return response()->json([
@@ -96,8 +109,7 @@ class InventoryExtendedController extends Controller
         Request $request,
         ListInventoryDepartmentRequisitionsUseCase $useCase,
         DepartmentRequisitionScopeResolver $departmentScopeResolver,
-    ): JsonResponse
-    {
+    ): JsonResponse {
         $filters = $request->all();
         $context = $departmentScopeResolver->contextForUser($request->user());
         if (! (bool) ($context['canSelectAnyDepartment'] ?? false)) {
@@ -213,7 +225,7 @@ class InventoryExtendedController extends Controller
                         },
                         $requisition['pendingLines'] ?? [],
                     );
-                    $transformed['readyLineCount']   = $requisition['readyLineCount']   ?? 0;
+                    $transformed['readyLineCount'] = $requisition['readyLineCount'] ?? 0;
                     $transformed['waitingLineCount'] = $requisition['waitingLineCount'] ?? 0;
 
                     return $transformed;
@@ -398,7 +410,7 @@ class InventoryExtendedController extends Controller
     public function departmentStockBalances(
         Request $request,
         DepartmentRequisitionScopeResolver $departmentScopeResolver,
-        \App\Modules\InventoryProcurement\Application\Services\DepartmentStockService $departmentStockService,
+        DepartmentStockService $departmentStockService,
     ): JsonResponse {
         $page = max((int) $request->query('page', 1), 1);
         $perPage = min(max((int) $request->query('perPage', 20), 1), 100);
@@ -503,7 +515,7 @@ class InventoryExtendedController extends Controller
         string $departmentId,
         Request $request,
         DepartmentRequisitionScopeResolver $departmentScopeResolver,
-        \App\Modules\InventoryProcurement\Domain\Repositories\DepartmentStockMovementRepositoryInterface $movementRepository,
+        DepartmentStockMovementRepositoryInterface $movementRepository,
     ): JsonResponse {
         $page = max((int) $request->query('page', 1), 1);
         $perPage = min(max((int) $request->query('perPage', 20), 1), 100);
@@ -553,8 +565,8 @@ class InventoryExtendedController extends Controller
         string $departmentId,
         Request $request,
         DepartmentRequisitionScopeResolver $departmentScopeResolver,
-        \App\Modules\InventoryProcurement\Application\Services\DepartmentStockService $departmentStockService,
-        \App\Modules\Platform\Domain\Services\CurrentPlatformScopeContextInterface $platformScopeContext,
+        DepartmentStockService $departmentStockService,
+        CurrentPlatformScopeContextInterface $platformScopeContext,
     ): JsonResponse {
         $request->validate([
             'item_id' => 'required|uuid',
@@ -585,8 +597,8 @@ class InventoryExtendedController extends Controller
         string $departmentId,
         Request $request,
         DepartmentRequisitionScopeResolver $departmentScopeResolver,
-        \App\Modules\InventoryProcurement\Application\Services\DepartmentStockService $departmentStockService,
-        \App\Modules\Platform\Domain\Services\CurrentPlatformScopeContextInterface $platformScopeContext,
+        DepartmentStockService $departmentStockService,
+        CurrentPlatformScopeContextInterface $platformScopeContext,
     ): JsonResponse {
         $request->validate([
             'item_id' => 'required|uuid',
@@ -645,8 +657,7 @@ class InventoryExtendedController extends Controller
         FeatureFlagResolverInterface $featureFlagResolver,
         DepartmentRequisitionScopeResolver $departmentScopeResolver,
         Request $request,
-    ): JsonResponse
-    {
+    ): JsonResponse {
         $userDepartmentId = $departmentScopeResolver->contextForUser($request->user())['lockedDepartment']['id'] ?? null;
 
         // Super admin / warehouse managers see all categories in reference data
@@ -972,7 +983,7 @@ class InventoryExtendedController extends Controller
         UpdateWarehouseTransferVarianceReviewUseCase $useCase
     ): JsonResponse {
         $validated = $request->validate([
-            'reviewStatus' => 'required|in:' . implode(',', InventoryWarehouseTransferVarianceReviewStatus::values()),
+            'reviewStatus' => 'required|in:'.implode(',', InventoryWarehouseTransferVarianceReviewStatus::values()),
             'reviewNotes' => 'nullable|string|max:1000',
         ]);
 
@@ -1049,7 +1060,7 @@ class InventoryExtendedController extends Controller
         UpdateWarehouseTransferStatusUseCase $useCase
     ): JsonResponse {
         $validated = $request->validate([
-            'status' => 'required|in:' . implode(',', InventoryWarehouseTransferStatus::values()),
+            'status' => 'required|in:'.implode(',', InventoryWarehouseTransferStatus::values()),
             'rejectionReason' => 'nullable|required_if:status,rejected|string|max:500',
             'packNotes' => 'nullable|string|max:1000',
             'receivingNotes' => 'nullable|string|max:1000',
@@ -1061,7 +1072,7 @@ class InventoryExtendedController extends Controller
             'receivedQuantities' => 'nullable|array',
             'receivedQuantities.*' => 'numeric|min:0',
             'receiptVarianceTypes' => 'nullable|array',
-            'receiptVarianceTypes.*' => 'in:' . implode(',', InventoryWarehouseTransferReceiptVarianceType::values()),
+            'receiptVarianceTypes.*' => 'in:'.implode(',', InventoryWarehouseTransferReceiptVarianceType::values()),
             'receiptVarianceQuantities' => 'nullable|array',
             'receiptVarianceQuantities.*' => 'numeric|min:0',
             'receiptVarianceReasons' => 'nullable|array',
@@ -1176,7 +1187,7 @@ class InventoryExtendedController extends Controller
         UpdateDispensingClaimStatusUseCase $useCase
     ): JsonResponse {
         $validated = $request->validate([
-            'status' => 'required|in:' . implode(',', InventoryDispensingClaimStatus::values()),
+            'status' => 'required|in:'.implode(',', InventoryDispensingClaimStatus::values()),
             'insuranceClaimId' => 'nullable|uuid',
             'billingInvoiceId' => 'nullable|uuid',
             'approvedAmount' => 'nullable|numeric|min:0',
@@ -1297,7 +1308,7 @@ class InventoryExtendedController extends Controller
             'barcode' => 'required|string|max:100',
         ])['barcode'];
 
-        $query = \App\Modules\InventoryProcurement\Infrastructure\Models\InventoryItemModel::query()
+        $query = InventoryItemModel::query()
             ->where('barcode', $barcode)
             ->where('status', 'active');
 
@@ -1456,7 +1467,7 @@ class InventoryExtendedController extends Controller
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('code', 'like', "%{$search}%");
+                    ->orWhere('code', 'like', "%{$search}%");
             });
         }
 
@@ -1511,7 +1522,7 @@ class InventoryExtendedController extends Controller
                 defaultSupplierId: $validated['defaultSupplierId'] ?? null,
                 actorId: $request->user()?->id,
             );
-        } catch (\App\Modules\Platform\Application\Exceptions\TenantScopeRequiredForIsolationException $exception) {
+        } catch (TenantScopeRequiredForIsolationException $exception) {
             return response()->json(['message' => $exception->getMessage()], 403);
         }
 

@@ -46,42 +46,6 @@ const props = defineProps<{
 
 const { t } = useI18n({ useScope: "global" });
 
-/**
- * Ids are the catalog's own `category` values, because the discipline filter is
- * now a server query against that column.
- *
- * They used to be a vocabulary this file invented — "biochemistry", "serology" —
- * which the catalog does not use ("clinical_chemistry", "serology_immunology").
- * That mismatch was survivable only while the filtering happened in the browser
- * against a department string the browser had also guessed. Two disciplines the
- * catalog carries had no pill at all.
- */
-const DEPARTMENTS = computed(() => [
-  { id: "all", label: t("laboratory.dept_all", "All Depts") },
-  { id: "hematology", label: t("laboratory.dept_hematology", "Hematology") },
-  {
-    id: "clinical_chemistry",
-    label: t("laboratory.dept_clinical_chemistry", "Clinical Chemistry"),
-  },
-  {
-    id: "parasitology",
-    label: t("laboratory.dept_parasitology", "Parasitology"),
-  },
-  {
-    id: "serology_immunology",
-    label: t("laboratory.dept_serology_immunology", "Serology & Immunology"),
-  },
-  {
-    id: "microbiology",
-    label: t("laboratory.dept_microbiology", "Microbiology"),
-  },
-  { id: "urinalysis", label: t("laboratory.dept_urinalysis", "Urinalysis") },
-  {
-    id: "blood_bank_transfusion",
-    label: t("laboratory.dept_blood_bank", "Blood Bank"),
-  },
-]);
-
 function getRelativeTime(dateStr: string): string {
   if (!dateStr) return "";
   const date = new Date(dateStr);
@@ -371,30 +335,7 @@ function groupVisitStage(group: {
         </button>
       </div>
 
-      <!-- 2. Department Filter Pills -->
-      <div class="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar">
-        <button
-          v-for="dept in DEPARTMENTS"
-          :key="dept.id"
-          type="button"
-          class="rounded-full px-2.5 py-0.5 text-[10.5px] font-medium whitespace-nowrap border transition-all cursor-pointer shrink-0"
-          :class="[
-            laboratory.selectedDepartmentFilter.value === dept.id
-              ? 'border-primary bg-primary text-primary-foreground font-bold shadow-2xs'
-              : 'border-border/80 bg-surface text-muted-foreground hover:text-foreground hover:bg-muted/40',
-          ]"
-          @click="
-            laboratory.selectedDepartmentFilter.value =
-              laboratory.selectedDepartmentFilter.value === dept.id
-                ? 'all'
-                : dept.id
-          "
-        >
-          {{ dept.label }}
-        </button>
-      </div>
-
-      <!-- 3. Search Input (positioned below filters) -->
+      <!-- 2. Search Input -->
       <div class="relative">
         <Search
           class="absolute left-2.5 top-2 size-3.5 text-muted-foreground"

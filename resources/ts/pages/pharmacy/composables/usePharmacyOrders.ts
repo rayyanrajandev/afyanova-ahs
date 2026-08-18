@@ -56,6 +56,9 @@ export interface DispenseInventory {
   stockState: "healthy" | "low_stock" | "out_of_stock" | string;
   batchTrackingMode: "untracked" | "tracked" | string;
   blockedBatchQuantity?: number;
+  /** Whether the item has batch records at all, dispensable or not. */
+  hasBatchRecords?: boolean;
+  validBatchCount?: number;
   availableBatches: InventoryBatchOption[];
 }
 

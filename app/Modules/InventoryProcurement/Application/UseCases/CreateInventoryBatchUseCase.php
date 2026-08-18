@@ -3,8 +3,10 @@
 namespace App\Modules\InventoryProcurement\Application\UseCases;
 
 use App\Modules\InventoryProcurement\Application\Exceptions\InventoryItemNotFoundException;
+use App\Modules\InventoryProcurement\Application\Exceptions\InventoryStockOperationValidationException;
 use App\Modules\InventoryProcurement\Domain\Repositories\InventoryBatchRepositoryInterface;
 use App\Modules\InventoryProcurement\Domain\Repositories\InventoryItemRepositoryInterface;
+use App\Modules\InventoryProcurement\Domain\ValueObjects\InventoryItemCategory;
 use App\Modules\InventoryProcurement\Infrastructure\Models\InventoryBatchModel;
 use App\Modules\Platform\Domain\Services\CurrentPlatformScopeContextInterface;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
@@ -27,6 +29,8 @@ class CreateInventoryBatchUseCase
         if (! $item) {
             throw new InventoryItemNotFoundException('Inventory item not found.');
         }
+
+        $this->assertExpiryDateRecorded($item, $payload['expiry_date'] ?? null);
 
         // Inventory_MasterData_Alignment_Plan.md Phase 7: manufacturer is a
         // receipt-time fact -- generics are routinely sourced from different
@@ -63,9 +67,9 @@ class CreateInventoryBatchUseCase
     private function generateInternalBatchNumber(): string
     {
         $date = now()->format('Ymd');
-        $prefix = 'BAT-' . $date . '-';
+        $prefix = 'BAT-'.$date.'-';
         $lastBatch = InventoryBatchModel::query()
-            ->where('internal_batch_number', 'like', $prefix . '%')
+            ->where('internal_batch_number', 'like', $prefix.'%')
             ->orderBy('internal_batch_number', 'desc')
             ->first();
 
@@ -76,6 +80,42 @@ class CreateInventoryBatchUseCase
             $nextSeq = 1;
         }
 
-        return $prefix . str_pad((string) $nextSeq, 5, '0', STR_PAD_LEFT);
+        return $prefix.str_pad((string) $nextSeq, 5, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Expiry-sensitive stock may not be batched without a date.
+     *
+     * InventoryBatchStockService already refuses this on the receiving path,
+     * keyed on InventoryItemCategory::requiresExpiryTracking(). Creating a
+     * batch directly went around that check and landed in the same tables, so
+     * a medicine could still acquire an undated lot.
+     *
+     * An undated batch is not merely incomplete. batchState() sorts undated
+     * batches *behind* every dated one and isBatchIssueEligible() treats them
+     * as never expiring, so the stock settles at the back of the FEFO queue,
+     * is never flagged, and ages out unissued while appearing available.
+     *
+     * The date is a manufacturer's fact on the pack; it cannot be derived, only
+     * read and recorded. Hence a refusal rather than a default.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    private function assertExpiryDateRecorded(array $item, mixed $expiryDate): void
+    {
+        $category = InventoryItemCategory::tryFrom((string) ($item['category'] ?? ''));
+
+        if (! ($category?->requiresExpiryTracking() ?? false)) {
+            return;
+        }
+
+        if (trim((string) ($expiryDate ?? '')) !== '') {
+            return;
+        }
+
+        throw new InventoryStockOperationValidationException(
+            'expiryDate',
+            'Expiry date is required for expiry-sensitive stock. Read it from the pack — dispensing order depends on it.',
+        );
     }
 }

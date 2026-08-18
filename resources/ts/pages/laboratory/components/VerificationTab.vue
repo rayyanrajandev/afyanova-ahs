@@ -15,11 +15,8 @@ import {
   Clock,
   Download,
   FileCheck,
-  FileText,
   FlaskConical,
-  Printer,
   Send,
-  ShieldCheck,
   Sparkles,
   UserCheck,
 } from "lucide-vue-next";
@@ -43,10 +40,6 @@ import {
   type LaboratoryOrder,
   type UseLaboratoryOrders,
 } from "../composables/useLaboratoryOrders";
-import {
-  printLaboratoryReport,
-  printConsolidatedLaboratoryReport,
-} from "../laboratoryReportPrint";
 
 const props = defineProps<{
   order: LaboratoryOrder;
@@ -153,79 +146,10 @@ async function handleRelease() {
     secondReview.value !== null && selfVerifyAcknowledged.value,
   );
 }
-
-function handlePrintReport() {
-  printLaboratoryReport(props.order);
-}
-
-function handlePrintAllPatientTests() {
-  printConsolidatedLaboratoryReport(patientOrders.value);
-}
 </script>
 
 <template>
   <div class="space-y-3.5 p-3.5 w-full">
-    <!-- Released Success Banner -->
-    <div
-      v-if="isReleased"
-      class="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-950 dark:text-emerald-100 flex items-center justify-between gap-2.5 shadow-xs"
-    >
-      <div class="flex items-center gap-2.5 min-w-0">
-        <ShieldCheck
-          class="size-4 text-emerald-600 dark:text-emerald-400 shrink-0"
-        />
-        <div class="min-w-0">
-          <p class="font-bold text-xs leading-tight">
-            {{
-              t(
-                "laboratory.verified_banner_title",
-                "Diagnostic Report Electronically Verified & Released",
-              )
-            }}
-          </p>
-          <p
-            class="text-[11px] text-emerald-800/85 dark:text-emerald-300/85 mt-0.5 font-mono leading-tight truncate"
-          >
-            {{
-              t("laboratory.verified_banner_desc", {
-                user: order.verifiedBy || "Senior MLS",
-                time: order.verifiedAt
-                  ? new Date(order.verifiedAt).toLocaleString()
-                  : "Recent",
-              })
-            }}
-          </p>
-        </div>
-      </div>
-
-      <div class="flex items-center gap-1.5 shrink-0">
-        <Button
-          variant="outline"
-          size="sm"
-          class="h-7 text-xs font-semibold gap-1.5 px-2.5 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15 cursor-pointer shrink-0"
-          @click="handlePrintReport"
-        >
-          <Printer class="size-3.5" />
-          <span>{{ t("laboratory.print_report", "Print Test") }}</span>
-        </Button>
-
-        <Button
-          v-if="patientOrders.length > 1"
-          variant="outline"
-          size="sm"
-          class="h-7 text-xs font-semibold gap-1.5 px-2.5 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15 cursor-pointer shrink-0"
-          @click="handlePrintAllPatientTests"
-        >
-          <FileText class="size-3.5" />
-          <span>{{
-            t("laboratory.print_all_tests", "Print All ({count})", {
-              count: patientOrders.length,
-            })
-          }}</span>
-        </Button>
-      </div>
-    </div>
-
     <!-- Diagnostic Report Card -->
     <section
       class="rounded-lg border border-border bg-surface p-4 shadow-2xs space-y-4"
@@ -263,37 +187,6 @@ function handlePrintAllPatientTests() {
         </div>
 
         <div class="flex items-center gap-2 font-mono text-xs">
-          <Button
-            variant="outline"
-            size="sm"
-            class="h-7 text-xs font-semibold gap-1.5 px-2.5 border-border hover:bg-muted cursor-pointer"
-            @click="handlePrintReport"
-          >
-            <Printer class="size-3.5 text-primary" />
-            <span>{{ t("laboratory.print_report", "Print") }}</span>
-          </Button>
-
-          <Button
-            v-if="patientOrders.length > 1"
-            variant="outline"
-            size="sm"
-            class="h-7 text-xs font-semibold gap-1.5 px-2.5 border-border hover:bg-muted cursor-pointer"
-            :title="
-              t(
-                'laboratory.print_all_tests_tooltip',
-                'Print consolidated encounter report with all patient tests',
-              )
-            "
-            @click="handlePrintAllPatientTests"
-          >
-            <FileText class="size-3.5 text-primary" />
-            <span>{{
-              t("laboratory.print_all_short", "All Tests ({count})", {
-                count: patientOrders.length,
-              })
-            }}</span>
-          </Button>
-
           <Badge
             variant="outline"
             class="text-[10px] uppercase font-mono px-2 py-0.5"
@@ -309,42 +202,6 @@ function handlePrintAllPatientTests() {
                 : t("laboratory.draft_report", "Draft / Pre-Release")
             }}
           </Badge>
-        </div>
-      </div>
-
-      <!-- Patient & Specimen Metadata Box -->
-      <div
-        class="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-lg border border-border/70 bg-muted/20 text-xs"
-      >
-        <div>
-          <span class="text-[10.5px] text-muted-foreground block">{{
-            t("laboratory.meta_patient_name", "Patient Name")
-          }}</span>
-          <span class="font-bold text-foreground">{{ order.patientName }}</span>
-        </div>
-        <div>
-          <span class="text-[10.5px] text-muted-foreground block">{{
-            t("laboratory.meta_mrn", "Medical Record No (MRN)")
-          }}</span>
-          <span class="font-mono font-bold text-primary">{{
-            order.patientMrn
-          }}</span>
-        </div>
-        <div>
-          <span class="text-[10.5px] text-muted-foreground block">{{
-            t("laboratory.meta_clinician", "Ordering Clinician")
-          }}</span>
-          <span class="font-medium text-foreground">{{
-            order.orderingClinician
-          }}</span>
-        </div>
-        <div>
-          <span class="text-[10.5px] text-muted-foreground block">{{
-            t("laboratory.meta_accession", "Specimen Accession")
-          }}</span>
-          <span class="font-mono font-semibold text-foreground">{{
-            order.orderNumber
-          }}</span>
         </div>
       </div>
 
@@ -612,16 +469,6 @@ function handlePrintAllPatientTests() {
       </div>
 
       <div class="flex items-center gap-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          class="h-8 text-xs cursor-pointer gap-1"
-          @click="handlePrintReport"
-        >
-          <Printer class="size-3.5" />
-          <span>{{ t("laboratory.print_report", "Print Report") }}</span>
-        </Button>
-
         <Button
           v-if="!isReleased"
           size="sm"

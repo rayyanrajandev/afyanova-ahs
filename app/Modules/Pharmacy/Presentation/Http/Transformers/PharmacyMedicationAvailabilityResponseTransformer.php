@@ -27,6 +27,11 @@ class PharmacyMedicationAvailabilityResponseTransformer
             'stockState' => $item['stock_state'] ?? self::stockState($item),
             'batchTrackingMode' => $item['batch_tracking_mode'] ?? 'untracked',
             'blockedBatchQuantity' => $item['blocked_batch_quantity'] ?? 0,
+            // Lets the dispense tab tell "this item is not batched at all" from
+            // "it is batched and nothing is dispensable" — two states it used to
+            // report with the same reassuring sentence.
+            'hasBatchRecords' => $item['has_batch_records'] ?? false,
+            'validBatchCount' => $item['valid_batch_count'] ?? 0,
             'availableBatches' => array_map(static fn (array $b): array => [
                 'id' => $b['id'] ?? null,
                 'internalBatchNumber' => $b['internal_batch_number'] ?? null,

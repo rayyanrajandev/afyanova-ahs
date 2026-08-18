@@ -70,14 +70,6 @@ const LAB_STATUS_FILTERS = [
   "completed",
   "critical",
 ] as const;
-const LAB_DEPARTMENTS = [
-  "all",
-  "hematology",
-  "biochemistry",
-  "parasitology",
-  "serology",
-  "urinalysis",
-] as const;
 const LAB_PRIORITIES = ["all", "routine", "urgent", "stat"] as const;
 
 attachPersistence(
@@ -89,11 +81,6 @@ attachPersistence(
   laboratoryManager.selectedStatusFilter,
   "afyanova:laboratory:status-filter",
   makeValidator(LAB_STATUS_FILTERS),
-);
-attachPersistence(
-  laboratoryManager.selectedDepartmentFilter,
-  "afyanova:laboratory:department-filter",
-  makeValidator(LAB_DEPARTMENTS),
 );
 attachPersistence(
   laboratoryManager.selectedPriorityFilter,

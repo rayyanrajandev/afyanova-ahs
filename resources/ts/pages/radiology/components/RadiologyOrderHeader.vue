@@ -5,13 +5,13 @@ Clean, clinical header presenting: * - Patient Name, Hospital MRN, Age/Gender *
 Indication preview * - Acuity / Status Badges & Scheduled Slot Time * - Header
 Actions: Start Examination (Primary CTA) & Cancel Study modal dialog */
 
-<script setup lang="ts">
 import {
   AlertCircle,
   CalendarClock,
   Clock,
   FileText,
   Play,
+  Printer,
   ScanLine,
   ShieldCheck,
   Stethoscope,
@@ -26,6 +26,7 @@ import { stepBadgeStatus, stepLabelKey } from "@/composables/patientFlowStep";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { printRadiologyReport } from "../radiologyReportPrint";
 import type {
   RadiologyOrder,
   UseRadiologyOrders,
@@ -44,6 +45,11 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n({ useScope: "global" });
+
+function handlePrintReport() {
+  const images = props.radiology?.getOrderImages(props.order.id) ?? [];
+  printRadiologyReport(props.order, images);
+}
 
 const showCancelModal = ref(false);
 const cancelReason = ref("");

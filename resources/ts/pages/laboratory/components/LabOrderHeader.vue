@@ -12,8 +12,10 @@ import {
   AlertTriangle,
   Barcode,
   Clock,
+  FileText,
   FlaskConical,
   HeartPulse,
+  Printer,
   Send,
   Sparkles,
   Stethoscope,
@@ -24,6 +26,11 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { stepBadgeStatus, stepLabelKey } from "@/composables/patientFlowStep";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  printLaboratoryReport,
+  printConsolidatedLaboratoryReport,
+} from "../laboratoryReportPrint";
 import {
   labStageOf,
   type LabStage,
@@ -39,6 +46,14 @@ const props = defineProps<{
 const { t } = useI18n({ useScope: "global" });
 
 const stage = computed<LabStage>(() => labStageOf(props.order));
+
+function handlePrintReport() {
+  printLaboratoryReport(props.order);
+}
+
+function handlePrintAllPatientTests() {
+  printConsolidatedLaboratoryReport(props.patientOrders ?? [props.order]);
+}
 
 const STAGE_LABELS: Record<LabStage, { key: string; fallback: string }> = {
   awaiting_specimen: {
@@ -195,6 +210,46 @@ const visitStageClass = computed<string>(() => {
         >
           {{ stageLabel }}
         </Badge>
+
+        <!-- Print Actions in Header -->
+        <div class="flex items-center gap-1.5 pl-1.5 border-l border-border/80">
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-7 text-xs font-semibold gap-1.5 px-2.5 border-border hover:bg-muted cursor-pointer"
+            :title="
+              t(
+                'laboratory.print_report_tooltip',
+                'Print diagnostic laboratory report',
+              )
+            "
+            @click="handlePrintReport"
+          >
+            <Printer class="size-3.5 text-primary" />
+            <span>{{ t("laboratory.print_report", "Print") }}</span>
+          </Button>
+
+          <Button
+            v-if="patientOrders && patientOrders.length > 1"
+            variant="outline"
+            size="sm"
+            class="h-7 text-xs font-semibold gap-1.5 px-2.5 border-border hover:bg-muted cursor-pointer"
+            :title="
+              t(
+                'laboratory.print_all_tests_tooltip',
+                'Print consolidated encounter report with all patient tests',
+              )
+            "
+            @click="handlePrintAllPatientTests"
+          >
+            <FileText class="size-3.5 text-primary" />
+            <span>{{
+              t("laboratory.print_all_short", "All Tests ({count})", {
+                count: patientOrders.length,
+              })
+            }}</span>
+          </Button>
+        </div>
       </div>
     </div>
 

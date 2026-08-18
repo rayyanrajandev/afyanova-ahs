@@ -6,8 +6,8 @@ use App\Modules\InventoryProcurement\Application\Exceptions\InsufficientInventor
 use App\Modules\InventoryProcurement\Application\Exceptions\InventoryItemNotFoundException;
 use App\Modules\InventoryProcurement\Application\Exceptions\InventoryProcurementReceiptValidationException;
 use App\Modules\InventoryProcurement\Application\Exceptions\InventoryStockOperationValidationException;
-use App\Modules\InventoryProcurement\Domain\ValueObjects\InventoryItemCategory;
 use App\Modules\InventoryProcurement\Domain\Services\InventoryUnitConversionService;
+use App\Modules\InventoryProcurement\Domain\ValueObjects\InventoryItemCategory;
 use App\Modules\InventoryProcurement\Domain\ValueObjects\InventoryStockMovementType;
 use App\Modules\InventoryProcurement\Infrastructure\Models\InventoryBatchModel;
 use App\Modules\InventoryProcurement\Infrastructure\Models\InventoryItemModel;
@@ -115,6 +115,19 @@ class InventoryBatchStockService
             'stock_state' => $availability['stockState'] ?? null,
             'batch_tracking_mode' => $availability['trackingMode'] ?? 'untracked',
             'blocked_batch_quantity' => $availability['blockedQuantity'] ?? 0,
+            // availability() computes the FEFO-ordered batch list and this
+            // dropped it, so PharmacyMedicationAvailabilityResponseTransformer
+            // -- the only reader of `available_batches` anywhere -- always found
+            // nothing. Pharmacy's lot selector could therefore never render, at
+            // any stock level, and every dispense fell through to the automatic
+            // FEFO pick with issueExactBatch() unreachable from the workspace.
+            //
+            // Renamed on the way through on purpose: this array is consumed in
+            // snake_case by that transformer, while availability() speaks
+            // camelCase to its own HTTP callers.
+            'available_batches' => $availability['availableBatches'] ?? [],
+            'has_batch_records' => $availability['hasBatchRecords'] ?? false,
+            'valid_batch_count' => $availability['validBatchCount'] ?? 0,
         ]);
     }
 
@@ -739,8 +752,7 @@ class InventoryBatchStockService
         mixed $occurredAt,
         bool $forUpdate,
         array $excludeReservationIds = [],
-    ): array
-    {
+    ): array {
         $asOf = $this->normalizeOccurredAt($occurredAt);
 
         $allBatchQuery = InventoryBatchModel::query()
@@ -976,9 +988,9 @@ class InventoryBatchStockService
     private function generateInternalBatchNumber(): string
     {
         $date = now()->format('Ymd');
-        $prefix = 'BAT-' . $date . '-';
+        $prefix = 'BAT-'.$date.'-';
         $lastBatch = InventoryBatchModel::query()
-            ->where('internal_batch_number', 'like', $prefix . '%')
+            ->where('internal_batch_number', 'like', $prefix.'%')
             ->orderBy('internal_batch_number', 'desc')
             ->first();
 
@@ -989,7 +1001,7 @@ class InventoryBatchStockService
             $nextSeq = 1;
         }
 
-        return $prefix . str_pad((string) $nextSeq, 5, '0', STR_PAD_LEFT);
+        return $prefix.str_pad((string) $nextSeq, 5, '0', STR_PAD_LEFT);
     }
 
     private function normalizeBatchNumber(mixed $value): ?string
@@ -1216,23 +1228,23 @@ class InventoryBatchStockService
                         validationExceptionClass: $validationExceptionClass,
                     );
 
-            $batch->forceFill([
-                'lot_number' => $lotNumber ?? $batch->lot_number,
-                'manufacture_date' => $manufactureDate?->toDateString() ?? $batch->manufacture_date,
-                'expiry_date' => $expiryDate?->toDateString() ?? $batch->expiry_date,
-                'quantity' => round((float) ($batch->quantity ?? 0) + $baseQuantity, 3),
-                'warehouse_id' => $warehouseId,
-                'bin_location' => $binLocation ?? $batch->bin_location,
-                'supplier_id' => $this->stringOrNull($payload['source_supplier_id'] ?? null) ?? $batch->supplier_id,
-                // Inventory_MasterData_Alignment_Plan.md Phase 7: manufacturer is a
-                // receipt-time fact, not fixed per item -- an explicit value on this
-                // receipt wins, but a repeat receipt into the same open batch keeps
-                // whatever the batch was already recorded with.
-                'manufacturer' => $this->stringOrNull($payload['manufacturer'] ?? null) ?? $batch->manufacturer,
-                'unit_cost' => $receivedUnitCost ?? $batch->unit_cost,
-                'status' => 'available',
-                'notes' => $payload['notes'] ?? $batch->notes,
-            ])->save();
+                    $batch->forceFill([
+                        'lot_number' => $lotNumber ?? $batch->lot_number,
+                        'manufacture_date' => $manufactureDate?->toDateString() ?? $batch->manufacture_date,
+                        'expiry_date' => $expiryDate?->toDateString() ?? $batch->expiry_date,
+                        'quantity' => round((float) ($batch->quantity ?? 0) + $baseQuantity, 3),
+                        'warehouse_id' => $warehouseId,
+                        'bin_location' => $binLocation ?? $batch->bin_location,
+                        'supplier_id' => $this->stringOrNull($payload['source_supplier_id'] ?? null) ?? $batch->supplier_id,
+                        // Inventory_MasterData_Alignment_Plan.md Phase 7: manufacturer is a
+                        // receipt-time fact, not fixed per item -- an explicit value on this
+                        // receipt wins, but a repeat receipt into the same open batch keeps
+                        // whatever the batch was already recorded with.
+                        'manufacturer' => $this->stringOrNull($payload['manufacturer'] ?? null) ?? $batch->manufacturer,
+                        'unit_cost' => $receivedUnitCost ?? $batch->unit_cost,
+                        'status' => 'available',
+                        'notes' => $payload['notes'] ?? $batch->notes,
+                    ])->save();
                 } else {
                     $batch = InventoryBatchModel::query()->create([
                         'tenant_id' => $this->stringOrNull($payload['tenant_id'] ?? null) ?? $this->platformScopeContext->tenantId(),

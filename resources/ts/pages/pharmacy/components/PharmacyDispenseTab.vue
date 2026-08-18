@@ -50,10 +50,31 @@ const quantityToDispense = ref<number>(props.order.quantityPrescribed || 1);
 const selectedBatchId = ref<string>("");
 const dispensingNotes = ref<string>("");
 
-const batches = computed(() => {
-  return (
-    props.pharmacy.safetyReview.value?.dispenseInventory?.availableBatches || []
-  );
+const dispenseInventory = computed(
+  () => props.pharmacy.safetyReview.value?.dispenseInventory ?? null,
+);
+
+const batches = computed(() => dispenseInventory.value?.availableBatches ?? []);
+
+/**
+ * Three states, not two. This screen used to answer "no batches to choose
+ * from" with "Main dispensary stock (unbatched)" regardless of why, which read
+ * as reassurance in the one case that is not reassuring: a batch-tracked
+ * medicine whose every lot is expired, reserved or quarantined.
+ */
+type BatchAvailability =
+  | "loading"
+  | "choose"
+  | "untracked"
+  | "none_dispensable";
+
+const batchAvailability = computed<BatchAvailability>(() => {
+  if (dispenseInventory.value === null) return "loading";
+  if (batches.value.length > 0) return "choose";
+
+  return dispenseInventory.value.hasBatchRecords
+    ? "none_dispensable"
+    : "untracked";
 });
 
 watch(
@@ -171,10 +192,34 @@ async function handleDispense(): Promise<void> {
             </SelectContent>
           </Select>
           <div
+            v-else-if="batchAvailability === 'none_dispensable'"
+            class="h-8.5 px-3 py-1.5 border border-critical/40 rounded-md bg-critical/5 text-xs text-critical flex items-center gap-1.5 font-medium"
+          >
+            <AlertTriangle class="size-3.5 shrink-0" aria-hidden="true" />
+            <span>
+              {{
+                t(
+                  "pharmacy.no_dispensable_batch",
+                  "No dispensable lot — every batch is expired, reserved or blocked",
+                )
+              }}
+            </span>
+          </div>
+
+          <div
+            v-else-if="batchAvailability === 'loading'"
+            class="h-8.5 px-3 py-1.5 border border-border/80 rounded-md bg-muted/30 text-xs text-muted-foreground flex items-center font-mono"
+          >
+            {{ t("pharmacy.checking_stock", "Checking stock…") }}
+          </div>
+
+          <div
             v-else
             class="h-8.5 px-3 py-1.5 border border-border/80 rounded-md bg-muted/30 text-xs text-muted-foreground flex items-center font-mono"
           >
-            Main dispensary stock (unbatched)
+            {{
+              t("pharmacy.stock_untracked", "Main dispensary stock (unbatched)")
+            }}
           </div>
         </div>
       </div>

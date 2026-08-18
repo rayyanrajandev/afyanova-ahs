@@ -21,7 +21,7 @@ import {
   Send,
   XCircle,
 } from "lucide-vue-next";
-import { computed, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  diagnosticOrderStage,
   type LabCatalogItem,
   type PlacedClinicalOrder,
   type RadiologyCatalogItem,
@@ -57,6 +58,74 @@ const props = withDefaults(
     clinicalMode: "active",
   }
 );
+
+onMounted(() => {
+  if (props.patientId || props.encounterId) {
+    props.orders.fetchOrders(props.patientId ?? undefined, props.encounterId ?? undefined);
+  }
+});
+
+watch(
+  () => [props.patientId, props.encounterId],
+  ([newPatientId, newEncounterId]) => {
+    if (newPatientId || newEncounterId) {
+      props.orders.fetchOrders(newPatientId ?? undefined, newEncounterId ?? undefined);
+    }
+  }
+);
+
+/**
+ * Prescriptions keep their own pharmacy vocabulary; diagnostics are relabelled
+ * to the clinician-facing stage so this list agrees with the Results tab and
+ * with the "Send for Diagnostics" control.
+ */
+function isDiagnostic(order: PlacedClinicalOrder): boolean {
+  return order.type === "lab" || order.type === "imaging";
+}
+
+function orderStatusLabel(order: PlacedClinicalOrder): string {
+  if (!isDiagnostic(order)) {
+    return t(`status.${order.status}`) || order.status;
+  }
+
+  switch (diagnosticOrderStage(order)) {
+    case "awaiting_collection":
+      return t("clinician.order_stage_awaiting_collection", "Awaiting sample");
+    case "in_progress":
+      return t("clinician.order_stage_in_progress", "In progress");
+    case "awaiting_release":
+      return t("clinician.order_stage_awaiting_release", "Awaiting release");
+    case "resulted":
+      return t("clinician.order_stage_resulted", "Result ready");
+    default:
+      return t("clinician.order_stage_cancelled", "Cancelled");
+  }
+}
+
+type OrderBadgeVariant = "success" | "info" | "critical" | "warning";
+
+function orderBadgeVariant(order: PlacedClinicalOrder): OrderBadgeVariant {
+  if (!isDiagnostic(order)) {
+    if (order.status === "dispensed") return "success";
+    if (order.status === "cancelled") return "critical";
+
+    return order.status === "in_preparation" || order.status === "partially_dispensed"
+      ? "info"
+      : "warning";
+  }
+
+  switch (diagnosticOrderStage(order)) {
+    case "resulted":
+      return "success";
+    case "in_progress":
+    case "awaiting_release":
+      return "info";
+    case "cancelled":
+      return "critical";
+    default:
+      return "warning";
+  }
+}
 
 const { t } = useI18n({ useScope: "global" });
 
@@ -606,19 +675,17 @@ async function handlePlaceRadOrder() {
               >
                 {{ order.priority === 'stat' ? t('clinician.priority_stat') : order.priority === 'urgent' ? t('clinician.urgent') : t('clinician.routine') }}
               </Badge>
+              <!--
+                Reads the clinician-facing stage, not the bench status. A report
+                that is written but not released used to render as "completed"
+                here while the Results tab showed nothing — the doctor was told
+                the work was done and then could not find it.
+              -->
               <Badge
-                :variant="
-                  order.status === 'complete' || order.status === 'completed' || order.status === 'verified'
-                    ? 'success'
-                    : order.status === 'in_progress'
-                    ? 'info'
-                    : order.status === 'cancelled'
-                    ? 'critical'
-                    : 'warning'
-                "
-                class="text-[9.5px] px-1.5 py-0 capitalize"
+                :variant="orderBadgeVariant(order)"
+                class="text-[9.5px] px-1.5 py-0"
               >
-                {{ t(`status.${order.status}`) || order.status }}
+                {{ orderStatusLabel(order) }}
               </Badge>
 
               <!-- Cancel Button for Pending Orders -->

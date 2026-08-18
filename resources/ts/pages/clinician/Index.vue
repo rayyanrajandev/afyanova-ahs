@@ -243,6 +243,9 @@ async function openPatientRecord(
     ordersManager.clearOrders();
   }
 
+  // Fetch all active orders (medications, lab, imaging) directly from API for this patient
+  ordersManager.fetchOrders(patientId, resolvedEncounterId ?? undefined);
+
   // Fetch all diagnostic laboratory and radiology results for the selected patient
   resultsManager.fetchResults(patientId);
 }

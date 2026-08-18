@@ -247,18 +247,27 @@ Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTen
         Route::patch('clinician/medical-records/{id}/status', [MedicalRecordController::class, 'updateStatus'])
             ->middleware('can:medical.records.update-status')
             ->name('clinician.medical-records.update-status');
+        Route::get('clinician/orders/lab', [LaboratoryOrderController::class, 'index'])
+            ->middleware('can:lab.order')
+            ->name('clinician.orders.lab.index');
         Route::post('clinician/orders/lab', [LaboratoryOrderController::class, 'store'])
             ->middleware('can:lab.order')
             ->name('clinician.orders.lab');
         Route::post('clinician/orders/lab/{id}/cancel', [LaboratoryOrderController::class, 'applyLifecycleAction'])
             ->middleware('can:lab.order')
             ->name('clinician.orders.lab.cancel');
+        Route::get('clinician/orders/imaging', [RadiologyOrderController::class, 'index'])
+            ->middleware('can:imaging.order')
+            ->name('clinician.orders.imaging.index');
         Route::post('clinician/orders/imaging', [RadiologyOrderController::class, 'store'])
             ->middleware('can:imaging.order')
             ->name('clinician.orders.imaging');
         Route::post('clinician/orders/imaging/{id}/cancel', [RadiologyOrderController::class, 'applyLifecycleAction'])
             ->middleware('can:imaging.order')
             ->name('clinician.orders.imaging.cancel');
+        Route::get('clinician/orders/medication', [PharmacyOrderController::class, 'index'])
+            ->middleware('can:medication.prescribe')
+            ->name('clinician.orders.medication.index');
         Route::post('clinician/orders/medication', [PharmacyOrderController::class, 'store'])
             ->middleware('can:medication.prescribe')
             ->name('clinician.orders.medication');

@@ -598,6 +598,107 @@ export function useClinicianOrders() {
     activeOrders.value = orders;
   }
 
+  const isFetchingOrders = ref(false);
+
+  async function fetchOrders(patientId?: string, encounterId?: string) {
+    if (!patientId && !encounterId) return;
+    isFetchingOrders.value = true;
+    try {
+      const qParams = new URLSearchParams();
+      if (patientId) qParams.append("patientId", patientId);
+      if (encounterId) qParams.append("encounterId", encounterId);
+      const queryStr = qParams.toString() ? `?${qParams.toString()}` : "";
+
+      const [medRes, labRes, radRes] = await Promise.all([
+        fetch(`/api/v1/clinician/orders/medication${queryStr}`, { headers: { "X-Requested-With": "XMLHttpRequest" } }).catch(() => null),
+        fetch(`/api/v1/clinician/orders/lab${queryStr}`, { headers: { "X-Requested-With": "XMLHttpRequest" } }).catch(() => null),
+        fetch(`/api/v1/clinician/orders/imaging${queryStr}`, { headers: { "X-Requested-With": "XMLHttpRequest" } }).catch(() => null),
+      ]);
+
+      const fetchedList: PlacedClinicalOrder[] = [];
+
+      // 1. Process Medication Orders
+      if (medRes && medRes.ok) {
+        const medBody = await medRes.json();
+        for (const med of (medBody.data ?? [])) {
+          const dosageStr = med.doseQuantity ? `${med.doseQuantity}${med.doseUnit ? ' ' + med.doseUnit : ''}` : (med.dosageInstruction ? med.dosageInstruction.split(' ')[0] : undefined);
+          const routeStr = med.route ? (med.route.charAt(0).toUpperCase() + med.route.slice(1)) : undefined;
+          const freqStr = med.frequency ? med.frequency.toUpperCase() : undefined;
+
+          fetchedList.push({
+            id: med.id || `med-${med.orderNumber || Date.now()}`,
+            type: "medication",
+            name: med.medicationName || med.medicationCode || "Medication",
+            dosage: dosageStr,
+            route: routeStr,
+            frequency: freqStr,
+            priority: "routine",
+            status: (med.status?.toLowerCase() as any) || "pending",
+            createdAt: med.orderedAt || med.createdAt || new Date().toISOString(),
+            details: med.dosageInstruction || `${dosageStr ?? ""} ${routeStr ?? ""} ${freqStr ?? ""}`.trim() || undefined,
+            price: med.price || med.totalPrice,
+          });
+        }
+      }
+
+      // 2. Process Lab Orders
+      if (labRes && labRes.ok) {
+        const labBody = await labRes.json();
+        for (const lab of (labBody.data ?? [])) {
+          fetchedList.push({
+            id: lab.id || `lab-${lab.orderNumber || Date.now()}`,
+            type: "lab",
+            name: lab.testName || lab.testCode || "Lab Test",
+            priority: (lab.priority?.toLowerCase() as any) || "routine",
+            status: (lab.status?.toLowerCase() as any) || "pending",
+            verifiedAt: lab.verifiedAt ?? null,
+            createdAt: lab.orderedAt || lab.createdAt || new Date().toISOString(),
+            details: lab.clinicalNotes || lab.specimenType || undefined,
+            price: lab.price || lab.basePrice,
+          });
+        }
+      }
+
+      // 3. Process Imaging Orders
+      if (radRes && radRes.ok) {
+        const radBody = await radRes.json();
+        for (const rad of (radBody.data ?? [])) {
+          fetchedList.push({
+            id: rad.id || `rad-${rad.orderNumber || Date.now()}`,
+            type: "imaging",
+            name: rad.studyDescription || rad.procedureCode || "Radiology Exam",
+            priority: (rad.priority?.toLowerCase() as any) || "routine",
+            status: (rad.status?.toLowerCase() as any) || "pending",
+            verifiedAt: rad.verifiedAt ?? null,
+            createdAt: rad.orderedAt || rad.createdAt || new Date().toISOString(),
+            details: rad.clinicalIndication || rad.modality || undefined,
+            price: rad.price || rad.basePrice,
+          });
+        }
+      }
+
+      // Merge and deduplicate with existing activeOrders
+      if (fetchedList.length > 0) {
+        const existingIds = new Set(activeOrders.value.map((o) => o.id));
+        fetchedList.forEach((item) => {
+          if (!existingIds.has(item.id)) {
+            activeOrders.value.push(item);
+          } else {
+            const idx = activeOrders.value.findIndex((o) => o.id === item.id);
+            if (idx !== -1) {
+              activeOrders.value[idx] = item;
+            }
+          }
+        });
+        activeOrders.value.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      }
+    } catch (err) {
+      console.warn("Could not fetch orders via direct API:", err);
+    } finally {
+      isFetchingOrders.value = false;
+    }
+  }
+
   function clearOrders() {
     activeOrders.value = [];
     prescriptionDrafts.value = [];
@@ -605,6 +706,7 @@ export function useClinicianOrders() {
 
   return {
     isPlacingOrder,
+    isFetchingOrders,
     activeOrders,
     medicationCatalog,
     isSearchingMedications,
@@ -618,6 +720,7 @@ export function useClinicianOrders() {
     submitPrescriptions,
     cancelOrder,
     hydrateOrdersFromWorkspace,
+    fetchOrders,
     clearOrders,
   };
 }

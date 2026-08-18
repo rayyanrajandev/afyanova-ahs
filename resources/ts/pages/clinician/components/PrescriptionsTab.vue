@@ -78,7 +78,19 @@ onMounted(() => {
   if (props.orders.medicationCatalog.value.length === 0) {
     props.orders.searchMedicationCatalog();
   }
+  if (props.patientId || props.encounterId) {
+    props.orders.fetchOrders(props.patientId ?? undefined, props.encounterId ?? undefined);
+  }
 });
+
+watch(
+  () => [props.patientId, props.encounterId],
+  ([newPatientId, newEncounterId]) => {
+    if (newPatientId || newEncounterId) {
+      props.orders.fetchOrders(newPatientId ?? undefined, newEncounterId ?? undefined);
+    }
+  }
+);
 
 onUnmounted(() => {
   document.removeEventListener("pointerdown", handleClickOutside);

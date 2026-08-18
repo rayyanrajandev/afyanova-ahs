@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   FileCheck2,
   FileText,
-  Printer,
   Scan,
   ShieldCheck,
   Sparkles,
@@ -29,7 +28,6 @@ import type {
   UseRadiologyOrders,
 } from "../composables/useRadiologyOrders";
 import RadiologyPacsViewer from "./RadiologyPacsViewer.vue";
-import { printRadiologyReport } from "../radiologyReportPrint";
 
 const props = defineProps<{
   order: RadiologyOrder;
@@ -73,17 +71,15 @@ watch(
 );
 
 const isVerified = computed(() => Boolean(props.order.verifiedAt));
-const isReadyToVerify = computed(
-  () => props.order.status === "completed" && !isVerified.value,
+const hasReport = computed(
+  () =>
+    Boolean(props.order.reportSummary) ||
+    props.order.status === "completed" ||
+    isVerified.value,
 );
 
 function applyPreset(p: VerificationPreset) {
   note.value = p.text;
-}
-
-function handlePrint() {
-  const images = props.radiology.getOrderImages(props.order.id);
-  printRadiologyReport(props.order, images);
 }
 
 async function verify() {
@@ -112,16 +108,6 @@ async function verify() {
       </div>
 
       <div class="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          class="h-7 text-xs font-semibold gap-1.5 px-2.5 border-border hover:bg-muted cursor-pointer"
-          @click="handlePrint"
-        >
-          <Printer class="size-3.5 text-primary" />
-          <span>{{ t("radiology.print_report", "Print Report") }}</span>
-        </Button>
-
         <Badge
           variant="outline"
           class="text-[10px] uppercase font-mono px-2 py-0.5"
@@ -140,56 +126,9 @@ async function verify() {
       </div>
     </div>
 
-    <!-- Released Banner -->
-    <div
-      v-if="isVerified"
-      class="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3.5 shadow-xs"
-    >
-      <div class="flex items-center gap-3">
-        <ShieldCheck
-          class="size-5 text-emerald-600 dark:text-emerald-400 shrink-0"
-        />
-        <div class="text-xs">
-          <p class="font-bold text-emerald-950 dark:text-emerald-100">
-            {{
-              t(
-                "radiology.verified_banner",
-                "Diagnostic Report Electronically Authenticated & Released",
-              )
-            }}
-          </p>
-          <p
-            class="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 mt-0.5 font-mono"
-          >
-            {{ new Date(props.order.verifiedAt!).toLocaleString() }}
-            <template v-if="props.order.verifiedBy">
-              ·
-              {{
-                t("radiology.verified_by_user", {
-                  user: props.order.verifiedBy,
-                })
-              }}</template
-            >
-          </p>
-        </div>
-      </div>
-
-      <Button
-        variant="outline"
-        size="sm"
-        class="h-7 text-xs font-semibold gap-1.5 px-3 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15 cursor-pointer shrink-0"
-        @click="handlePrint"
-      >
-        <Printer class="size-3.5" />
-        <span>{{
-          t("radiology.print_official_report", "Print Official Report")
-        }}</span>
-      </Button>
-    </div>
-
     <!-- State: Not yet completed by radiographer -->
     <div
-      v-else-if="!isReadyToVerify"
+      v-if="!hasReport"
       class="rounded-lg border border-border bg-surface p-6 text-center text-xs space-y-2 text-muted-foreground shadow-2xs"
     >
       <FileText class="size-8 mx-auto text-muted-foreground/40 stroke-1" />
@@ -211,10 +150,11 @@ async function verify() {
       </p>
     </div>
 
-    <!-- State: Ready for verification -->
+    <!-- State: Ready for verification or Released -->
     <template v-else>
-      <!-- Two-Person Rule Callout -->
+      <!-- Two-Person Rule Callout (When unverified) -->
       <div
+        v-if="!isVerified"
         class="flex items-center gap-2.5 rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs"
       >
         <Users class="size-4 text-primary shrink-0" />
@@ -287,8 +227,9 @@ async function verify() {
         </div>
       </section>
 
-      <!-- Verification Notes & Presets -->
+      <!-- Verification Notes & Sign-off Actions (When unverified) -->
       <section
+        v-if="!isVerified"
         class="rounded-lg border border-border bg-surface p-4 space-y-3 shadow-2xs"
       >
         <div class="flex flex-wrap items-center justify-between gap-2">

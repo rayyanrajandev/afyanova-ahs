@@ -777,7 +777,10 @@
     "signoff_notice": "Kubonyeza Idhinisha na Ruhusu kunathibitisha kipimo hiki chini ya leseni yako ya udaktari.",
     "verify_release": "Idhinisha na Ruhusu Ripoti",
     "verifying": "Inaidhinisha…",
-    "verify_hands_back_hint": "Kutoa kipimo cha mwisho kunamrudisha mgonjwa kwenye foleni ya daktari kwa mapitio."
+    "verify_hands_back_hint": "Kutoa kipimo cha mwisho kunamrudisha mgonjwa kwenye foleni ya daktari kwa mapitio.",
+    "status_verified": "Imethibitishwa",
+    "study_one": "kipimo",
+    "study_many": "vipimo"
   },
   "clinician": {
     "acknowledge_requires_consultation": "Mwite mgonjwa kabla ya kuidhinisha majibu",

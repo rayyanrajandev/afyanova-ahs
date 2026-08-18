@@ -5,6 +5,7 @@ Clean, clinical header presenting: * - Patient Name, Hospital MRN, Age/Gender *
 Indication preview * - Acuity / Status Badges & Scheduled Slot Time * - Header
 Actions: Start Examination (Primary CTA) & Cancel Study modal dialog */
 
+<script setup lang="ts">
 import {
   AlertCircle,
   CalendarClock,
@@ -252,6 +253,24 @@ const scheduledLabel = computed<string | null>(() => {
           <ShieldCheck class="size-3" />
           {{ t("radiology.verified_released", "Released") }}
         </Badge>
+
+        <!-- Print Action in Header -->
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          class="h-7 gap-1.5 px-2.5 text-xs font-semibold hover:bg-muted cursor-pointer border-border"
+          :title="
+            t(
+              'radiology.print_report_tooltip',
+              'Print official diagnostic imaging report',
+            )
+          "
+          @click="handlePrintReport"
+        >
+          <Printer class="size-3.5 text-primary" />
+          <span>{{ t("radiology.print_report", "Print") }}</span>
+        </Button>
 
         <!-- Cancel Study Button -->
         <Button

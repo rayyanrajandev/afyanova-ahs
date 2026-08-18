@@ -27,6 +27,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import WorklistOrderList, {
+  type WorklistOrderItem,
+  type WorklistTone,
+} from "@/components/common/WorklistOrderList.vue";
 import type {
   PatientRadiologyGroup,
   RadiologyModality,
@@ -110,6 +114,66 @@ function modalityBadgeClass(modality: string): string {
 }
 
 /** Where the patient is in the clinic */
+const RADIOLOGY_TONE: Record<string, WorklistTone> = {
+  ordered: "waiting",
+  scheduled: "active",
+  in_progress: "progress",
+  cancelled: "cancelled",
+};
+
+/**
+ * A reported study that nobody has signed off is not a released one, and the
+ * reading room has to tell them apart at a glance — the same split laboratory
+ * draws between completed and verified.
+ */
+function itemTone(order: RadiologyOrder): WorklistTone {
+  if (order.status === "completed") {
+    return order.verifiedAt ? "verified" : "released";
+  }
+
+  return RADIOLOGY_TONE[order.status] ?? "cancelled";
+}
+
+/**
+ * The same words the status tabs above use. A row reading "in_progress" under a
+ * tab labelled "Scanning" makes the radiographer translate between two
+ * vocabularies for one state.
+ */
+function itemToneLabel(order: RadiologyOrder): string {
+  switch (order.status) {
+    case "ordered":
+      return t("radiology.status_ordered", "Ordered");
+    case "scheduled":
+      return t("radiology.status_scheduled", "Booked");
+    case "in_progress":
+      return t("radiology.status_in_progress", "Scanning");
+    case "completed":
+      return order.verifiedAt
+        ? t("radiology.status_verified", "Verified")
+        : t("radiology.status_completed", "Reported");
+    default:
+      return t("radiology.status_cancelled", "Cancelled");
+  }
+}
+
+/**
+ * Modality rides as the leading code rather than a separate chip row: it is a
+ * genuine short identifier (CT, XR, US), which is exactly what that slot is
+ * for, and it belongs to the individual study rather than to the patient.
+ */
+function worklistItems(group: PatientRadiologyGroup): WorklistOrderItem[] {
+  return group.orders.map((order) => ({
+    id: order.id,
+    label: order.studyDescription,
+    code: String(order.modality || "").toUpperCase() || null,
+    detail: [slotLabel(order), order.clinicalIndication]
+      .filter(Boolean)
+      .join(" · "),
+    tone: itemTone(order),
+    toneLabel: itemToneLabel(order),
+  }));
+}
+
 function visitStageLabel(stage: string | null | undefined): string | null {
   const key = stepLabelKey(stage);
   return key ? t(key) : null;
@@ -349,10 +413,16 @@ function getRelativeTime(dateStr: string | null | undefined): string {
           </p>
         </div>
 
-        <button
+        <!--
+          A container, not a button. The studies inside are buttons now, and a
+          button inside a button is invalid — which is why this card could only
+          ever offer a patient-level click and a summary of modalities. Keyboard
+          access improves rather than regresses: every study is individually
+          reachable where before the whole card was one target.
+        -->
+        <div
           v-for="group in radiology.filteredPatientGroups.value"
           :key="group.patientId"
-          type="button"
           class="w-full flex flex-col gap-1.5 rounded-lg border p-2.5 text-left transition-all cursor-pointer relative overflow-hidden group"
           :class="[
             radiology.selectedOrder.value?.patientId === group.patientId
@@ -363,7 +433,12 @@ function getRelativeTime(dateStr: string | null | undefined): string {
         >
           <!-- Top Row: Patient Name & Acuity Badge -->
           <div class="flex items-center justify-between gap-1.5">
-            <div class="flex items-center gap-1.5 min-w-0">
+            <div class="flex items-center gap-2 min-w-0">
+              <div
+                class="flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-foreground font-bold text-[10px]"
+              >
+                {{ (group.patientName || "PT").slice(0, 2).toUpperCase() }}
+              </div>
               <span class="truncate text-[12px] font-bold text-foreground">
                 {{ group.patientName }}
               </span>
@@ -400,69 +475,33 @@ function getRelativeTime(dateStr: string | null | undefined): string {
             <span v-if="group.latestOrderedAt" class="text-[9.5px]">
               {{ getRelativeTime(group.latestOrderedAt) }}
             </span>
-          </div>
-
-          <!-- Studies Summary Chips -->
-          <div class="flex flex-wrap items-center gap-1 pt-0.5">
-            <span class="text-[10px] font-semibold text-muted-foreground">
+            <span class="font-semibold text-primary">
               {{ group.totalStudies }}
-              {{ group.totalStudies === 1 ? "Study" : "Studies" }}:
-            </span>
-            <span
-              v-for="mod in group.modalities"
-              :key="mod"
-              class="px-1.5 py-0 rounded text-[9.5px] font-mono font-bold uppercase"
-              :class="modalityBadgeClass(mod)"
-            >
-              {{ mod }}
+              {{
+                group.totalStudies === 1
+                  ? t("radiology.study_one", "study")
+                  : t("radiology.study_many", "studies")
+              }}
             </span>
           </div>
 
-          <!-- Bottom Status Pill Row -->
-          <div
-            class="flex items-center justify-between gap-1 border-t border-border/40 pt-1 text-[9.5px] font-mono"
-          >
-            <div class="flex items-center gap-1.5">
-              <span
-                v-if="group.orderedCount > 0"
-                class="text-amber-600 font-semibold"
-              >
-                {{ group.orderedCount }}
-                {{ t("radiology.status_ordered", "Ordered") }}
-              </span>
-              <span
-                v-if="group.scheduledCount > 0"
-                class="text-blue-600 font-semibold"
-              >
-                {{ group.scheduledCount }}
-                {{ t("radiology.status_scheduled", "Booked") }}
-              </span>
-              <span
-                v-if="group.inProgressCount > 0"
-                class="text-purple-600 font-semibold"
-              >
-                {{ group.inProgressCount }}
-                {{ t("radiology.status_in_progress", "Scanning") }}
-              </span>
-              <span
-                v-if="group.completedCount > 0"
-                class="text-emerald-600 font-semibold"
-              >
-                {{ group.completedCount }}
-                {{ t("radiology.status_completed", "Reported") }}
-              </span>
-            </div>
-
-            <!-- Patient Visit Stage if available -->
+          <!-- Where this patient actually is in the visit -->
+          <div v-if="visitStageLabel(group.orders[0]?.visitStage)" class="flex">
             <span
-              v-if="visitStageLabel(group.orders[0]?.visitStage)"
-              class="px-1.5 py-0 rounded border text-[9px] font-sans font-medium"
+              class="px-1.5 py-0 rounded border text-[9px] font-sans font-medium uppercase"
               :class="visitStageClass(group.orders[0]?.visitStage)"
             >
               {{ visitStageLabel(group.orders[0]?.visitStage) }}
             </span>
           </div>
-        </button>
+
+          <!-- Ordered Studies -->
+          <WorklistOrderList
+            :items="worklistItems(group)"
+            :selected-id="radiology.selectedOrderId.value"
+            @select="radiology.selectOrder($event)"
+          />
+        </div>
       </div>
 
       <!-- VIEW 2: BY INDIVIDUAL STUDY -->

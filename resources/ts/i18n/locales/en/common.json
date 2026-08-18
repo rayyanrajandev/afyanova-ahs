@@ -777,7 +777,10 @@
     "signoff_notice": "Clicking Authorize & Release signs off this study under your medical credentials.",
     "verify_release": "Authorize & Release Report",
     "verifying": "Authorizing…",
-    "verify_hands_back_hint": "Releasing the last outstanding study returns the patient to the doctor's queue for review."
+    "verify_hands_back_hint": "Releasing the last outstanding study returns the patient to the doctor's queue for review.",
+    "status_verified": "Verified",
+    "study_one": "study",
+    "study_many": "studies"
   },
   "clinician": {
     "acknowledge_requires_consultation": "Call the patient in before signing off results",

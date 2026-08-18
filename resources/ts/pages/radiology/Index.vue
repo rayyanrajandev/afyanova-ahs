@@ -20,13 +20,18 @@ import {
   ScanLine,
   ShieldCheck,
 } from "lucide-vue-next";
-import { onMounted, ref, watch } from "vue";
+import { onMounted, ref, watch, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
 import EmptyState from "@/components/common/EmptyState.vue";
 import PatientFlowTimeline from "@/components/common/PatientFlowTimeline.vue";
 import SplitPane from "@/components/common/SplitPane.vue";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePatientFlowLiveSync } from "@/composables/usePatientFlowLiveSync";
+import {
+  attachPersistence,
+  makeValidator,
+} from "@/composables/usePersistedSelection";
+import { useWorkspaceUrlSync } from "@/composables/useWorkspaceUrlSync";
 
 import RadiologyOrderHeader from "./components/RadiologyOrderHeader.vue";
 import RadiologyQueuePanel from "./components/RadiologyQueuePanel.vue";
@@ -39,6 +44,48 @@ import { useRadiologyOrders } from "./composables/useRadiologyOrders";
 const { t } = useI18n({ useScope: "global" });
 
 const radiology = useRadiologyOrders();
+
+const RAD_VIEW_MODES = ["patient", "study"] as const;
+const RAD_STATUS_FILTERS = [
+  "all",
+  "ordered",
+  "scheduled",
+  "in_progress",
+  "completed",
+] as const;
+const RAD_MODALITIES = [
+  "all",
+  "ultrasound",
+  "xray",
+  "ct",
+  "mri",
+  "mammography",
+] as const;
+
+attachPersistence(
+  radiology.viewMode,
+  "afyanova:radiology:view-mode",
+  makeValidator(RAD_VIEW_MODES),
+);
+attachPersistence(
+  radiology.selectedStatusFilter,
+  "afyanova:radiology:status-filter",
+  makeValidator(RAD_STATUS_FILTERS),
+);
+attachPersistence(
+  radiology.selectedModalityFilter,
+  "afyanova:radiology:modality-filter",
+  makeValidator(RAD_MODALITIES),
+);
+
+useWorkspaceUrlSync({
+  params: {
+    order: {
+      ref: radiology.selectedOrderId as Ref<string>,
+      isValid: (value) => value.trim() !== "",
+    },
+  },
+});
 
 type RadiologyTab = "scheduling" | "report" | "verification" | "journey";
 

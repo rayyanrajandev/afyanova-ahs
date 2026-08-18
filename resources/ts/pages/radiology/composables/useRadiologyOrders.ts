@@ -364,15 +364,25 @@ export function useRadiologyOrders() {
         } satisfies RadiologyOrder;
       });
 
-      // Keep a selection if it survived the refresh; otherwise pick the first
-      // piece of open work rather than whatever happens to sort first.
+      // Keep a selection if it survived the refresh; otherwise open the first
+      // piece of work rather than leaving the workstation empty.
+      //
+      // Open work is still preferred, but it is no longer required: this used
+      // to select *only* an open study, so filtering the queue to Reported or
+      // Cancelled — every one of which is a finished status — matched nothing
+      // and left the main pane blank over a full worklist. Laboratory and
+      // pharmacy both fall back to the first row.
       if (
         !selectedOrderId.value ||
         !orders.value.some((o) => o.id === selectedOrderId.value)
       ) {
-        selectedOrderId.value =
-          worklistOrders.value.find((o) => OPEN_STATUSES.includes(o.status))
-            ?.id ?? null;
+        const firstOpen = worklistOrders.value.find((o) =>
+          OPEN_STATUSES.includes(o.status),
+        );
+
+        // Through selectOrder so the patient card highlights with it; assigning
+        // the id alone left the queue showing no selected patient.
+        selectOrder(firstOpen?.id ?? worklistOrders.value[0]?.id ?? null);
       }
     } catch {
       toast.error(

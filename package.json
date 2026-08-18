@@ -15,13 +15,6 @@
         "format:check": "prettier --check resources/",
         "lint": "eslint . --fix",
         "ship": "node scripts/ship.mjs",
-        "test:unit": "vitest run",
-        "test:unit:watch": "vitest",
-        "test:e2e": "playwright test",
-        "test:e2e:install": "playwright install chromium",
-        "test:e2e:list": "playwright test --list",
-        "test:e2e:smoke": "playwright test tests/e2e/auth tests/e2e/security",
-        "test:e2e:ui": "playwright test --ui",
         "story:dev": "histoire dev",
         "story:build": "histoire build"
     },

@@ -80,28 +80,74 @@ export interface PlacedClinicalOrder {
   id: string;
   type: "lab" | "imaging" | "medication" | "referral";
   name: string;
+  dosage?: string;
+  route?: string;
+  frequency?: string;
   priority: "routine" | "urgent" | "stat";
   status: ClinicalOrderStatus;
   createdAt: string;
   details?: string;
   price?: number;
+  /**
+   * When the result was released to the chart. Null while a report exists but
+   * has not been signed off — the window in which `status` already reads
+   * `completed` and the clinician still cannot see anything.
+   */
+  verifiedAt?: string | null;
 }
 
 /**
- * Statuses that mean a diagnostic order is finished, mirroring
- * LaboratoryOrderStatus::terminalValues() and
- * RadiologyOrderStatus::terminalValues() — the same definition the server uses
- * for `laboratoryOrdersPendingCount` / `radiologyOrdersPendingCount`.
+ * Where a diagnostic order stands *from the clinician's chair*, which is not the
+ * same question the bench answers.
  *
- * `complete` is tolerated alongside `completed` only because hydration casts
- * through `as any`, so a stale or hand-built value can still reach here. It is
- * not a status the API produces.
+ * The bench cares whether a specimen has been run. The clinician cares about one
+ * thing only: can I read the result yet. Those diverge in a window that matters —
+ * `status` reads `completed` the moment a technologist types a report, but the
+ * result stays invisible on the chart until it is released
+ * (useClinicianResults enforces exactly this as its medicolegal gate). Reporting
+ * that order as finished to the doctor, while the results tab still shows
+ * nothing, is the confusing half of this screen.
+ *
+ * Derived, never stored, and resolved in one place so the orders list, the
+ * badge and the "Send for Diagnostics" control cannot disagree.
  */
-const DIAGNOSTIC_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
-  "completed",
-  "complete",
-  "cancelled",
+export type DiagnosticOrderStage =
+  /** Ordered; the patient still has to get to the bench. */
+  | "awaiting_collection"
+  /** Specimen taken or study underway. */
+  | "in_progress"
+  /** Report written but not signed off — invisible to the clinician. */
+  | "awaiting_release"
+  /** Released to the chart; the doctor can act on it. */
+  | "resulted"
+  | "cancelled";
+
+const DIAGNOSTIC_IN_PROGRESS_STATUSES: ReadonlySet<string> = new Set([
+  "collected",
+  "scheduled",
+  "in_progress",
 ]);
+
+/**
+ * `complete` is tolerated beside `completed` only because hydration casts through
+ * `as any`, so a stale or hand-built value can still reach here. The API never
+ * sends it, which is why it is not in ClinicalOrderStatus.
+ */
+const DIAGNOSTIC_REPORTED_STATUSES: ReadonlySet<string> = new Set(["completed", "complete"]);
+
+export function diagnosticOrderStage(order: PlacedClinicalOrder): DiagnosticOrderStage {
+  if (order.status === "cancelled") return "cancelled";
+
+  if (DIAGNOSTIC_REPORTED_STATUSES.has(order.status)) {
+    // The only place `verifiedAt` decides anything. A completed report the
+    // clinician cannot read is not a finished order to them.
+    return order.verifiedAt ? "resulted" : "awaiting_release";
+  }
+
+  if (DIAGNOSTIC_IN_PROGRESS_STATUSES.has(order.status)) return "in_progress";
+
+  return "awaiting_collection";
+}
 
 /**
  * Whether a diagnostic order is still owed back to the clinician.
@@ -114,8 +160,11 @@ export function isDiagnosticOrderOutstanding(order: PlacedClinicalOrder): boolea
     return false;
   }
 
-  return !DIAGNOSTIC_TERMINAL_STATUSES.has(order.status);
+  const stage = diagnosticOrderStage(order);
+
+  return stage !== "resulted" && stage !== "cancelled";
 }
+
 export const STANDARD_LAB_CATALOG: LabCatalogItem[] = [
   { id: "lab-mrdt", code: "LAB-PAR-MRDT", name: "Malaria Rapid Diagnostic Test (mRDT)", department: "Parasitology", sampleType: "Capillary / Whole Blood", price: 5000 },
   { id: "lab-hiv", code: "LAB-SER-HIV-RDT", name: "HIV 1/2 Rapid Antibody Test", department: "Serology", sampleType: "Whole Blood / Serum", price: 5000 },
@@ -373,7 +422,7 @@ export function useClinicianOrders() {
             encounterId,
             dosageInstruction: instruction,
             quantityPrescribed: qty,
-            entryMode: "draft",
+            entryMode: "active",
             route: item.route ? item.route.toLowerCase() : undefined,
             frequency: item.frequency ? item.frequency.toLowerCase() : undefined,
             clinicalIndication: item.instructions || undefined,
@@ -406,6 +455,9 @@ export function useClinicianOrders() {
             id: created?.id || `med-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
             type: "medication" as const,
             name: created?.medicationName || item.drugName,
+            dosage: item.dosage,
+            route: item.route,
+            frequency: item.frequency,
             priority: "routine" as const,
             status: (created?.status?.toLowerCase() as any) || "pending",
             createdAt: created?.orderedAt || created?.createdAt || new Date().toISOString(),
@@ -493,6 +545,7 @@ export function useClinicianOrders() {
           name: lab.testName || lab.testCode || "Lab Test",
           priority: (lab.priority?.toLowerCase() as any) || "routine",
           status: (lab.status?.toLowerCase() as any) || "pending",
+          verifiedAt: lab.verifiedAt ?? null,
           createdAt: lab.orderedAt || lab.createdAt || new Date().toISOString(),
           details: lab.clinicalNotes || lab.specimenType || undefined,
           price: lab.price || lab.basePrice,
@@ -509,6 +562,7 @@ export function useClinicianOrders() {
           name: rad.studyDescription || rad.procedureCode || "Radiology Exam",
           priority: (rad.priority?.toLowerCase() as any) || "routine",
           status: (rad.status?.toLowerCase() as any) || "pending",
+          verifiedAt: rad.verifiedAt ?? null,
           createdAt: rad.orderedAt || rad.createdAt || new Date().toISOString(),
           details: rad.clinicalIndication || rad.modality || undefined,
           price: rad.price || rad.basePrice,
@@ -519,14 +573,21 @@ export function useClinicianOrders() {
     // 3. Pharmacy Orders
     if (Array.isArray(workspace.pharmacyOrders)) {
       workspace.pharmacyOrders.forEach((med: any) => {
+        const dosageStr = med.doseQuantity ? `${med.doseQuantity}${med.doseUnit ? ' ' + med.doseUnit : ''}` : (med.dosageInstruction ? med.dosageInstruction.split(' ')[0] : undefined);
+        const routeStr = med.route ? (med.route.charAt(0).toUpperCase() + med.route.slice(1)) : undefined;
+        const freqStr = med.frequency ? med.frequency.toUpperCase() : undefined;
+
         orders.push({
           id: med.id || `med-${med.orderNumber || Date.now()}`,
           type: "medication",
           name: med.medicationName || med.medicationCode || "Medication",
+          dosage: dosageStr,
+          route: routeStr,
+          frequency: freqStr,
           priority: "routine",
           status: (med.status?.toLowerCase() as any) || "pending",
           createdAt: med.orderedAt || med.createdAt || new Date().toISOString(),
-          details: med.dosageInstruction || `${med.doseQuantity ?? ""} ${med.route ?? ""} ${med.frequency ?? ""}`.trim() || undefined,
+          details: med.dosageInstruction || `${dosageStr ?? ""} ${routeStr ?? ""} ${freqStr ?? ""}`.trim() || undefined,
           price: med.price || med.totalPrice,
         });
       });

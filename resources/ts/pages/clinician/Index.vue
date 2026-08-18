@@ -48,7 +48,7 @@ import PrescriptionsTab from "./components/PrescriptionsTab.vue";
 import ResultsReviewTab from "./components/ResultsReviewTab.vue";
 import VitalsHistoryTab from "./components/VitalsHistoryTab.vue";
 import { useClinicianEncounter } from "./composables/useClinicianEncounter";
-import { useClinicianOrders } from "./composables/useClinicianOrders";
+import { isDiagnosticOrderOutstanding, useClinicianOrders } from "./composables/useClinicianOrders";
 import { useClinicianQueue } from "./composables/useClinicianQueue";
 import { useClinicianResults } from "./composables/useClinicianResults";
 
@@ -162,21 +162,19 @@ async function openPatientRecord(
   selectedVisit.value = visit;
   selectedReadiness.value = readiness;
 
+  let resolvedEncounterId = encounterId;
+
   // Load summary / alerts and derive visit context if needed
-  void patientStore
-    .fetchPatientSummary(patientId)
-    .then((summary) => {
-      if (selectedPatient.value?.id !== patientId) return;
+  try {
+    const summary = await patientStore.fetchPatientSummary(patientId);
+    if (selectedPatient.value?.id === patientId && summary) {
       selectedPatientAllergies.value = (summary?.alerts ?? []).map((a) => a.allergen || a.substance || "Allergy");
 
-      if (!selectedVisit.value && summary) {
+      if (!selectedVisit.value) {
         if (summary.activeAppointment) {
           selectedVisit.value = {
             appointmentId: summary.activeAppointment.id,
             appointmentStatus: summary.activeAppointment.status,
-            // Prefer the server-resolved step: `status` alone cannot express a
-            // nursing pickup, so a patient a nurse has picked up would read as
-            // whichever queue they are still sitting in.
             stage: summary.activeAppointment.visitStage ?? summary.activeAppointment.status,
             visitStage: summary.activeAppointment.visitStage ?? null,
             isAdmitted: false,
@@ -196,16 +194,35 @@ async function openPatientRecord(
           };
         }
       }
-    })
-    .finally(() => {
-      if (selectedPatient.value?.id === patientId) {
-        isLoadingVisitContext.value = false;
-      }
-    });
 
-  // If encounter ID is provided, load encounter workspace
-  if (encounterId) {
-    await encounterManager.loadEncounterWorkspace(encounterId);
+      // If encounter ID was not provided in arguments, resolve it from active appointment or latest encounter
+      if (!resolvedEncounterId) {
+        if (summary.activeAppointment?.id) {
+          const res = await fetch(
+            `/api/v1/clinician/encounters/by-appointment/${encodeURIComponent(summary.activeAppointment.id)}?view=workspace`,
+            { headers: { "X-Requested-With": "XMLHttpRequest" } },
+          );
+          if (res.ok) {
+            const body = await res.json();
+            if (body.data?.encounter?.id) {
+              resolvedEncounterId = body.data.encounter.id;
+            }
+          }
+        } else if (summary.latestEncounter?.id) {
+          resolvedEncounterId = summary.latestEncounter.id;
+        }
+      }
+    }
+  } finally {
+    if (selectedPatient.value?.id === patientId) {
+      isLoadingVisitContext.value = false;
+    }
+  }
+
+  // If encounter ID is available, load encounter workspace and hydrate all orders
+  if (resolvedEncounterId) {
+    selectedEncounterId.value = resolvedEncounterId;
+    await encounterManager.loadEncounterWorkspace(resolvedEncounterId);
     if (encounterManager.encounterWorkspace.value) {
       ordersManager.hydrateOrdersFromWorkspace(encounterManager.encounterWorkspace.value);
     }
@@ -453,17 +470,16 @@ const isSendingForDiagnostics = ref(false);
 
 /**
  * True when this consultation has diagnostic work outstanding — the only case
- * where "send the patient out" is a meaningful thing to offer. Prescriptions
- * are excluded: a patient collecting medication is leaving, not coming back for
- * the doctor to read a result.
+ * where "send the patient out" is a meaningful thing to offer.
+ *
+ * The rule lives in isDiagnosticOrderOutstanding() so it cannot drift from the
+ * status vocabulary again. This compared `status !== "complete"` while the API
+ * spells it `completed`, so a finished lab or X-ray never stopped counting and
+ * the button stayed on screen for the rest of the consultation — offering to
+ * send a patient out for results that were already back.
  */
 const hasOutstandingDiagnostics = computed<boolean>(() =>
-  ordersManager.activeOrders.value.some(
-    (order) =>
-      (order.type === "lab" || order.type === "imaging") &&
-      order.status !== "complete" &&
-      order.status !== "cancelled",
-  ),
+  ordersManager.activeOrders.value.some(isDiagnosticOrderOutstanding),
 );
 
 /**

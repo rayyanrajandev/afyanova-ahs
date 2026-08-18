@@ -176,6 +176,17 @@ const INTENTIONAL_ABILITY_SPLITS = [
     'AppointmentController@departmentOptions' => 'routing vs plain read',
     // The prescriber reaches the catalog to prescribe; pharmacy to dispense.
     'PharmacyOrderController@approvedMedicinesCatalog' => 'prescriber vs pharmacy',
+    // Same three actions, two audiences. The clinician reaches them through
+    // clinician/orders/* under the ability to *place* that kind of order
+    // (lab.order / imaging.order / medication.prescribe), because a doctor who
+    // may order a test may see the ones they ordered. The department reaches
+    // the same action through its own workspace door under its read ability,
+    // which is what a technologist or dispenser holds instead. Collapsing the
+    // two would either hand every prescriber a department worklist or require
+    // every doctor to carry a department read permission.
+    'LaboratoryOrderController@index' => 'prescriber vs laboratory',
+    'RadiologyOrderController@index' => 'prescriber vs radiology',
+    'PharmacyOrderController@index' => 'prescriber vs pharmacy',
 ];
 
 it('does not let one controller action sit behind two different locks by accident', function (): void {

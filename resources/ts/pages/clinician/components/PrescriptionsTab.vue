@@ -132,12 +132,12 @@ const totalDraftCost = computed(() =>
 
 // Order Cancellation State
 const orderToCancel = ref<PlacedClinicalOrder | null>(null);
-const cancelReason = ref("Ordered in error");
+const cancelReason = ref(t("clinician.reason_ordered_in_error", "Ordered in error"));
 const isCancelling = ref(false);
 
 function openCancelDialog(order: PlacedClinicalOrder) {
   orderToCancel.value = order;
-  cancelReason.value = "Ordered in error";
+  cancelReason.value = t("clinician.reason_ordered_in_error", "Ordered in error");
 }
 
 async function confirmCancelOrder() {
@@ -230,7 +230,7 @@ async function handleSubmitPrescriptions() {
           </div>
           <h3 class="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
             <span>{{ t("clinician.prescriptions") }}</span>
-            <Badge variant="outline" class="text-[9px] font-mono px-1 py-0 uppercase">E-Prescribe</Badge>
+            <Badge variant="outline" class="text-[9px] font-mono px-1 py-0 uppercase">{{ t("clinician.e_prescribe", "E-Prescribe") }}</Badge>
           </h3>
         </div>
 
@@ -245,7 +245,7 @@ async function handleSubmitPrescriptions() {
         <!-- Drug Search Bar -->
         <div class="space-y-1.5">
           <Label class="text-xs font-semibold text-foreground">
-            {{ t("clinician.drug_name") }} (Hospital Formulary Search)
+            {{ t("clinician.drug_name") }} ({{ t("clinician.hospital_formulary_search", "Hospital Formulary Search") }})
           </Label>
 
           <div ref="searchContainerRef" class="relative">
@@ -420,7 +420,7 @@ async function handleSubmitPrescriptions() {
                       type="text"
                       class="h-7 text-xs px-1.5 w-full disabled:opacity-60 disabled:cursor-not-allowed"
                       :disabled="props.clinicalMode !== 'active'"
-                      placeholder="e.g. Take with food"
+                      :placeholder="t('clinician.instructions_placeholder', 'e.g. Take after meals with water')"
                     />
                   </td>
                   <td class="p-2 pr-3 text-right">
@@ -450,10 +450,10 @@ async function handleSubmitPrescriptions() {
             </div>
             <div>
               <p class="text-xs font-bold text-foreground">
-                {{ orders.prescriptionDrafts.value.length }} {{ orders.prescriptionDrafts.value.length === 1 ? 'Medication' : 'Medications' }} ready to prescribe
+                {{ t("clinician.medications_ready_to_prescribe", { count: orders.prescriptionDrafts.value.length }) }}
               </p>
               <p v-if="totalDraftCost > 0" class="text-[11px] text-emerald-700 dark:text-emerald-400 font-mono font-semibold">
-                Est. Total: TZS {{ totalDraftCost.toLocaleString() }}
+                {{ t("clinician.est_total", "Est. Total") }}: TZS {{ totalDraftCost.toLocaleString() }}
               </p>
             </div>
           </div>
@@ -488,7 +488,7 @@ async function handleSubmitPrescriptions() {
           <thead class="border-b border-border/70 bg-muted/30 text-[10.5px] font-semibold text-muted-foreground uppercase tracking-wider">
             <tr>
               <th class="p-2 pl-3 w-[30%]">{{ t("clinician.drug_name") }}</th>
-              <th class="p-2 w-[25%]">{{ t("clinician.dosage") }} & Regimen</th>
+              <th class="p-2 w-[25%]">{{ t("clinician.dosage_and_regimen", "Dosage & Regimen") }}</th>
               <th class="p-2 w-[15%] text-right">{{ t("clinician.price", "Price") }}</th>
               <th class="p-2 w-[15%] text-center">{{ t("common.status", "Status") }}</th>
               <th class="p-2 w-[15%] text-right pr-3">{{ t("common.actions", "Actions") }}</th>

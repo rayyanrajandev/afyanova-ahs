@@ -2,6 +2,8 @@
 
 namespace App\Modules\Pharmacy\Presentation\Http\Transformers;
 
+use App\Modules\Platform\Application\Support\ClinicalCatalogBillingLinkEnricher;
+use App\Modules\Platform\Infrastructure\Models\ClinicalCatalogItemModel;
 use App\Support\ClinicalOrders\ClinicalCurrentCare;
 
 class PharmacyOrderResponseTransformer
@@ -36,11 +38,21 @@ class PharmacyOrderResponseTransformer
             'infusionDurationUnit' => $order['infusion_duration_unit'] ?? null,
             'clinicalIndication' => $order['clinical_indication'] ?? null,
             'quantityPrescribed' => $order['quantity_prescribed'] ?? null,
+            // Price was only ever known to the client that placed the order —
+            // it computed unitPrice x quantity locally and the API returned
+            // nothing, so the figure vanished from "Prescribed Medications" the
+            // moment the page reloaded. Resolved here from the same billing link
+            // the prescribing catalog reads, so it survives a refresh.
+            'unitPrice' => self::unitPrice($order),
+            'totalPrice' => self::totalPrice($order),
             'prescribedUnit' => $order['prescribed_unit'] ?? null,
             'quantityDispensed' => $order['quantity_dispensed'] ?? null,
             'dispensedUnit' => $order['dispensed_unit'] ?? null,
             'dispensingNotes' => $order['dispensing_notes'] ?? null,
             'dispensedAt' => $order['dispensed_at'] ?? null,
+            // The counterpart to verifiedByUserId. The workspace needs it to
+            // explain a refused sign-off rather than just report one.
+            'dispensedByUserId' => $order['dispensed_by_user_id'] ?? null,
             'verifiedAt' => $order['verified_at'] ?? null,
             'verifiedByUserId' => $order['verified_by_user_id'] ?? null,
             'verificationNote' => $order['verification_note'] ?? null,
@@ -74,5 +86,51 @@ class PharmacyOrderResponseTransformer
             'createdAt' => $order['created_at'] ?? null,
             'updatedAt' => $order['updated_at'] ?? null,
         ];
+    }
+
+    /**
+     * Base price of the prescribed medicine, or null when the catalog item
+     * carries no billing link. Null is rendered as "—" rather than a misleading
+     * zero: an unpriced medicine is unknown, not free.
+     *
+     * @param  array<string, mixed>  $order
+     */
+    private static function unitPrice(array $order): ?float
+    {
+        $catalogItemId = trim((string) ($order['approved_medicine_catalog_item_id'] ?? ''));
+        if ($catalogItemId === '') {
+            return null;
+        }
+
+        static $cache = [];
+
+        if (! array_key_exists($catalogItemId, $cache)) {
+            $item = ClinicalCatalogItemModel::query()->find($catalogItemId);
+
+            $basePrice = null;
+            if ($item !== null) {
+                $enriched = app(ClinicalCatalogBillingLinkEnricher::class)->enrich($item->toArray());
+                $basePrice = $enriched['billing_link']['item']['basePrice'] ?? null;
+            }
+
+            $cache[$catalogItemId] = $basePrice === null ? null : (float) $basePrice;
+        }
+
+        return $cache[$catalogItemId];
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     */
+    private static function totalPrice(array $order): ?float
+    {
+        $unitPrice = self::unitPrice($order);
+        if ($unitPrice === null) {
+            return null;
+        }
+
+        $quantity = (float) ($order['quantity_prescribed'] ?? 0);
+
+        return $quantity > 0 ? $unitPrice * $quantity : $unitPrice;
     }
 }

@@ -225,6 +225,10 @@ function inventoryBatchRecord(string $itemId, array $overrides = []): array
         'facility_id' => null,
         'item_id' => $itemId,
         'batch_number' => 'BATCH-'.\Illuminate\Support\Str::upper(\Illuminate\Support\Str::random(8)),
+        // NOT NULL since add_internal_batch_number_to_inventory_batches_table.
+        // Left unset here, so any test reaching a real batch insert died on an
+        // integrity violation rather than on whatever it was actually asserting.
+        'internal_batch_number' => null,
         'lot_number' => null,
         'manufacture_date' => now()->subMonths(2)->toDateString(),
         'expiry_date' => now()->addMonths(6)->toDateString(),
@@ -238,6 +242,10 @@ function inventoryBatchRecord(string $itemId, array $overrides = []): array
         'created_at' => now(),
         'updated_at' => now(),
     ], $overrides);
+
+    // Mirrors the migration's own backfill: staff see this value directly, so
+    // keep the familiar batch number rather than an opaque generated code.
+    $batch['internal_batch_number'] ??= $batch['batch_number'];
 
     \Illuminate\Support\Facades\DB::table('inventory_batches')->insert($batch);
 

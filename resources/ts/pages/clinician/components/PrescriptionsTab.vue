@@ -128,9 +128,22 @@ const commonSuggestedDrugs = computed(() => {
   return STANDARD_DRUG_CATALOG.slice(0, 5);
 });
 
-const placedMedications = computed(() =>
-  props.orders.activeOrders.value.filter((o) => o.type === "medication")
-);
+const placedMedications = computed(() => props.orders.placedMedicationOrders.value);
+
+/**
+ * "3 tabs" reads better than "3", and an unpriced medicine must read as unknown
+ * rather than free — the table showed "-" for both a genuine zero and a missing
+ * price before the API carried one at all.
+ */
+function quantityLabel(order: PlacedClinicalOrder): string {
+  if (!order.quantityPrescribed) return "—";
+
+  return [order.quantityPrescribed, order.prescribedUnit].filter(Boolean).join(" ");
+}
+
+function priceLabel(value: number | null | undefined): string {
+  return value === null || value === undefined ? "—" : `TZS ${value.toLocaleString()}`;
+}
 
 const totalDraftCost = computed(() =>
   props.orders.prescriptionDrafts.value.reduce((acc, cur) => {
@@ -503,11 +516,12 @@ async function handleSubmitPrescriptions() {
         <table class="w-full text-left text-xs table-fixed">
           <thead class="border-b border-border/70 bg-muted/30 text-[10.5px] font-semibold text-muted-foreground uppercase tracking-wider">
             <tr>
-              <th class="p-2 pl-3 w-[30%]">{{ t("clinician.drug_name") }}</th>
-              <th class="p-2 w-[25%]">{{ t("clinician.dosage_and_regimen", "Dosage & Regimen") }}</th>
-              <th class="p-2 w-[15%] text-right">{{ t("clinician.price", "Price") }}</th>
-              <th class="p-2 w-[15%] text-center">{{ t("common.status", "Status") }}</th>
-              <th class="p-2 w-[15%] text-right pr-3">{{ t("common.actions", "Actions") }}</th>
+              <th class="p-2 pl-3 w-[26%]">{{ t("clinician.drug_name") }}</th>
+              <th class="p-2 w-[22%]">{{ t("clinician.dosage_and_regimen", "Dosage & Regimen") }}</th>
+              <th class="p-2 w-[13%] text-right">{{ t("clinician.quantity", "Qty") }}</th>
+              <th class="p-2 w-[17%] text-right">{{ t("clinician.price", "Price") }}</th>
+              <th class="p-2 w-[12%] text-center">{{ t("common.status", "Status") }}</th>
+              <th class="p-2 w-[10%] text-right pr-3">{{ t("common.actions", "Actions") }}</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-border/60">
@@ -518,8 +532,17 @@ async function handleSubmitPrescriptions() {
               <td class="p-2 text-muted-foreground text-[11px] truncate">
                 {{ [order.dosage, order.frequency, order.route].filter(Boolean).join(" · ") }}
               </td>
+              <td class="p-2 text-right font-mono text-[11px] text-foreground">
+                {{ quantityLabel(order) }}
+              </td>
               <td class="p-2 text-right font-mono text-[11px] font-semibold text-foreground">
-                {{ order.price ? `TZS ${order.price.toLocaleString()}` : '-' }}
+                <span>{{ priceLabel(order.price) }}</span>
+                <span
+                  v-if="order.unitPrice && order.quantityPrescribed"
+                  class="block text-[9.5px] font-normal text-muted-foreground"
+                >
+                  {{ priceLabel(order.unitPrice) }} × {{ order.quantityPrescribed }}
+                </span>
               </td>
               <td class="p-2 text-center">
                 <Badge

@@ -79,6 +79,11 @@ class ListLaboratoryOrdersUseCase
             $statuses = LaboratoryOrderStatus::openWorklistValues();
         }
 
+        // Discipline is a real filter now: it reads the catalog's own category
+        // instead of the browser guessing one from the test code.
+        $department = isset($filters['department']) ? strtolower(trim((string) $filters['department'])) : null;
+        $department = ($department === '' || $department === 'all') ? null : $department;
+
         return $this->laboratoryOrderRepository->search(
             query: $query,
             patientId: $patientId,
@@ -94,6 +99,7 @@ class ListLaboratoryOrdersUseCase
             perPage: $perPage,
             sortBy: $sortBy,
             sortDirection: $sortDirection,
+            department: $department,
         );
     }
 }

@@ -43,6 +43,7 @@ import ReturnedPatientAlertDialog, {
 } from "@/pages/reception/components/ReturnedPatientAlertDialog.vue";
 import { printPatientLabel } from "@/pages/reception/patientLabel";
 import { patientInitials } from "@/pages/reception/receptionFormatters";
+import { attachPersistence, makeValidator, persistedRef, readPersistedValue } from "@/composables/usePersistedSelection";
 import { useWorkspaceUrlSync } from "@/composables/useWorkspaceUrlSync";
 import { usePatientStore } from "@/stores/patientStore";
 import { useRecentStore } from "@/stores/recentStore";
@@ -71,52 +72,32 @@ function handleAcknowledgeReturned(info: ReturnedPatientInfo) {
 // workspace-local state, not shell-level state the way theme/density/nav
 // are.
 const RECEPTION_ACTIVE_TAB_KEY = "afyanova:reception:active-tab";
+const RECEPTION_QUEUE_STAGE_KEY = "afyanova:reception:queue-stage";
 type ReceptionTab = "patients" | "queue" | "schedule";
-function loadActiveTab(): ReceptionTab {
-  try {
-    const stored = localStorage.getItem(RECEPTION_ACTIVE_TAB_KEY);
-    if (stored === "patients" || stored === "queue" || stored === "schedule") return stored;
-  } catch {
-    // ignore — falls through to the default below
-  }
-  return "patients";
-}
-const activeTab = ref<ReceptionTab>(loadActiveTab());
-watch(activeTab, (tab) => {
-  try {
-    localStorage.setItem(RECEPTION_ACTIVE_TAB_KEY, tab);
-  } catch {
-    // ignore
-  }
-});
+const RECEPTION_TABS = ["patients", "queue", "schedule"] as const;
+const RECEPTION_QUEUE_STAGES = [
+  "waiting_triage",
+  "waiting_provider",
+  "in_consultation",
+  "admitted",
+] as const;
 
-// Sync selected patient and active tab with URL query params (?patient=...&tab=...)
-const urlSync = useWorkspaceUrlSync({
-  activeTab: activeTab as Ref<string>,
-  selectedPatientId: computed(() => patientStore.currentPatientId),
-  onHydrateTab: (tab) => {
-    if (tab === "patients" || tab === "queue" || tab === "schedule") {
-      activeTab.value = tab as ReceptionTab;
-    }
-  },
-  onHydratePatient: async (patientId) => {
-    if (!patientId) return;
-    const patient =
-      patientStore.patients.get(patientId) ??
-      (await patientStore.fetchPatient(patientId));
-    if (patient) {
-      patientStore.cachePatient(patient);
-      patientStore.setCurrentPatient(patient.id);
-      recentStore.addRecent(patient);
-      return;
-    }
-    // Linked patient no longer exists (deleted record, stale bookmark). Forget
-    // it and drop the dead id from the URL so the workspace settles on its
-    // empty state rather than retrying it on every reload.
-    recentStore.removeRecent(patientId);
-    urlSync.clearPatientSelectionFromUrl();
-  },
-});
+const { state: activeTab, isValid: isReceptionTab } = persistedRef<ReceptionTab>(
+  RECEPTION_ACTIVE_TAB_KEY,
+  RECEPTION_TABS,
+  "patients",
+);
+
+const isReceptionQueueStage = makeValidator(RECEPTION_QUEUE_STAGES);
+
+// Read before the queue is constructed: it fetches per stage, so the restored
+// stage has to be known in time for the first request rather than applied after.
+const initialQueueStage = readPersistedValue(
+  RECEPTION_QUEUE_STAGE_KEY,
+  isReceptionQueueStage,
+  "waiting_triage",
+);
+
 
 // ---- Patient search + recent patients (Volume 2.1 §7.2, Volume 1.3
 // §6.3/§9.1, Volume 1.2 §6). Extracted to composables/usePatientSearch.ts
@@ -339,11 +320,49 @@ onBeforeUnmount(() => {
 // progress" and Audit trail never showed the cancellation, even though
 // CancelQueueItemUseCase (backend) was correctly recording both.
 const queueActions = useQueueActions({
+  initialStage: initialQueueStage,
   onCancelled: (patientId) => {
     if (selectedPatient.value?.id === patientId) {
       void patientProfile.refreshSummary(patientId);
       void patientProfile.fetchPatientActivityFeed(patientId);
     }
+  },
+});
+
+attachPersistence(queueActions.selectedStage, RECEPTION_QUEUE_STAGE_KEY, isReceptionQueueStage);
+
+// Sync selected patient and active tab with URL query params (?patient=...&tab=...)
+const urlSync = useWorkspaceUrlSync({
+  activeTab: activeTab as Ref<string>,
+  selectedPatientId: computed(() => patientStore.currentPatientId),
+  onHydrateTab: (tab) => {
+    if (isReceptionTab(tab)) activeTab.value = tab;
+  },
+  // The queue's stage filter had no persistence at all, so a receptionist
+  // working the "Waiting Provider" list was dropped back to "Waiting Triage" on
+  // every refresh — the same gap the clinician queue had.
+  params: {
+    queueStage: {
+      ref: queueActions.selectedStage as Ref<string>,
+      isValid: isReceptionQueueStage,
+    },
+  },
+  onHydratePatient: async (patientId) => {
+    if (!patientId) return;
+    const patient =
+      patientStore.patients.get(patientId) ??
+      (await patientStore.fetchPatient(patientId));
+    if (patient) {
+      patientStore.cachePatient(patient);
+      patientStore.setCurrentPatient(patient.id);
+      recentStore.addRecent(patient);
+      return;
+    }
+    // Linked patient no longer exists (deleted record, stale bookmark). Forget
+    // it and drop the dead id from the URL so the workspace settles on its
+    // empty state rather than retrying it on every reload.
+    recentStore.removeRecent(patientId);
+    urlSync.clearPatientSelectionFromUrl();
   },
 });
 

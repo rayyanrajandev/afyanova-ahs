@@ -1,11 +1,11 @@
-/**
- * ReportEntryTab — Modality Examination & Structured Diagnostic Reporting (2027 Standard)
- * =========================================================================================
- * - Integrated DICOM PACS Viewer (Interactive Viewport, W/L Presets, Measurements)
- * - Quick 1-Click Clinical Normal Diagnostic Templates
- * - Structured Diagnostic Findings Editor (Technique, Findings, Impression)
- * - Clear workflow gates (Start Examination → Enter Findings → Submit for Verification)
- */
+/** * ReportEntryTab — Modality Examination & Structured Diagnostic Reporting
+(2027 Standard) *
+=========================================================================================
+* - Integrated DICOM PACS Viewer (Interactive Viewport, W/L Presets,
+Measurements) * - Quick 1-Click Clinical Normal Diagnostic Templates * -
+Structured Diagnostic Findings Editor (Technique, Findings, Impression) * -
+Clear workflow gates (Start Examination → Enter Findings → Submit for
+Verification) */
 
 <script setup lang="ts">
 import {
@@ -29,7 +29,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { RadiologyOrder, UseRadiologyOrders } from "../composables/useRadiologyOrders";
+import type {
+  RadiologyOrder,
+  UseRadiologyOrders,
+} from "../composables/useRadiologyOrders";
 import RadiologyPacsViewer from "./RadiologyPacsViewer.vue";
 
 const props = defineProps<{
@@ -125,15 +128,21 @@ watch(
   { immediate: true },
 );
 
-const canStart = computed(() => ["ordered", "scheduled"].includes(props.order.status));
+const canStart = computed(() =>
+  ["ordered", "scheduled"].includes(props.order.status),
+);
 const isWalkIn = computed(() => props.order.status === "ordered");
 const canReport = computed(() => props.order.status === "in_progress");
-const isReported = computed(() => ["completed", "cancelled"].includes(props.order.status));
+const isReported = computed(() =>
+  ["completed", "cancelled"].includes(props.order.status),
+);
 const isReleased = computed(() => Boolean(props.order.verifiedAt));
 
 const matchingTemplates = computed(() => {
   const mod = props.order.modality?.toLowerCase() || "";
-  return TEMPLATES.filter((t) => t.modality === mod || mod.includes(t.modality));
+  return TEMPLATES.filter(
+    (t) => t.modality === mod || mod.includes(t.modality),
+  );
 });
 
 function applyTemplate(tmpl: ReportTemplate) {
@@ -157,7 +166,12 @@ async function submit() {
       <div class="flex items-center gap-2">
         <FileEdit class="size-4 text-primary" />
         <h3 class="text-sm font-bold text-foreground">
-          {{ t('radiology.report_title', 'Diagnostic Examination & Structured Report') }}
+          {{
+            t(
+              "radiology.report_title",
+              "Diagnostic Examination & Structured Report",
+            )
+          }}
         </h3>
       </div>
 
@@ -166,15 +180,19 @@ async function submit() {
           variant="outline"
           class="text-[10px] uppercase font-mono px-2 py-0.5"
           :class="[
-            canReport ? 'border-purple-500 text-purple-600 bg-purple-500/10' :
-            isReported ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10' :
-            'border-amber-500 text-amber-600 bg-amber-500/10'
+            canReport
+              ? 'border-purple-500 text-purple-600 bg-purple-500/10'
+              : isReported
+                ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10'
+                : 'border-amber-500 text-amber-600 bg-amber-500/10',
           ]"
         >
           {{
-            canReport ? t('radiology.status_in_exam', 'Examination in Progress') :
-            isReported ? t('radiology.status_report_submitted', 'Report Submitted') :
-            t('radiology.status_awaiting_acq', 'Awaiting Acquisition')
+            canReport
+              ? t("radiology.status_in_exam", "Examination in Progress")
+              : isReported
+                ? t("radiology.status_report_submitted", "Report Submitted")
+                : t("radiology.status_awaiting_acq", "Awaiting Acquisition")
           }}
         </Badge>
       </div>
@@ -186,15 +204,29 @@ async function submit() {
       class="rounded-lg border border-primary/30 bg-primary/5 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs"
     >
       <div class="flex items-start gap-3">
-        <div class="size-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0 mt-0.5">
+        <div
+          class="size-8 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0 mt-0.5"
+        >
           <Play class="size-4 fill-current" />
         </div>
         <div>
           <h4 class="text-xs font-bold text-foreground">
-            {{ isWalkIn ? t('radiology.walk_in_title', 'Walk-in Examination Ready') : t('radiology.scheduled_ready_title', 'Booked Patient Examination') }}
+            {{
+              isWalkIn
+                ? t("radiology.walk_in_title", "Walk-in Examination Ready")
+                : t(
+                    "radiology.scheduled_ready_title",
+                    "Booked Patient Examination",
+                  )
+            }}
           </h4>
           <p class="text-xs text-muted-foreground mt-0.5">
-            {{ t('radiology.start_scan_hint', 'Click Start when the patient is positioned in the examination room. This moves the patient\'s global visit stage to "In Radiology".') }}
+            {{
+              t(
+                "radiology.start_scan_hint",
+                'Click Start when the patient is positioned in the examination room. This moves the patient\'s global visit stage to "In Radiology".',
+              )
+            }}
           </p>
         </div>
       </div>
@@ -207,14 +239,16 @@ async function submit() {
         @click="start"
       >
         <Play class="size-3.5 fill-current" />
-        <span>{{ t('radiology.start_study', 'Start Examination') }}</span>
+        <span>{{ t("radiology.start_study", "Start Examination") }}</span>
       </Button>
     </div>
 
     <!-- DICOM PACS Medical Image Viewer Stage -->
     <section class="space-y-1.5">
       <div class="flex items-center justify-between">
-        <Label class="text-xs font-bold text-foreground flex items-center gap-1.5">
+        <Label
+          class="text-xs font-bold text-foreground flex items-center gap-1.5"
+        >
           <Scan class="size-3.5 text-sky-500" />
           <span>Diagnostic DICOM &amp; Modality Image Series</span>
         </Label>
@@ -223,19 +257,23 @@ async function submit() {
         </span>
       </div>
 
-      <RadiologyPacsViewer
-        :order="props.order"
-        :radiology="props.radiology"
-      />
+      <RadiologyPacsViewer :order="props.order" :radiology="props.radiology" />
     </section>
 
     <!-- Step 2: Diagnostic Reporting Console -->
     <div class="space-y-3 pt-1">
       <!-- Quick Diagnostic Templates Toolbar -->
-      <div v-if="canReport" class="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg border border-border/80 bg-muted/20">
-        <div class="flex items-center gap-1.5 text-xs text-muted-foreground font-semibold">
+      <div
+        v-if="canReport"
+        class="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg border border-border/80 bg-muted/20"
+      >
+        <div
+          class="flex items-center gap-1.5 text-xs text-muted-foreground font-semibold"
+        >
           <Sparkles class="size-3.5 text-amber-500" />
-          <span>{{ t('radiology.insert_template', 'Quick Clinical Normal Templates:') }}</span>
+          <span>{{
+            t("radiology.insert_template", "Quick Clinical Normal Templates:")
+          }}</span>
         </div>
 
         <div class="flex flex-wrap items-center gap-1.5">
@@ -274,7 +312,12 @@ async function submit() {
       <div class="space-y-1.5">
         <div class="flex items-center justify-between">
           <Label class="text-xs font-bold text-foreground">
-            {{ t('radiology.findings_label', 'Structured Diagnostic Findings & Clinical Impression') }}
+            {{
+              t(
+                "radiology.findings_label",
+                "Structured Diagnostic Findings & Clinical Impression",
+              )
+            }}
           </Label>
           <span class="text-[10px] font-mono text-muted-foreground">
             {{ report.length }} characters
@@ -286,19 +329,39 @@ async function submit() {
           rows="12"
           class="font-mono text-xs leading-relaxed resize-y bg-surface"
           :disabled="!canReport"
-          :placeholder="t('radiology.findings_placeholder', 'Enter technique, observations, anatomical measurements, and clinical impression...')"
+          :placeholder="
+            t(
+              'radiology.findings_placeholder',
+              'Enter technique, observations, anatomical measurements, and clinical impression...',
+            )
+          "
         />
       </div>
 
       <!-- Submit Action & Verification Notice -->
-      <div class="flex items-center justify-between border-t border-border pt-3">
+      <div
+        class="flex items-center justify-between border-t border-border pt-3"
+      >
         <div>
           <p v-if="canReport" class="text-[11px] text-muted-foreground">
-            {{ t('radiology.submit_info', 'Submitting will notify the verifying radiologist to authorize and release the report to the doctor chart.') }}
+            {{
+              t(
+                "radiology.submit_info",
+                "Submitting will notify the verifying radiologist to authorize and release the report to the doctor chart.",
+              )
+            }}
           </p>
-          <p v-else-if="!isReleased" class="text-[11px] text-primary font-semibold flex items-center gap-1.5">
+          <p
+            v-else-if="!isReleased"
+            class="text-[11px] text-primary font-semibold flex items-center gap-1.5"
+          >
             <ShieldAlert class="size-3.5" />
-            <span>{{ t('radiology.awaiting_second_review', 'Report submitted. Awaiting second radiologist verification.') }}</span>
+            <span>{{
+              t(
+                "radiology.awaiting_second_review",
+                "Report submitted. Awaiting second radiologist verification.",
+              )
+            }}</span>
           </p>
         </div>
 
@@ -311,7 +374,9 @@ async function submit() {
           @click="submit"
         >
           <Send class="size-3.5" />
-          <span>{{ t('radiology.submit_report', 'Submit for Verification') }}</span>
+          <span>{{
+            t("radiology.submit_report", "Submit for Verification")
+          }}</span>
         </Button>
       </div>
     </div>

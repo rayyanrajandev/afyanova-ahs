@@ -29,6 +29,7 @@ use App\Modules\Pharmacy\Application\UseCases\ListPharmacyOrderStatusCountsUseCa
 use App\Modules\Pharmacy\Application\UseCases\ReconcilePharmacyOrderUseCase;
 use App\Modules\Pharmacy\Application\UseCases\UpdatePharmacyOrderPolicyUseCase;
 use App\Modules\Pharmacy\Application\UseCases\VerifyPharmacyOrderDispenseUseCase;
+use App\Modules\Pharmacy\Application\UseCases\SignPharmacyOrderUseCase;
 use App\Modules\Pharmacy\Application\UseCases\UpdatePharmacyOrderStatusUseCase;
 use App\Modules\Pharmacy\Application\UseCases\UpdatePharmacyOrderUseCase;
 use App\Modules\Pharmacy\Presentation\Http\Requests\ReconcilePharmacyOrderRequest;
@@ -45,6 +46,7 @@ use App\Modules\Pharmacy\Presentation\Http\Transformers\PharmacyOrderResponseTra
 use App\Modules\Pharmacy\Infrastructure\Models\PharmacyOrderModel;
 use App\Support\ClinicalOrders\ClinicalOrderPatientSummaryEnricher;
 use App\Support\ClinicalOrders\ClinicalOrderUserSummaryEnricher;
+use App\Support\ClinicalOrders\ClinicalOrderVisitStageEnricher;
 use App\Modules\Platform\Application\UseCases\ListClinicalCatalogItemsUseCase;
 use App\Modules\Platform\Domain\ValueObjects\ClinicalCatalogType;
 use App\Modules\Platform\Presentation\Http\Transformers\ClinicalCatalogItemResponseTransformer;
@@ -73,6 +75,12 @@ class PharmacyOrderController extends Controller
             $result['data'],
             array_map([PharmacyOrderResponseTransformer::class, 'transform'], $result['data']),
         );
+
+        // visitStage lets the worklist say where each patient actually is rather
+        // than only where this prescription is. Laboratory and radiology have
+        // carried it since their workspaces were built; without it the shared
+        // stage badge simply never renders on a pharmacy row.
+        $orders = ClinicalOrderVisitStageEnricher::attachToTransformedOrders($result['data'], $orders);
 
         return response()->json([
             'data' => ClinicalOrderUserSummaryEnricher::attachOrderingClinicianToTransformedOrders($result['data'], $orders),
@@ -164,6 +172,7 @@ class PharmacyOrderController extends Controller
 
         $transformed = PharmacyOrderResponseTransformer::transform($order);
         $enriched = ClinicalOrderPatientSummaryEnricher::attachToTransformedOrders([$order], [$transformed]);
+        $enriched = ClinicalOrderVisitStageEnricher::attachToTransformedOrders([$order], $enriched);
         $enriched = ClinicalOrderUserSummaryEnricher::attachOrderingClinicianToTransformedOrders([$order], $enriched);
 
         return response()->json([
@@ -304,6 +313,35 @@ class PharmacyOrderController extends Controller
                 ? 'approvedMedicineCatalogItemId'
                 : 'medicationCode';
             return $this->validationError($field, $exception->getMessage());
+        }
+
+        abort_if($order === null, 404, 'Pharmacy order not found.');
+
+        return response()->json([
+            'data' => PharmacyOrderResponseTransformer::transform($order),
+        ]);
+    }
+
+    /**
+     * Commits a drafted prescription so it becomes real work for pharmacy.
+     *
+     * Pharmacy had discardDraft but no sign, so a draft could only ever be
+     * thrown away. Mirrors LaboratoryOrderController::sign().
+     */
+    public function sign(string $id, Request $request, SignPharmacyOrderUseCase $useCase): JsonResponse
+    {
+        try {
+            $order = $useCase->execute(
+                id: $id,
+                actorId: $request->user()?->id,
+                safetyAcknowledged: $request->boolean('safetyAcknowledged'),
+                safetyOverrideCode: $request->input('safetyOverrideCode'),
+                safetyOverrideReason: $request->input('safetyOverrideReason'),
+            );
+        } catch (TenantScopeRequiredForIsolationException $exception) {
+            return $this->tenantScopeRequiredError($exception->getMessage());
+        } catch (ValidationException $exception) {
+            return $this->validationExceptionResponse($exception);
         }
 
         abort_if($order === null, 404, 'Pharmacy order not found.');

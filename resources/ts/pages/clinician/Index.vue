@@ -33,6 +33,7 @@ import { usePatientFlowLiveSync } from "@/composables/usePatientFlowLiveSync";
 import { useToast } from "@/composables/useToast";
 import { useWorkspaceUrlSync } from "@/composables/useWorkspaceUrlSync";
 import { usePatientSearch } from "@/pages/reception/composables/usePatientSearch";
+import { attachPersistence, makeValidator, persistedRef } from "@/composables/usePersistedSelection";
 import { usePatientStore, type Patient } from "@/stores/patientStore";
 import type { ReadinessContext, VisitContext } from "@/stores/queueStore";
 
@@ -59,49 +60,24 @@ const patientStore = usePatientStore();
 const CLINICIAN_CONTEXT_TAB_KEY = "afyanova:clinician:context_tab";
 const CLINICIAN_CHART_TAB_KEY = "afyanova:clinician:chart_tab";
 
-function loadSavedContextTab(): "queue" | "patients" {
-  try {
-    const saved = localStorage.getItem(CLINICIAN_CONTEXT_TAB_KEY);
-    if (saved === "queue" || saved === "patients") return saved;
-  } catch {
-    // ignore
-  }
-  return "queue";
-}
+const CLINICIAN_QUEUE_STAGE_KEY = "afyanova:clinician:queue_stage";
 
-function loadSavedChartTab(): "consultation" | "vitals" | "orders" | "prescriptions" | "results" | "activity" {
-  try {
-    const saved = localStorage.getItem(CLINICIAN_CHART_TAB_KEY);
-    if (["consultation", "vitals", "orders", "prescriptions", "results", "activity"].includes(saved as string)) {
-      return saved as any;
-    }
-  } catch {
-    // ignore
-  }
-  return "consultation";
-}
+const CONTEXT_TABS = ["queue", "patients"] as const;
+const CHART_TABS = ["consultation", "vitals", "orders", "prescriptions", "results", "activity"] as const;
+const QUEUE_STAGES = ["waiting_provider", "in_consultation", "admitted", "completed"] as const;
 
-// Left Context Pane active tab
-const contextTab = ref<"queue" | "patients">(loadSavedContextTab());
 
-// Main Pane chart active tab
-const activeChartTab = ref<"consultation" | "vitals" | "orders" | "prescriptions" | "results" | "activity">(loadSavedChartTab());
-
-watch(contextTab, (tab) => {
-  try {
-    localStorage.setItem(CLINICIAN_CONTEXT_TAB_KEY, tab);
-  } catch {
-    // ignore
-  }
-});
-
-watch(activeChartTab, (tab) => {
-  try {
-    localStorage.setItem(CLINICIAN_CHART_TAB_KEY, tab);
-  } catch {
-    // ignore
-  }
-});
+const { state: contextTab, isValid: isContextTab } = persistedRef(
+  CLINICIAN_CONTEXT_TAB_KEY,
+  CONTEXT_TABS,
+  "queue",
+);
+const { state: activeChartTab, isValid: isChartTab } = persistedRef(
+  CLINICIAN_CHART_TAB_KEY,
+  CHART_TABS,
+  "consultation",
+);
+const isQueueStage = makeValidator(QUEUE_STAGES);
 
 // Active Patient Context
 const selectedPatient = ref<Patient | null>(null);
@@ -125,6 +101,12 @@ const queueManager = useClinicianQueue({
     openPatientRecord(patientId, encounterId, visit, readiness);
   },
 });
+
+// The queue's stage filter is the third selection on this screen and the only
+// one that never survived a reload: a doctor working the "In Consult" list was
+// dropped back to "Waiting Doctor" on every refresh. Persisted on the queue's
+// own ref so there is no second copy to drift.
+attachPersistence(queueManager.selectedStage, CLINICIAN_QUEUE_STAGE_KEY, isQueueStage);
 
 async function openPatientRecord(
   patientId: string,
@@ -256,15 +238,21 @@ const urlSync = useWorkspaceUrlSync({
   activeChartTab: activeChartTab as Ref<string>,
   selectedPatientId: computed(() => selectedPatient.value?.id),
   selectedEncounterId: selectedEncounterId,
+  // Validators come from the same lists the refs were built with, so a
+  // hand-edited URL cannot push a value the workspace has no branch for.
   onHydrateTab: (tab) => {
-    if (tab === "queue" || tab === "patients") {
-      contextTab.value = tab;
-    }
+    if (isContextTab(tab)) contextTab.value = tab;
   },
   onHydrateChartTab: (tab) => {
-    if (["consultation", "vitals", "orders", "prescriptions", "results", "activity"].includes(tab)) {
-      activeChartTab.value = tab as any;
-    }
+    if (isChartTab(tab)) activeChartTab.value = tab;
+  },
+  // The queue's stage filter rides the same mechanism as the two tab bars, so
+  // all three restore together instead of two out of three.
+  params: {
+    queueStage: {
+      ref: queueManager.selectedStage as Ref<string>,
+      isValid: isQueueStage,
+    },
   },
   onHydratePatient: async (patientId, encounterId) => {
     if (!patientId) return;
@@ -733,10 +721,10 @@ usePatientFlowLiveSync({
                     <FlaskConical class="size-3.5 text-blue-600 dark:text-blue-400" />
                     <span>{{ t("clinician.diagnostic_orders") }}</span>
                     <span
-                      v-if="ordersManager.activeOrders.value.length > 0"
+                      v-if="ordersManager.diagnosticOrders.value.length > 0"
                       class="rounded-full bg-blue-500/15 px-1.5 py-0 text-[10px] font-bold text-blue-600 dark:text-blue-400 font-mono"
                     >
-                      {{ ordersManager.activeOrders.value.length }}
+                      {{ ordersManager.diagnosticOrders.value.length }}
                     </span>
                   </TabsTrigger>
 
@@ -748,10 +736,10 @@ usePatientFlowLiveSync({
                     <Pill class="size-3.5 text-purple-600 dark:text-purple-400" />
                     <span>{{ t("clinician.prescriptions") }}</span>
                     <span
-                      v-if="ordersManager.prescriptionDrafts.value.length > 0"
+                      v-if="ordersManager.prescriptionCount.value > 0"
                       class="rounded-full bg-purple-500/15 px-1.5 py-0 text-[10px] font-bold text-purple-600 dark:text-purple-400 font-mono"
                     >
-                      {{ ordersManager.prescriptionDrafts.value.length }}
+                      {{ ordersManager.prescriptionCount.value }}
                     </span>
                   </TabsTrigger>
 

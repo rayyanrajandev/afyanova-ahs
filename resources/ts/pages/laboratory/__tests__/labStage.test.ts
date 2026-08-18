@@ -58,15 +58,23 @@ describe("labStageOf", () => {
     ["completed", undefined, "awaiting_release"],
     ["completed", "2026-08-17T09:00:00Z", "released"],
     ["cancelled", undefined, "rejected"],
-  ] as const)("maps status %s (verifiedAt %s) to %s", (status, verifiedAt, expected) => {
-    expect(labStageOf({ status: status as LaboratoryOrderStatus, verifiedAt })).toBe(expected);
-  });
+  ] as const)(
+    "maps status %s (verifiedAt %s) to %s",
+    (status, verifiedAt, expected) => {
+      expect(
+        labStageOf({ status: status as LaboratoryOrderStatus, verifiedAt }),
+      ).toBe(expected);
+    },
+  );
 
   it("separates a saved draft from a released report", () => {
     // The old UI treated `completed` as released, so a draft rendered as a
     // "Final Verified Report" the instant results were typed.
     const draft = order({ status: "completed", verifiedAt: null });
-    const released = order({ status: "completed", verifiedAt: "2026-08-17T09:00:00Z" });
+    const released = order({
+      status: "completed",
+      verifiedAt: "2026-08-17T09:00:00Z",
+    });
 
     expect(labStageOf(draft)).toBe("awaiting_release");
     expect(labStageOf(released)).toBe("released");
@@ -94,7 +102,11 @@ describe("isLabTabReachable", () => {
   });
 
   it("always allows the read-only audit and journey tabs", () => {
-    for (const stage of [...LAB_STAGE_SEQUENCE, "released", "rejected"] as const) {
+    for (const stage of [
+      ...LAB_STAGE_SEQUENCE,
+      "released",
+      "rejected",
+    ] as const) {
       expect(isLabTabReachable("audit", stage)).toBe(true);
       expect(isLabTabReachable("journey", stage)).toBe(true);
     }
@@ -119,7 +131,10 @@ describe("LAB_STAGE_TAB", () => {
 describe("result completeness", () => {
   it("refuses to call a partially filled panel complete", () => {
     const partial = order({
-      parameters: [param({ key: "hb", value: "13.2" }), param({ key: "mcv", value: null })],
+      parameters: [
+        param({ key: "hb", value: "13.2" }),
+        param({ key: "mcv", value: null }),
+      ],
     });
 
     expect(hasCompleteResults(partial)).toBe(false);
@@ -128,14 +143,24 @@ describe("result completeness", () => {
 
   it("treats blank and whitespace-only values as missing", () => {
     // These are what produced "Hemoglobin: — g/dL" on a real patient chart.
-    expect(hasCompleteResults(order({ parameters: [param({ value: "" })] }))).toBe(false);
-    expect(hasCompleteResults(order({ parameters: [param({ value: "   " })] }))).toBe(false);
-    expect(hasCompleteResults(order({ parameters: [param({ value: null })] }))).toBe(false);
+    expect(
+      hasCompleteResults(order({ parameters: [param({ value: "" })] })),
+    ).toBe(false);
+    expect(
+      hasCompleteResults(order({ parameters: [param({ value: "   " })] })),
+    ).toBe(false);
+    expect(
+      hasCompleteResults(order({ parameters: [param({ value: null })] })),
+    ).toBe(false);
   });
 
   it("accepts a fully filled panel, including a legitimate zero", () => {
-    expect(hasCompleteResults(order({ parameters: [param({ value: 0 })] }))).toBe(true);
-    expect(hasCompleteResults(order({ parameters: [param({ value: "Negative" })] }))).toBe(true);
+    expect(
+      hasCompleteResults(order({ parameters: [param({ value: 0 })] })),
+    ).toBe(true);
+    expect(
+      hasCompleteResults(order({ parameters: [param({ value: "Negative" })] })),
+    ).toBe(true);
   });
 
   it("never calls an order with no parameters complete", () => {
@@ -146,23 +171,37 @@ describe("result completeness", () => {
 describe("secondReviewReason", () => {
   it("demands a second review for any critical value", () => {
     expect(
-      secondReviewReason(order({ parameters: [param({ value: "4.1", flag: "critical_low" })] })),
+      secondReviewReason(
+        order({ parameters: [param({ value: "4.1", flag: "critical_low" })] }),
+      ),
     ).toBe("critical");
     expect(
-      secondReviewReason(order({ parameters: [param({ value: "22", flag: "critical_high" })] })),
+      secondReviewReason(
+        order({ parameters: [param({ value: "22", flag: "critical_high" })] }),
+      ),
     ).toBe("critical");
   });
 
   it("demands a second review for high-stakes disciplines", () => {
-    expect(secondReviewReason(order({ testCode: "LAB-SER-HIV-RDT" }))).toBe("high_stakes");
-    expect(secondReviewReason(order({ testCode: "LAB-BB-ABO-RH" }))).toBe("high_stakes");
-    expect(secondReviewReason(order({ department: "Blood Bank" }))).toBe("high_stakes");
+    expect(secondReviewReason(order({ testCode: "LAB-SER-HIV-RDT" }))).toBe(
+      "high_stakes",
+    );
+    expect(secondReviewReason(order({ testCode: "LAB-BB-ABO-RH" }))).toBe(
+      "high_stakes",
+    );
+    expect(secondReviewReason(order({ department: "Blood Bank" }))).toBe(
+      "high_stakes",
+    );
   });
 
   it("stays quiet on routine normal results, so the prompt keeps its meaning", () => {
-    expect(secondReviewReason(order({ parameters: [param({ value: "13.2" })] }))).toBeNull();
     expect(
-      secondReviewReason(order({ parameters: [param({ value: "18.4", flag: "abnormal" })] })),
+      secondReviewReason(order({ parameters: [param({ value: "13.2" })] })),
+    ).toBeNull();
+    expect(
+      secondReviewReason(
+        order({ parameters: [param({ value: "18.4", flag: "abnormal" })] }),
+      ),
     ).toBeNull();
   });
 });

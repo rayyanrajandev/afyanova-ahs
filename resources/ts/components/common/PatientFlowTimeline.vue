@@ -55,7 +55,7 @@ const props = defineProps<{
   /** Which scoped API prefix to read from. */
   // Each workspace reads the timeline through its own scoped route, so this
   // union must list every workspace that has one registered.
-  workspace: "clinician" | "nursing" | "reception" | "laboratory" | "radiology";
+  workspace: "clinician" | "nursing" | "reception" | "laboratory" | "radiology" | "pharmacy";
 }>();
 
 const { t } = useI18n({ useScope: "global" });
@@ -231,10 +231,34 @@ function getStepIcon(entry: FlowTimelineEntry) {
       </Button>
     </header>
 
-    <!-- Loading State -->
-    <div v-if="isLoading" class="py-12 flex flex-col items-center justify-center gap-2 text-center text-xs text-muted-foreground">
-      <RefreshCw class="size-5 animate-spin text-primary" />
-      <span>Loading clinical activity timeline...</span>
+    <span v-if="isLoading" class="sr-only" role="status">
+      {{ t("flow_timeline.loading", "Loading clinical activity timeline") }}
+    </span>
+
+    <!--
+      Loading State. A skeleton, not a spinner: content loads as a skeleton
+      everywhere else in this system (the shared Queue, and the laboratory,
+      pharmacy and radiology worklists), and a spinner here was the last place
+      that disagreed. Spinners stay on the things you press.
+
+      Shaped like the rail it replaces, so the timeline does not jump when the
+      real entries arrive.
+    -->
+    <div
+      v-if="isLoading && entries.length === 0"
+      class="space-y-3 py-4"
+      aria-hidden="true"
+    >
+      <div v-for="n in 3" :key="n" class="flex gap-3">
+        <div class="flex flex-col items-center gap-1">
+          <div class="size-6 shrink-0 animate-pulse rounded-full bg-muted" />
+          <div v-if="n < 3" class="h-8 w-px animate-pulse bg-muted" />
+        </div>
+        <div class="flex-1 space-y-1.5 pt-1">
+          <div class="h-3 w-2/5 animate-pulse rounded bg-muted" />
+          <div class="h-2.5 w-3/5 animate-pulse rounded bg-muted/80" />
+        </div>
+      </div>
     </div>
 
     <!-- Error State -->

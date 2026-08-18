@@ -53,6 +53,7 @@ class PharmacyOrderModel extends Model
         'dispensed_unit',
         'dispensing_notes',
         'dispensed_at',
+        'dispensed_by_user_id',
         'verified_at',
         'verified_by_user_id',
         'verification_note',

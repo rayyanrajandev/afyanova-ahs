@@ -3,6 +3,7 @@
 namespace App\Modules\Encounter\Infrastructure\Repositories;
 
 use App\Modules\Encounter\Domain\Repositories\EncounterRepositoryInterface;
+use App\Modules\Encounter\Domain\ValueObjects\ClinicianQueueStage;
 use App\Modules\Encounter\Domain\ValueObjects\EncounterStatus;
 use App\Modules\Encounter\Infrastructure\Models\EncounterModel;
 use App\Modules\MedicalRecord\Infrastructure\Models\MedicalRecordModel;
@@ -28,7 +29,8 @@ class EloquentEncounterRepository implements EncounterRepositoryInterface
         int $page,
         int $perPage,
         ?string $sortBy,
-        string $sortDirection
+        string $sortDirection,
+        ?ClinicianQueueStage $queueStage = null
     ): array {
         $sortBy = in_array($sortBy, ['encounter_number', 'status', 'opened_at', 'closed_at', 'created_at', 'updated_at'], true)
             ? $sortBy
@@ -46,6 +48,7 @@ class EloquentEncounterRepository implements EncounterRepositoryInterface
         ]);
         $this->applyPlatformScopeIfEnabled($queryBuilder);
         $this->applyFilters($queryBuilder, $query, $patientId, $status, $primaryClinicianUserId, $fromDateTime, $toDateTime);
+        $queueStage?->applyTo($queryBuilder);
 
         $queryBuilder->orderBy($sortBy, $sortDirection);
 
@@ -99,6 +102,27 @@ class EloquentEncounterRepository implements EncounterRepositoryInterface
         }
 
         return $latestByEncounterId;
+    }
+
+    public function queueStageCounts(
+        ?string $query,
+        ?string $patientId,
+        ?int $primaryClinicianUserId,
+        ?string $fromDateTime,
+        ?string $toDateTime
+    ): array {
+        $counts = [];
+
+        foreach (ClinicianQueueStage::cases() as $stage) {
+            $queryBuilder = EncounterModel::query();
+            $this->applyPlatformScopeIfEnabled($queryBuilder);
+            $this->applyFilters($queryBuilder, $query, $patientId, null, $primaryClinicianUserId, $fromDateTime, $toDateTime);
+            $stage->applyTo($queryBuilder);
+
+            $counts[$stage->value] = $queryBuilder->count();
+        }
+
+        return $counts;
     }
 
     public function statusCounts(

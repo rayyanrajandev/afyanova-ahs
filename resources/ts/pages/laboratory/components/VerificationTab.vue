@@ -1,13 +1,11 @@
-/**
- * VerificationTab — Senior Scientist Electronic Validation & EMR Release (Volume 2.4 §7.2)
- * =======================================================================================
- * 2027 Modern Enterprise Hospital LIS Verification Station:
- * - Comprehensive Diagnostic Report Card Preview
- * - Two-Eye Review: Parameter Inspection & QC Run Validation
- * - Supervisor Clinical Impression & Authorization Remarks
- * - Instant Electronic Release to Clinician Chart & PDF Export
- * - Full Internationalization (i18n) Support
- */
+/** * VerificationTab — Senior Scientist Electronic Validation & EMR Release
+(Volume 2.4 §7.2) *
+=======================================================================================
+* 2027 Modern Enterprise Hospital LIS Verification Station: * - Comprehensive
+Diagnostic Report Card Preview * - Two-Eye Review: Parameter Inspection & QC Run
+Validation * - Supervisor Clinical Impression & Authorization Remarks * -
+Instant Electronic Release to Clinician Chart & PDF Export * - Full
+Internationalization (i18n) Support */
 
 <script setup lang="ts">
 import {
@@ -45,7 +43,10 @@ import {
   type LaboratoryOrder,
   type UseLaboratoryOrders,
 } from "../composables/useLaboratoryOrders";
-import { printLaboratoryReport, printConsolidatedLaboratoryReport } from "../laboratoryReportPrint";
+import {
+  printLaboratoryReport,
+  printConsolidatedLaboratoryReport,
+} from "../laboratoryReportPrint";
 
 const props = defineProps<{
   order: LaboratoryOrder;
@@ -55,7 +56,9 @@ const props = defineProps<{
 const { t } = useI18n({ useScope: "global" });
 
 const patientOrders = computed(() =>
-  props.laboratory.orders.value.filter((o) => o.patientId === props.order.patientId),
+  props.laboratory.orders.value.filter(
+    (o) => o.patientId === props.order.patientId,
+  ),
 );
 
 const supervisorComments = ref(props.order.interpretation || "");
@@ -123,13 +126,19 @@ const selfVerifyAcknowledged = ref(false);
 
 const releaseBlockReason = computed<string | null>(() => {
   if (!canRelease.value) {
-    return t("laboratory.release_blocked_stage", "Save the results before releasing this report.");
+    return t(
+      "laboratory.release_blocked_stage",
+      "Save the results before releasing this report.",
+    );
   }
   if (supervisorComments.value.trim() === "") {
     return t("laboratory.release_blocked_note", "A release note is required.");
   }
   if (secondReview.value !== null && !selfVerifyAcknowledged.value) {
-    return t("laboratory.release_blocked_review", "Confirm the second-review declaration first.");
+    return t(
+      "laboratory.release_blocked_review",
+      "Confirm the second-review declaration first.",
+    );
   }
 
   return null;
@@ -156,20 +165,35 @@ function handlePrintAllPatientTests() {
 
 <template>
   <div class="space-y-3.5 p-3.5 w-full">
-    
-
-
     <!-- Released Success Banner -->
     <div
       v-if="isReleased"
       class="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-950 dark:text-emerald-100 flex items-center justify-between gap-2.5 shadow-xs"
     >
       <div class="flex items-center gap-2.5 min-w-0">
-        <ShieldCheck class="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+        <ShieldCheck
+          class="size-4 text-emerald-600 dark:text-emerald-400 shrink-0"
+        />
         <div class="min-w-0">
-          <p class="font-bold text-xs leading-tight">{{ t('laboratory.verified_banner_title', 'Diagnostic Report Electronically Verified & Released') }}</p>
-          <p class="text-[11px] text-emerald-800/85 dark:text-emerald-300/85 mt-0.5 font-mono leading-tight truncate">
-            {{ t('laboratory.verified_banner_desc', { user: order.verifiedBy || 'Senior MLS', time: order.verifiedAt ? new Date(order.verifiedAt).toLocaleString() : 'Recent' }) }}
+          <p class="font-bold text-xs leading-tight">
+            {{
+              t(
+                "laboratory.verified_banner_title",
+                "Diagnostic Report Electronically Verified & Released",
+              )
+            }}
+          </p>
+          <p
+            class="text-[11px] text-emerald-800/85 dark:text-emerald-300/85 mt-0.5 font-mono leading-tight truncate"
+          >
+            {{
+              t("laboratory.verified_banner_desc", {
+                user: order.verifiedBy || "Senior MLS",
+                time: order.verifiedAt
+                  ? new Date(order.verifiedAt).toLocaleString()
+                  : "Recent",
+              })
+            }}
           </p>
         </div>
       </div>
@@ -182,7 +206,7 @@ function handlePrintAllPatientTests() {
           @click="handlePrintReport"
         >
           <Printer class="size-3.5" />
-          <span>{{ t('laboratory.print_report', 'Print Test') }}</span>
+          <span>{{ t("laboratory.print_report", "Print Test") }}</span>
         </Button>
 
         <Button
@@ -193,26 +217,48 @@ function handlePrintAllPatientTests() {
           @click="handlePrintAllPatientTests"
         >
           <FileText class="size-3.5" />
-          <span>{{ t('laboratory.print_all_tests', 'Print All ({count})', { count: patientOrders.length }) }}</span>
+          <span>{{
+            t("laboratory.print_all_tests", "Print All ({count})", {
+              count: patientOrders.length,
+            })
+          }}</span>
         </Button>
       </div>
     </div>
 
     <!-- Diagnostic Report Card -->
-    <section class="rounded-lg border border-border bg-surface p-4 shadow-2xs space-y-4">
+    <section
+      class="rounded-lg border border-border bg-surface p-4 shadow-2xs space-y-4"
+    >
       <!-- Report Header -->
-      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+      <div
+        class="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3"
+      >
         <div>
           <div class="flex items-center gap-2">
             <h3 class="text-sm font-bold text-foreground">
-              {{ t('laboratory.official_report', 'Official Diagnostic Laboratory Report') }}
+              {{
+                t(
+                  "laboratory.official_report",
+                  "Official Diagnostic Laboratory Report",
+                )
+              }}
             </h3>
-            <Badge variant="outline" class="text-[9px] font-mono uppercase px-1.5 py-0">
-              {{ t('laboratory.iso_badge', 'ISO 15189') }}
+            <Badge
+              variant="outline"
+              class="text-[9px] font-mono uppercase px-1.5 py-0"
+            >
+              {{ t("laboratory.iso_badge", "ISO 15189") }}
             </Badge>
           </div>
           <p class="text-[11px] text-muted-foreground mt-0.5">
-            {{ t('laboratory.hospital_lab_name', 'AfyaNova Automated Clinical Laboratories') }} · {{ t('laboratory.dept_of', { dept: order.department }) }}
+            {{
+              t(
+                "laboratory.hospital_lab_name",
+                "AfyaNova Automated Clinical Laboratories",
+              )
+            }}
+            · {{ t("laboratory.dept_of", { dept: order.department }) }}
           </p>
         </div>
 
@@ -224,7 +270,7 @@ function handlePrintAllPatientTests() {
             @click="handlePrintReport"
           >
             <Printer class="size-3.5 text-primary" />
-            <span>{{ t('laboratory.print_report', 'Print') }}</span>
+            <span>{{ t("laboratory.print_report", "Print") }}</span>
           </Button>
 
           <Button
@@ -232,62 +278,118 @@ function handlePrintAllPatientTests() {
             variant="outline"
             size="sm"
             class="h-7 text-xs font-semibold gap-1.5 px-2.5 border-border hover:bg-muted cursor-pointer"
-            :title="t('laboratory.print_all_tests_tooltip', 'Print consolidated encounter report with all patient tests')"
+            :title="
+              t(
+                'laboratory.print_all_tests_tooltip',
+                'Print consolidated encounter report with all patient tests',
+              )
+            "
             @click="handlePrintAllPatientTests"
           >
             <FileText class="size-3.5 text-primary" />
-            <span>{{ t('laboratory.print_all_short', 'All Tests ({count})', { count: patientOrders.length }) }}</span>
+            <span>{{
+              t("laboratory.print_all_short", "All Tests ({count})", {
+                count: patientOrders.length,
+              })
+            }}</span>
           </Button>
 
           <Badge
             variant="outline"
             class="text-[10px] uppercase font-mono px-2 py-0.5"
-            :class="isReleased ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10' : 'border-amber-500 text-amber-600 bg-amber-500/10'"
+            :class="
+              isReleased
+                ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10'
+                : 'border-amber-500 text-amber-600 bg-amber-500/10'
+            "
           >
-            {{ isReleased ? t('laboratory.final_report', 'Final Verified Report') : t('laboratory.draft_report', 'Draft / Pre-Release') }}
+            {{
+              isReleased
+                ? t("laboratory.final_report", "Final Verified Report")
+                : t("laboratory.draft_report", "Draft / Pre-Release")
+            }}
           </Badge>
         </div>
       </div>
 
       <!-- Patient & Specimen Metadata Box -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-lg border border-border/70 bg-muted/20 text-xs">
+      <div
+        class="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-lg border border-border/70 bg-muted/20 text-xs"
+      >
         <div>
-          <span class="text-[10.5px] text-muted-foreground block">{{ t('laboratory.meta_patient_name', 'Patient Name') }}</span>
+          <span class="text-[10.5px] text-muted-foreground block">{{
+            t("laboratory.meta_patient_name", "Patient Name")
+          }}</span>
           <span class="font-bold text-foreground">{{ order.patientName }}</span>
         </div>
         <div>
-          <span class="text-[10.5px] text-muted-foreground block">{{ t('laboratory.meta_mrn', 'Medical Record No (MRN)') }}</span>
-          <span class="font-mono font-bold text-primary">{{ order.patientMrn }}</span>
+          <span class="text-[10.5px] text-muted-foreground block">{{
+            t("laboratory.meta_mrn", "Medical Record No (MRN)")
+          }}</span>
+          <span class="font-mono font-bold text-primary">{{
+            order.patientMrn
+          }}</span>
         </div>
         <div>
-          <span class="text-[10.5px] text-muted-foreground block">{{ t('laboratory.meta_clinician', 'Ordering Clinician') }}</span>
-          <span class="font-medium text-foreground">{{ order.orderingClinician }}</span>
+          <span class="text-[10.5px] text-muted-foreground block">{{
+            t("laboratory.meta_clinician", "Ordering Clinician")
+          }}</span>
+          <span class="font-medium text-foreground">{{
+            order.orderingClinician
+          }}</span>
         </div>
         <div>
-          <span class="text-[10.5px] text-muted-foreground block">{{ t('laboratory.meta_accession', 'Specimen Accession') }}</span>
-          <span class="font-mono font-semibold text-foreground">{{ order.orderNumber }}</span>
+          <span class="text-[10.5px] text-muted-foreground block">{{
+            t("laboratory.meta_accession", "Specimen Accession")
+          }}</span>
+          <span class="font-mono font-semibold text-foreground">{{
+            order.orderNumber
+          }}</span>
         </div>
       </div>
 
       <!-- Parameter Results Table -->
       <div class="rounded-lg border border-border bg-surface overflow-hidden">
         <table class="w-full text-left text-xs table-fixed">
-          <thead class="border-b border-border/70 bg-muted/30 text-[10.5px] font-semibold text-muted-foreground uppercase tracking-wider">
+          <thead
+            class="border-b border-border/70 bg-muted/30 text-[10.5px] font-semibold text-muted-foreground uppercase tracking-wider"
+          >
             <tr>
-              <th class="p-2.5 pl-3 w-[32%]">{{ t('laboratory.meta_test', 'Test Investigation') }}</th>
-              <th class="p-2.5 w-[20%]">{{ t('laboratory.meta_result', 'Observed Result') }}</th>
-              <th class="p-2.5 w-[14%]">{{ t('laboratory.th_units', 'Units') }}</th>
-              <th class="p-2.5 w-[20%]">{{ t('laboratory.th_reference', 'Biological Reference') }}</th>
-              <th class="p-2.5 w-[14%] text-right pr-3">{{ t('laboratory.th_flag', 'Evaluation') }}</th>
+              <th class="p-2.5 pl-3 w-[32%]">
+                {{ t("laboratory.meta_test", "Test Investigation") }}
+              </th>
+              <th class="p-2.5 w-[20%]">
+                {{ t("laboratory.meta_result", "Observed Result") }}
+              </th>
+              <th class="p-2.5 w-[14%]">
+                {{ t("laboratory.th_units", "Units") }}
+              </th>
+              <th class="p-2.5 w-[20%]">
+                {{ t("laboratory.th_reference", "Biological Reference") }}
+              </th>
+              <th class="p-2.5 w-[14%] text-right pr-3">
+                {{ t("laboratory.th_flag", "Evaluation") }}
+              </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-border/60">
-            <tr v-for="p in order.parameters" :key="p.key" class="hover:bg-muted/15">
+            <tr
+              v-for="p in order.parameters"
+              :key="p.key"
+              class="hover:bg-muted/15"
+            >
               <td class="p-2.5 pl-3 font-semibold text-foreground text-[12px]">
                 {{ p.name }}
               </td>
-              <td class="p-2.5 font-mono font-bold text-[12.5px]" :class="{ 'text-rose-600': p.flag.startsWith('critical'), 'text-amber-600': p.flag === 'abnormal', 'text-foreground': p.flag === 'normal' }">
-                {{ p.value ?? '—' }}
+              <td
+                class="p-2.5 font-mono font-bold text-[12.5px]"
+                :class="{
+                  'text-rose-600': p.flag.startsWith('critical'),
+                  'text-amber-600': p.flag === 'abnormal',
+                  'text-foreground': p.flag === 'normal',
+                }"
+              >
+                {{ p.value ?? "—" }}
               </td>
               <td class="p-2.5 text-muted-foreground font-mono text-[11px]">
                 {{ p.unit }}
@@ -300,12 +402,21 @@ function handlePrintAllPatientTests() {
                   variant="outline"
                   class="text-[9px] font-mono font-bold uppercase px-1.5 py-0"
                   :class="{
-                    'border-emerald-500/40 text-emerald-600 bg-emerald-500/10': p.flag === 'normal',
-                    'border-amber-500/40 text-amber-600 bg-amber-500/10': p.flag === 'abnormal',
-                    'border-rose-500/50 text-rose-600 bg-rose-500/15': p.flag.startsWith('critical'),
+                    'border-emerald-500/40 text-emerald-600 bg-emerald-500/10':
+                      p.flag === 'normal',
+                    'border-amber-500/40 text-amber-600 bg-amber-500/10':
+                      p.flag === 'abnormal',
+                    'border-rose-500/50 text-rose-600 bg-rose-500/15':
+                      p.flag.startsWith('critical'),
                   }"
                 >
-                  {{ p.flag === 'normal' ? t('laboratory.flag_normal', 'NORMAL') : p.flag === 'abnormal' ? t('laboratory.flag_abnormal', 'ABNORMAL') : t('laboratory.flag_crit_high', 'CRITICAL') }}
+                  {{
+                    p.flag === "normal"
+                      ? t("laboratory.flag_normal", "NORMAL")
+                      : p.flag === "abnormal"
+                        ? t("laboratory.flag_abnormal", "ABNORMAL")
+                        : t("laboratory.flag_crit_high", "CRITICAL")
+                  }}
                 </Badge>
               </td>
             </tr>
@@ -316,29 +427,54 @@ function handlePrintAllPatientTests() {
       <!-- QC & Supervisor Comments -->
       <div class="space-y-3 pt-2 text-xs">
         <!-- Quality Control Validation Pill -->
-        <div class="flex items-center justify-between p-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5">
+        <div
+          class="flex items-center justify-between p-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5"
+        >
           <div class="flex items-center gap-2">
             <Award class="size-4 text-emerald-600" />
             <span class="font-medium text-foreground">
-              {{ t('laboratory.iqc_title', 'Internal Quality Control (IQC):') }} <strong class="text-emerald-600">{{ t('laboratory.iqc_passed', 'Passed (2SD Limit)') }}</strong>
+              {{ t("laboratory.iqc_title", "Internal Quality Control (IQC):") }}
+              <strong class="text-emerald-600">{{
+                t("laboratory.iqc_passed", "Passed (2SD Limit)")
+              }}</strong>
             </span>
           </div>
-          <span class="text-[11px] font-mono text-muted-foreground">{{ t('laboratory.westgard_ok', 'Westgard Multi-Rule OK') }}</span>
+          <span class="text-[11px] font-mono text-muted-foreground">{{
+            t("laboratory.westgard_ok", "Westgard Multi-Rule OK")
+          }}</span>
         </div>
 
         <!-- Supervisor Clinical Impression -->
         <div class="space-y-1.5">
           <div class="flex flex-wrap items-center justify-between gap-1.5">
             <Label required class="text-xs font-semibold text-foreground">
-              {{ t('laboratory.senior_remarks', 'Senior Scientist Remarks & Clinical Release Notes') }}
+              {{
+                t(
+                  "laboratory.senior_remarks",
+                  "Senior Scientist Remarks & Clinical Release Notes",
+                )
+              }}
             </Label>
 
             <!-- Quick Preset Templates Dropdown (Shadcn Vue Select) -->
             <div v-if="canRelease" class="flex items-center gap-1.5">
-              <span class="text-[10px] text-muted-foreground font-medium whitespace-nowrap">{{ t('laboratory.quick_presets', 'Quick Presets:') }}</span>
-              <Select @update:model-value="(val: any) => val && applyPreset(String(val))">
-                <SelectTrigger class="h-6.5 min-w-[190px] text-[11px] px-2 py-0 border-border bg-background shadow-2xs">
-                  <SelectValue :placeholder="t('laboratory.select_preset', 'Select standard note...')" />
+              <span
+                class="text-[10px] text-muted-foreground font-medium whitespace-nowrap"
+                >{{ t("laboratory.quick_presets", "Quick Presets:") }}</span
+              >
+              <Select
+                @update:model-value="
+                  (val: any) => val && applyPreset(String(val))
+                "
+              >
+                <SelectTrigger
+                  class="h-6.5 min-w-[190px] text-[11px] px-2 py-0 border-border bg-background shadow-2xs"
+                >
+                  <SelectValue
+                    :placeholder="
+                      t('laboratory.select_preset', 'Select standard note...')
+                    "
+                  />
                 </SelectTrigger>
                 <SelectContent class="text-xs">
                   <SelectItem
@@ -373,10 +509,23 @@ function handlePrintAllPatientTests() {
             rows="2"
             class="text-xs resize-none"
             :disabled="!canRelease"
-            :placeholder="t('laboratory.senior_remarks_placeholder', 'Select a preset above or type specific clinical observations...')"
+            :placeholder="
+              t(
+                'laboratory.senior_remarks_placeholder',
+                'Select a preset above or type specific clinical observations...',
+              )
+            "
           />
-          <p v-if="canRelease && supervisorComments.trim() === ''" class="text-[10.5px] text-amber-600">
-            {{ t('laboratory.release_note_required', 'A release note is required — choose a preset above or type specific remarks.') }}
+          <p
+            v-if="canRelease && supervisorComments.trim() === ''"
+            class="text-[10.5px] text-amber-600"
+          >
+            {{
+              t(
+                "laboratory.release_note_required",
+                "A release note is required — choose a preset above or type specific remarks.",
+              )
+            }}
           </p>
         </div>
 
@@ -393,23 +542,43 @@ function handlePrintAllPatientTests() {
             <AlertTriangle class="size-4 text-amber-600 shrink-0 mt-px" />
             <div class="text-[11px] text-amber-900 dark:text-amber-200">
               <p class="font-bold">
-                {{ secondReview === 'critical'
-                  ? t('laboratory.second_review_critical', 'Critical result — second review required')
-                  : t('laboratory.second_review_high_stakes', 'High-stakes result — second review required') }}
+                {{
+                  secondReview === "critical"
+                    ? t(
+                        "laboratory.second_review_critical",
+                        "Critical result — second review required",
+                      )
+                    : t(
+                        "laboratory.second_review_high_stakes",
+                        "High-stakes result — second review required",
+                      )
+                }}
               </p>
               <p class="mt-0.5">
-                {{ t('laboratory.second_review_desc', 'ISO 15189 §7.4 requires these results to be checked by a second reviewer before release. If no second scientist is available, you may self-verify — this is recorded in the audit log.') }}
+                {{
+                  t(
+                    "laboratory.second_review_desc",
+                    "ISO 15189 §7.4 requires these results to be checked by a second reviewer before release. If no second scientist is available, you may self-verify — this is recorded in the audit log.",
+                  )
+                }}
               </p>
             </div>
           </div>
 
-          <label class="flex items-center gap-2 text-[11px] font-semibold text-amber-900 dark:text-amber-200 cursor-pointer">
+          <label
+            class="flex items-center gap-2 text-[11px] font-semibold text-amber-900 dark:text-amber-200 cursor-pointer"
+          >
             <input
               v-model="selfVerifyAcknowledged"
               type="checkbox"
               class="size-3.5 accent-amber-600 cursor-pointer"
             />
-            <span>{{ t('laboratory.second_review_ack', 'I have reviewed these results and accept responsibility for releasing them.') }}</span>
+            <span>{{
+              t(
+                "laboratory.second_review_ack",
+                "I have reviewed these results and accept responsibility for releasing them.",
+              )
+            }}</span>
           </label>
         </div>
       </div>
@@ -420,14 +589,26 @@ function handlePrintAllPatientTests() {
       Reachable only from `awaiting_release`, so a report cannot be released
       before its results exist.
     -->
-    <div class="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-lg border border-border bg-surface shadow-2xs">
+    <div
+      class="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-lg border border-border bg-surface shadow-2xs"
+    >
       <div class="flex items-center gap-2 text-xs text-muted-foreground">
         <UserCheck class="size-4 text-primary shrink-0" />
         <span v-if="releaseBlockReason">{{ releaseBlockReason }}</span>
         <span v-else-if="isReleased">
-          {{ t('laboratory.already_released', 'Released — this report is final and on the patient chart.') }}
+          {{
+            t(
+              "laboratory.already_released",
+              "Released — this report is final and on the patient chart.",
+            )
+          }}
         </span>
-        <span v-else>{{ t('laboratory.ready_to_release', 'Ready to release to the patient chart.') }}</span>
+        <span v-else>{{
+          t(
+            "laboratory.ready_to_release",
+            "Ready to release to the patient chart.",
+          )
+        }}</span>
       </div>
 
       <div class="flex items-center gap-2">
@@ -438,19 +619,29 @@ function handlePrintAllPatientTests() {
           @click="handlePrintReport"
         >
           <Printer class="size-3.5" />
-          <span>{{ t('laboratory.print_report', 'Print Report') }}</span>
+          <span>{{ t("laboratory.print_report", "Print Report") }}</span>
         </Button>
 
         <Button
           v-if="!isReleased"
           size="sm"
           class="h-8 text-xs font-semibold gap-1.5 px-4 shadow-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-          :class="releaseBlockReason === null ? 'cursor-pointer' : 'cursor-not-allowed'"
-          :disabled="releaseBlockReason !== null || laboratory.isVerifying.value"
+          :class="
+            releaseBlockReason === null
+              ? 'cursor-pointer'
+              : 'cursor-not-allowed'
+          "
+          :disabled="
+            releaseBlockReason !== null || laboratory.isVerifying.value
+          "
           @click="handleRelease"
         >
           <CheckCircle2 class="size-3.5" />
-          <span>{{ laboratory.isVerifying.value ? t('laboratory.verifying', 'Publishing...') : t('laboratory.authorize_release', 'Authorize & Release to EMR') }}</span>
+          <span>{{
+            laboratory.isVerifying.value
+              ? t("laboratory.verifying", "Publishing...")
+              : t("laboratory.authorize_release", "Authorize & Release to EMR")
+          }}</span>
         </Button>
       </div>
     </div>

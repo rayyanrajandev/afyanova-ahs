@@ -33,6 +33,13 @@ class LaboratoryOrderResponseTransformer
             'clinicalNotes' => $order['clinical_notes'] ?? null,
             'resultSummary' => $order['result_summary'] ?? null,
             'resultParameters' => $order['result_parameters'] ?? null,
+            // The discipline this test belongs to, from the catalog. The
+            // workspace used to guess it in the browser by string-matching test
+            // codes and names, which produced its own vocabulary ("Biochemistry",
+            // "Serology") that the catalog does not use ("clinical_chemistry",
+            // "serology_immunology") — so a discipline filter could never be a
+            // server query.
+            'department' => $catalog['category'],
             'catalogUnit' => $catalog['unit'],
             'catalogParameters' => $catalog['parameters'],
             'catalogResultTemplate' => $catalog['resultTemplate'],
@@ -64,12 +71,12 @@ class LaboratoryOrderResponseTransformer
      */
     /**
      * @param  array<string, mixed>  $order
-     * @return array{unit: string|null, parameters: array<int, mixed>}
+     * @return array{unit: string|null, parameters: array<int, mixed>, resultTemplate: mixed, category: string|null}
      */
     private static function loadCatalogItem(?string $catalogItemId): array
     {
         if ($catalogItemId === null || trim($catalogItemId) === '') {
-            return ['unit' => null, 'parameters' => [], 'resultTemplate' => null];
+            return ['unit' => null, 'parameters' => [], 'resultTemplate' => null, 'category' => null];
         }
 
         $item = ClinicalCatalogItemModel::query()
@@ -77,7 +84,7 @@ class LaboratoryOrderResponseTransformer
             ->find($catalogItemId);
 
         if (! $item) {
-            return ['unit' => null, 'parameters' => [], 'resultTemplate' => null];
+            return ['unit' => null, 'parameters' => [], 'resultTemplate' => null, 'category' => null];
         }
 
         $metadata = $item->metadata ?? [];
@@ -86,6 +93,7 @@ class LaboratoryOrderResponseTransformer
             'unit' => $item->unit,
             'parameters' => $metadata['parameters'] ?? [],
             'resultTemplate' => $metadata['resultTemplate'] ?? null,
+            'category' => $item->category,
         ];
     }
 

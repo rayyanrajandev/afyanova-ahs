@@ -1,13 +1,12 @@
-/**
- * RadiologyPacsViewer — Clinical DICOM & Modality PACS Viewer (2027 Standard)
- * ============================================================================
- * Enterprise diagnostic imaging viewer with:
- * - Interactive Viewport (Pan, Zoom, Rotate, Invert, W/L Presets: Bone, Lung, Soft Tissue)
- * - Caliper Measurement Ruler Tool (measures lesions and organ sizes in mm)
- * - DICOM HUD Overlay (Patient Demographics, Modality, W/L, Accession)
- * - Series Thumbnail Filmstrip with Key Image tagging
- * - Direct DICOM / High-Res Capture Upload & Modality C-STORE Sync
- */
+/** * RadiologyPacsViewer — Clinical DICOM & Modality PACS Viewer (2027
+Standard) *
+============================================================================ *
+Enterprise diagnostic imaging viewer with: * - Interactive Viewport (Pan, Zoom,
+Rotate, Invert, W/L Presets: Bone, Lung, Soft Tissue) * - Caliper Measurement
+Ruler Tool (measures lesions and organ sizes in mm) * - DICOM HUD Overlay
+(Patient Demographics, Modality, W/L, Accession) * - Series Thumbnail Filmstrip
+with Key Image tagging * - Direct DICOM / High-Res Capture Upload & Modality
+C-STORE Sync */
 
 <script setup lang="ts">
 import {
@@ -40,7 +39,11 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { DicomImageInstance, RadiologyOrder, UseRadiologyOrders } from "../composables/useRadiologyOrders";
+import type {
+  DicomImageInstance,
+  RadiologyOrder,
+  UseRadiologyOrders,
+} from "../composables/useRadiologyOrders";
 
 const props = defineProps<{
   order: RadiologyOrder;
@@ -55,8 +58,8 @@ const images = computed<DicomImageInstance[]>(() =>
 );
 
 const selectedImageIndex = ref(0);
-const currentImage = computed<DicomImageInstance | null>(() =>
-  images.value[selectedImageIndex.value] ?? images.value[0] ?? null,
+const currentImage = computed<DicomImageInstance | null>(
+  () => images.value[selectedImageIndex.value] ?? images.value[0] ?? null,
 );
 
 // Viewport Transform State
@@ -165,7 +168,8 @@ function handleViewportMouseMove(e: MouseEvent) {
 }
 
 function handleViewportMouseUp() {
-  if (!isDrawingRuler.value || !rulerStart.value || !currentRulerEnd.value) return;
+  if (!isDrawingRuler.value || !rulerStart.value || !currentRulerEnd.value)
+    return;
 
   const dx = currentRulerEnd.value.x - rulerStart.value.x;
   const dy = currentRulerEnd.value.y - rulerStart.value.y;
@@ -258,17 +262,23 @@ async function syncFromModality() {
     :class="isFullscreen ? 'fixed inset-0 z-50 rounded-none' : 'w-full'"
   >
     <!-- Top PACS Toolbar -->
-    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900/90 px-3 py-2 text-xs">
+    <div
+      class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900/90 px-3 py-2 text-xs"
+    >
       <!-- Left: Modality & Series Selector -->
       <div class="flex items-center gap-2">
         <div class="flex items-center gap-1.5 font-bold text-sky-400">
           <Scan class="size-4" />
-          <span class="font-mono text-xs">{{ props.order.modality.toUpperCase() }} PACS VIEWER</span>
+          <span class="font-mono text-xs"
+            >{{ props.order.modality.toUpperCase() }} PACS VIEWER</span
+          >
         </div>
 
         <span class="text-slate-600">|</span>
 
-        <span class="font-mono text-[11px] text-slate-300 truncate max-w-[200px]">
+        <span
+          class="font-mono text-[11px] text-slate-300 truncate max-w-[200px]"
+        >
           Frame {{ selectedImageIndex + 1 }} of {{ images.length || 1 }}
         </span>
 
@@ -283,7 +293,9 @@ async function syncFromModality() {
       </div>
 
       <!-- Center: Manipulation Controls -->
-      <div class="flex items-center gap-1 bg-slate-950/80 p-0.5 rounded-md border border-slate-800">
+      <div
+        class="flex items-center gap-1 bg-slate-950/80 p-0.5 rounded-md border border-slate-800"
+      >
         <!-- Zoom Out -->
         <button
           type="button"
@@ -330,7 +342,11 @@ async function syncFromModality() {
         <button
           type="button"
           class="p-1.5 rounded hover:bg-slate-800 cursor-pointer"
-          :class="isInverted ? 'bg-sky-500/20 text-sky-400' : 'text-slate-300 hover:text-white'"
+          :class="
+            isInverted
+              ? 'bg-sky-500/20 text-sky-400'
+              : 'text-slate-300 hover:text-white'
+          "
           title="Invert Grayscale (Negative)"
           @click="toggleInvert"
         >
@@ -343,7 +359,11 @@ async function syncFromModality() {
         <button
           type="button"
           class="p-1.5 rounded hover:bg-slate-800 cursor-pointer"
-          :class="activeTool === 'ruler' ? 'bg-sky-500/20 text-sky-400' : 'text-slate-300 hover:text-white'"
+          :class="
+            activeTool === 'ruler'
+              ? 'bg-sky-500/20 text-sky-400'
+              : 'text-slate-300 hover:text-white'
+          "
           title="Caliper Measurement (mm)"
           @click="activeTool = activeTool === 'ruler' ? 'pan' : 'ruler'"
         >
@@ -405,11 +425,16 @@ async function syncFromModality() {
           variant="outline"
           size="sm"
           class="h-6 text-[10.5px] font-mono gap-1 px-2 border-slate-700 hover:bg-slate-800 text-slate-200 cursor-pointer"
-          :class="currentImage?.isKeyImage ? 'border-amber-500/50 text-amber-300' : ''"
+          :class="
+            currentImage?.isKeyImage ? 'border-amber-500/50 text-amber-300' : ''
+          "
           @click="toggleKeyImageCurrent"
         >
-          <Star class="size-3" :class="currentImage?.isKeyImage ? 'fill-amber-300' : ''" />
-          <span>{{ currentImage?.isKeyImage ? 'Key Image' : 'Tag Key' }}</span>
+          <Star
+            class="size-3"
+            :class="currentImage?.isKeyImage ? 'fill-amber-300' : ''"
+          />
+          <span>{{ currentImage?.isKeyImage ? "Key Image" : "Tag Key" }}</span>
         </Button>
 
         <!-- Fullscreen -->
@@ -434,29 +459,54 @@ async function syncFromModality() {
     >
       <!-- DICOM HUD Overlays -->
       <!-- Top Left: Patient Demographics -->
-      <div class="absolute top-2.5 left-3 z-10 pointer-events-none font-mono text-[10.5px] leading-tight text-slate-300 drop-shadow-md">
-        <p class="font-bold text-white uppercase">{{ props.order.patientName || 'PATIENT' }}</p>
+      <div
+        class="absolute top-2.5 left-3 z-10 pointer-events-none font-mono text-[10.5px] leading-tight text-slate-300 drop-shadow-md"
+      >
+        <p class="font-bold text-white uppercase">
+          {{ props.order.patientName || "PATIENT" }}
+        </p>
         <p class="text-slate-400">MRN: {{ props.order.patientMrn }}</p>
-        <p class="text-slate-400">{{ props.order.patientGender }} · {{ props.order.patientAge }}</p>
+        <p class="text-slate-400">
+          {{ props.order.patientGender }} · {{ props.order.patientAge }}
+        </p>
       </div>
 
       <!-- Top Right: Institution & Modality -->
-      <div class="absolute top-2.5 right-3 z-10 pointer-events-none text-right font-mono text-[10.5px] leading-tight text-slate-300 drop-shadow-md">
+      <div
+        class="absolute top-2.5 right-3 z-10 pointer-events-none text-right font-mono text-[10.5px] leading-tight text-slate-300 drop-shadow-md"
+      >
         <p class="font-bold text-sky-400">AFYANOVA HEALTH HIS</p>
-        <p class="text-slate-400">{{ props.order.modality.toUpperCase() }} · ACC: {{ props.order.orderNumber || props.order.id.slice(0, 8).toUpperCase() }}</p>
+        <p class="text-slate-400">
+          {{ props.order.modality.toUpperCase() }} · ACC:
+          {{
+            props.order.orderNumber || props.order.id.slice(0, 8).toUpperCase()
+          }}
+        </p>
         <p class="text-slate-400">{{ currentImage?.seriesDescription }}</p>
       </div>
 
       <!-- Bottom Left: Image Render Matrix & W/L -->
-      <div class="absolute bottom-2.5 left-3 z-10 pointer-events-none font-mono text-[10px] leading-tight text-slate-400 drop-shadow-md">
+      <div
+        class="absolute bottom-2.5 left-3 z-10 pointer-events-none font-mono text-[10px] leading-tight text-slate-400 drop-shadow-md"
+      >
         <p>W: {{ contrast }}% · L: {{ brightness }}%</p>
         <p>Zoom: {{ Math.round(zoom * 100) }}% · Rot: {{ rotation }}°</p>
-        <p v-if="currentImage?.kvp">kVp: {{ currentImage.kvp }} · mAs: {{ currentImage.mas }}</p>
+        <p v-if="currentImage?.kvp">
+          kVp: {{ currentImage.kvp }} · mAs: {{ currentImage.mas }}
+        </p>
       </div>
 
       <!-- Bottom Right: Timestamp & Orientation -->
-      <div class="absolute bottom-2.5 right-3 z-10 pointer-events-none text-right font-mono text-[10px] leading-tight text-slate-400 drop-shadow-md">
-        <p>{{ currentImage?.acquisitionDateTime ? new Date(currentImage.acquisitionDateTime).toLocaleTimeString() : '' }}</p>
+      <div
+        class="absolute bottom-2.5 right-3 z-10 pointer-events-none text-right font-mono text-[10px] leading-tight text-slate-400 drop-shadow-md"
+      >
+        <p>
+          {{
+            currentImage?.acquisitionDateTime
+              ? new Date(currentImage.acquisitionDateTime).toLocaleTimeString()
+              : ""
+          }}
+        </p>
         <p class="text-white font-bold text-xs mt-0.5">HEAD / SUPINE</p>
       </div>
 
@@ -478,10 +528,15 @@ async function syncFromModality() {
       </div>
 
       <!-- No Image Fallback -->
-      <div v-else class="text-center text-slate-500 font-mono text-xs p-8 space-y-2">
+      <div
+        v-else
+        class="text-center text-slate-500 font-mono text-xs p-8 space-y-2"
+      >
         <Scan class="size-10 mx-auto text-slate-700 stroke-1" />
         <p>No DICOM imaging frames acquired for this study yet.</p>
-        <p class="text-[11px] text-slate-600">Click "Sync Modality" or "Upload Capture" to ingest frames.</p>
+        <p class="text-[11px] text-slate-600">
+          Click "Sync Modality" or "Upload Capture" to ingest frames.
+        </p>
       </div>
 
       <!-- Caliper Measurement SVG Overlay Layer -->
@@ -490,8 +545,19 @@ async function syncFromModality() {
         class="absolute inset-0 size-full pointer-events-none z-20"
       >
         <!-- Existing Confirmed Measurements -->
-        <g v-for="(m, idx) in measurements" :key="idx" stroke="#38bdf8" stroke-width="1.5">
-          <line :x1="m.x1" :y1="m.y1" :x2="m.x2" :y2="m.y2" stroke-dasharray="3,3" />
+        <g
+          v-for="(m, idx) in measurements"
+          :key="idx"
+          stroke="#38bdf8"
+          stroke-width="1.5"
+        >
+          <line
+            :x1="m.x1"
+            :y1="m.y1"
+            :x2="m.x2"
+            :y2="m.y2"
+            stroke-dasharray="3,3"
+          />
           <!-- Crosshair Caps -->
           <circle :cx="m.x1" :cy="m.y1" r="3" fill="#38bdf8" />
           <circle :cx="m.x2" :cy="m.y2" r="3" fill="#38bdf8" />
@@ -521,10 +587,25 @@ async function syncFromModality() {
         </g>
 
         <!-- In-Progress Drawing Line -->
-        <g v-if="isDrawingRuler && rulerStart && currentRulerEnd" stroke="#38bdf8" stroke-width="1.5">
-          <line :x1="rulerStart.x" :y1="rulerStart.y" :x2="currentRulerEnd.x" :y2="currentRulerEnd.y" stroke-dasharray="2,2" />
+        <g
+          v-if="isDrawingRuler && rulerStart && currentRulerEnd"
+          stroke="#38bdf8"
+          stroke-width="1.5"
+        >
+          <line
+            :x1="rulerStart.x"
+            :y1="rulerStart.y"
+            :x2="currentRulerEnd.x"
+            :y2="currentRulerEnd.y"
+            stroke-dasharray="2,2"
+          />
           <circle :cx="rulerStart.x" :cy="rulerStart.y" r="3" fill="#38bdf8" />
-          <circle :cx="currentRulerEnd.x" :cy="currentRulerEnd.y" r="3" fill="#38bdf8" />
+          <circle
+            :cx="currentRulerEnd.x"
+            :cy="currentRulerEnd.y"
+            r="3"
+            fill="#38bdf8"
+          />
         </g>
       </svg>
     </div>
@@ -550,7 +631,9 @@ async function syncFromModality() {
             :alt="img.seriesDescription"
             class="size-14 object-cover bg-black"
           />
-          <div class="absolute bottom-0 inset-x-0 bg-black/80 text-[8px] font-mono text-center text-slate-300 py-0.5 truncate px-1">
+          <div
+            class="absolute bottom-0 inset-x-0 bg-black/80 text-[8px] font-mono text-center text-slate-300 py-0.5 truncate px-1"
+          >
             Frame {{ idx + 1 }}
           </div>
           <Star
@@ -569,8 +652,13 @@ async function syncFromModality() {
       </div>
 
       <!-- Modality Sync & Upload Actions Bar -->
-      <div v-if="!props.readOnly" class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/80 text-xs">
-        <div class="flex items-center gap-2 text-slate-400 text-[11px] font-mono">
+      <div
+        v-if="!props.readOnly"
+        class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/80 text-xs"
+      >
+        <div
+          class="flex items-center gap-2 text-slate-400 text-[11px] font-mono"
+        >
           <span class="flex items-center gap-1">
             <span class="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
             <span>PACS Node: AFYANOVA_PACS (Port 104)</span>
@@ -609,8 +697,15 @@ async function syncFromModality() {
             :disabled="isSyncingModality"
             @click="syncFromModality"
           >
-            <RefreshCw class="size-3 text-emerald-400" :class="isSyncingModality ? 'animate-spin' : ''" />
-            <span>{{ isSyncingModality ? 'Querying Machine...' : 'Sync Modality Equipment' }}</span>
+            <RefreshCw
+              class="size-3 text-emerald-400"
+              :class="isSyncingModality ? 'animate-spin' : ''"
+            />
+            <span>{{
+              isSyncingModality
+                ? "Querying Machine..."
+                : "Sync Modality Equipment"
+            }}</span>
           </Button>
         </div>
       </div>

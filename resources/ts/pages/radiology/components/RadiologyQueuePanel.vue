@@ -1,13 +1,10 @@
-/**
- * RadiologyQueuePanel — Modern 2027 Enterprise Diagnostic Imaging Worklist
- * =========================================================================
- * - Dual-View Mode Switcher: Group by Patient vs By Individual Study
- * - Real-time Status Counts Segmented Filter Bar
- * - Modality Quick Discipline Pills (US, XR, CT, MR, MAMMO)
- * - Live Instant Search Bar (Name, MRN, Study, Accession)
- * - Clinical Acuity Badges (STAT Pulsing, Urgent, Routine)
- * - Patient Visit Stage Tracking and Scheduled Slot Times
- */
+/** * RadiologyQueuePanel — Modern 2027 Enterprise Diagnostic Imaging Worklist *
+========================================================================= * -
+Dual-View Mode Switcher: Group by Patient vs By Individual Study * - Real-time
+Status Counts Segmented Filter Bar * - Modality Quick Discipline Pills (US, XR,
+CT, MR, MAMMO) * - Live Instant Search Bar (Name, MRN, Study, Accession) * -
+Clinical Acuity Badges (STAT Pulsing, Urgent, Routine) * - Patient Visit Stage
+Tracking and Scheduled Slot Times */
 
 <script setup lang="ts">
 import {
@@ -44,21 +41,51 @@ const props = defineProps<{
 
 const { t } = useI18n({ useScope: "global" });
 
-const MODALITIES = computed<Array<{ id: RadiologyModality | "all"; label: string; short: string }>>(() => [
+const MODALITIES = computed<
+  Array<{ id: RadiologyModality | "all"; label: string; short: string }>
+>(() => [
   { id: "all", label: t("radiology.modality_all", "All"), short: "ALL" },
-  { id: "ultrasound", label: t("radiology.modality_us", "Ultrasound"), short: "US" },
+  {
+    id: "ultrasound",
+    label: t("radiology.modality_us", "Ultrasound"),
+    short: "US",
+  },
   { id: "xray", label: t("radiology.modality_xr", "X-Ray"), short: "XR" },
   { id: "ct", label: t("radiology.modality_ct", "CT Scan"), short: "CT" },
   { id: "mri", label: t("radiology.modality_mr", "MRI"), short: "MRI" },
-  { id: "mammography", label: t("radiology.modality_mammo", "Mammography"), short: "MAMMO" },
+  {
+    id: "mammography",
+    label: t("radiology.modality_mammo", "Mammography"),
+    short: "MAMMO",
+  },
 ]);
 
-const STATUS_TABS: Array<{ value: RadiologyOrderStatus | "all"; labelKey: string; fallback: string }> = [
+const STATUS_TABS: Array<{
+  value: RadiologyOrderStatus | "all";
+  labelKey: string;
+  fallback: string;
+}> = [
   { value: "all", labelKey: "radiology.status_all", fallback: "All" },
-  { value: "ordered", labelKey: "radiology.status_ordered", fallback: "Ordered" },
-  { value: "scheduled", labelKey: "radiology.status_scheduled", fallback: "Booked" },
-  { value: "in_progress", labelKey: "radiology.status_in_progress", fallback: "Scanning" },
-  { value: "completed", labelKey: "radiology.status_completed", fallback: "Reported" },
+  {
+    value: "ordered",
+    labelKey: "radiology.status_ordered",
+    fallback: "Ordered",
+  },
+  {
+    value: "scheduled",
+    labelKey: "radiology.status_scheduled",
+    fallback: "Booked",
+  },
+  {
+    value: "in_progress",
+    labelKey: "radiology.status_in_progress",
+    fallback: "Scanning",
+  },
+  {
+    value: "completed",
+    labelKey: "radiology.status_completed",
+    fallback: "Reported",
+  },
 ];
 
 function modalityBadgeClass(modality: string): string {
@@ -119,7 +146,10 @@ function studyStatusClass(status: RadiologyOrderStatus): string {
 function slotLabel(order: RadiologyOrder): string | null {
   if (!order.scheduledFor) return null;
   try {
-    return new Date(order.scheduledFor).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return new Date(order.scheduledFor).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   } catch {
     return null;
   }
@@ -143,21 +173,30 @@ function getRelativeTime(dateStr: string | null | undefined): string {
 </script>
 
 <template>
-  <Tabs v-model="radiology.viewMode.value" class="flex h-full flex-col overflow-hidden bg-surface">
+  <Tabs
+    v-model="radiology.viewMode.value"
+    class="flex h-full flex-col overflow-hidden bg-surface"
+  >
     <!-- Top Header Tabs (Standardized with Laboratory / Clinician Left Pane) -->
     <div class="border-b border-border bg-surface px-3 pt-1 shrink-0">
-      <TabsList class="h-8 gap-1 bg-transparent p-0 justify-start w-auto border-b-0 -mb-px">
+      <TabsList
+        class="h-8 gap-1 bg-transparent p-0 justify-start w-auto border-b-0 -mb-px"
+      >
         <TabsTrigger
           value="patient"
           class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
         >
           <Users class="size-3.5" aria-hidden="true" />
-          <span>{{ t('radiology.by_patient', 'Patients') }}</span>
+          <span>{{ t("radiology.by_patient", "Patients") }}</span>
           <Badge
             v-if="radiology.patientGroups.value.length > 0"
             variant="secondary"
             class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
-            :class="radiology.viewMode.value === 'patient' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+            :class="
+              radiology.viewMode.value === 'patient'
+                ? 'bg-primary/15 text-primary font-semibold'
+                : 'text-muted-foreground'
+            "
           >
             {{ radiology.patientGroups.value.length }}
           </Badge>
@@ -168,12 +207,16 @@ function getRelativeTime(dateStr: string | null | undefined): string {
           class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
         >
           <ScanLine class="size-3.5" aria-hidden="true" />
-          <span>{{ t('radiology.by_study', 'Studies') }}</span>
+          <span>{{ t("radiology.by_study", "Studies") }}</span>
           <Badge
             v-if="radiology.orders.value.length > 0"
             variant="secondary"
             class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
-            :class="radiology.viewMode.value === 'study' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+            :class="
+              radiology.viewMode.value === 'study'
+                ? 'bg-primary/15 text-primary font-semibold'
+                : 'text-muted-foreground'
+            "
           >
             {{ radiology.orders.value.length }}
           </Badge>
@@ -182,9 +225,13 @@ function getRelativeTime(dateStr: string | null | undefined): string {
     </div>
 
     <!-- Search & Filters Container -->
-    <div class="shrink-0 p-2.5 space-y-2 border-b border-border/70 bg-surface/50">
+    <div
+      class="shrink-0 p-2.5 space-y-2 border-b border-border/70 bg-surface/50"
+    >
       <!-- 1. Status Count Filter Segmented Bar -->
-      <div class="grid grid-cols-5 gap-0.5 rounded-lg bg-muted/70 p-0.5 text-xs font-medium">
+      <div
+        class="grid grid-cols-5 gap-0.5 rounded-lg bg-muted/70 p-0.5 text-xs font-medium"
+      >
         <button
           v-for="statusTab in STATUS_TABS"
           :key="statusTab.value"
@@ -197,7 +244,9 @@ function getRelativeTime(dateStr: string | null | undefined): string {
           "
           @click="radiology.selectedStatusFilter.value = statusTab.value"
         >
-          <span class="truncate text-[10px]">{{ t(statusTab.labelKey, statusTab.fallback) }}</span>
+          <span class="truncate text-[10px]">{{
+            t(statusTab.labelKey, statusTab.fallback)
+          }}</span>
           <span
             class="rounded-full px-1 py-0 text-[9px] font-mono"
             :class="
@@ -212,7 +261,9 @@ function getRelativeTime(dateStr: string | null | undefined): string {
       </div>
 
       <!-- 2. Modality Quick Discipline Pills -->
-      <div class="flex items-center gap-1 overflow-x-auto pb-0.5 text-[10.5px] no-scrollbar">
+      <div
+        class="flex items-center gap-1 overflow-x-auto pb-0.5 text-[10.5px] no-scrollbar"
+      >
         <button
           v-for="mod in MODALITIES"
           :key="mod.id"
@@ -231,11 +282,18 @@ function getRelativeTime(dateStr: string | null | undefined): string {
 
       <!-- 3. Search Bar with Instant Clear -->
       <div class="relative">
-        <Search class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <Search
+          class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none"
+        />
         <Input
           v-model="radiology.searchQuery.value"
           type="search"
-          :placeholder="t('radiology.search_placeholder', 'Search patient name, MRN, study...')"
+          :placeholder="
+            t(
+              'radiology.search_placeholder',
+              'Search patient name, MRN, study...',
+            )
+          "
           class="h-7 pl-8 pr-7 text-xs bg-surface border-border/80 focus-visible:ring-1"
         />
         <button
@@ -253,20 +311,41 @@ function getRelativeTime(dateStr: string | null | undefined): string {
     <!-- Worklist Content -->
     <div class="flex-1 overflow-y-auto p-2 space-y-1.5">
       <!-- Loading Skeleton / Shimmer -->
-      <div v-if="radiology.isLoadingOrders.value && radiology.orders.value.length === 0" class="space-y-2 p-1">
-        <div v-for="i in 5" :key="i" class="h-20 rounded-lg border border-border/60 bg-muted/40 animate-pulse" />
+      <div
+        v-if="
+          radiology.isLoadingOrders.value && radiology.orders.value.length === 0
+        "
+        class="space-y-2 p-1"
+      >
+        <div
+          v-for="i in 5"
+          :key="i"
+          class="h-20 rounded-lg border border-border/60 bg-muted/40 animate-pulse"
+        />
       </div>
 
       <!-- VIEW 1: BY PATIENT -->
-      <div v-else-if="radiology.viewMode.value === 'patient'" class="space-y-1.5">
+      <div
+        v-else-if="radiology.viewMode.value === 'patient'"
+        class="space-y-1.5"
+      >
         <div
           v-if="radiology.filteredPatientGroups.value.length === 0"
           class="py-12 px-4 text-center text-xs text-muted-foreground flex flex-col items-center gap-2"
         >
           <Users class="size-8 text-muted-foreground/40 stroke-1" />
-          <p class="font-medium text-foreground">{{ t('radiology.no_patients_found', 'No patients matching filters') }}</p>
+          <p class="font-medium text-foreground">
+            {{
+              t("radiology.no_patients_found", "No patients matching filters")
+            }}
+          </p>
           <p class="text-[11px] text-muted-foreground max-w-[200px]">
-            {{ t('radiology.try_adjusting_filters', 'Try selecting "All" or clearing the search box.') }}
+            {{
+              t(
+                "radiology.try_adjusting_filters",
+                'Try selecting "All" or clearing the search box.',
+              )
+            }}
           </p>
         </div>
 
@@ -296,22 +375,27 @@ function getRelativeTime(dateStr: string | null | undefined): string {
               variant="outline"
               class="shrink-0 animate-pulse border-rose-500/50 bg-rose-500/15 px-1.5 py-0 font-mono text-[9px] font-bold uppercase text-rose-600 dark:text-rose-400"
             >
-              {{ t('radiology.priority_stat', 'STAT') }}
+              {{ t("radiology.priority_stat", "STAT") }}
             </Badge>
             <Badge
               v-else-if="group.highestPriority === 'urgent'"
               variant="outline"
               class="shrink-0 border-amber-500/50 bg-amber-500/15 px-1.5 py-0 font-mono text-[9px] font-bold uppercase text-amber-600 dark:text-amber-400"
             >
-              {{ t('radiology.priority_urgent', 'URGENT') }}
+              {{ t("radiology.priority_urgent", "URGENT") }}
             </Badge>
           </div>
 
           <!-- Middle Row: MRN, Age/Gender, Time -->
-          <div class="flex items-center justify-between gap-1 font-mono text-[10.5px] text-muted-foreground">
-            <span class="text-primary font-semibold truncate">{{ group.patientMrn }}</span>
+          <div
+            class="flex items-center justify-between gap-1 font-mono text-[10.5px] text-muted-foreground"
+          >
+            <span class="text-primary font-semibold truncate">{{
+              group.patientMrn
+            }}</span>
             <span v-if="group.patientAge || group.patientGender">
-              {{ group.patientAge ? `${group.patientAge}y` : '' }} {{ group.patientGender || '' }}
+              {{ group.patientAge ? `${group.patientAge}y` : "" }}
+              {{ group.patientGender || "" }}
             </span>
             <span v-if="group.latestOrderedAt" class="text-[9.5px]">
               {{ getRelativeTime(group.latestOrderedAt) }}
@@ -321,7 +405,8 @@ function getRelativeTime(dateStr: string | null | undefined): string {
           <!-- Studies Summary Chips -->
           <div class="flex flex-wrap items-center gap-1 pt-0.5">
             <span class="text-[10px] font-semibold text-muted-foreground">
-              {{ group.totalStudies }} {{ group.totalStudies === 1 ? 'Study' : 'Studies' }}:
+              {{ group.totalStudies }}
+              {{ group.totalStudies === 1 ? "Study" : "Studies" }}:
             </span>
             <span
               v-for="mod in group.modalities"
@@ -334,19 +419,37 @@ function getRelativeTime(dateStr: string | null | undefined): string {
           </div>
 
           <!-- Bottom Status Pill Row -->
-          <div class="flex items-center justify-between gap-1 border-t border-border/40 pt-1 text-[9.5px] font-mono">
+          <div
+            class="flex items-center justify-between gap-1 border-t border-border/40 pt-1 text-[9.5px] font-mono"
+          >
             <div class="flex items-center gap-1.5">
-              <span v-if="group.orderedCount > 0" class="text-amber-600 font-semibold">
-                {{ group.orderedCount }} {{ t('radiology.status_ordered', 'Ordered') }}
+              <span
+                v-if="group.orderedCount > 0"
+                class="text-amber-600 font-semibold"
+              >
+                {{ group.orderedCount }}
+                {{ t("radiology.status_ordered", "Ordered") }}
               </span>
-              <span v-if="group.scheduledCount > 0" class="text-blue-600 font-semibold">
-                {{ group.scheduledCount }} {{ t('radiology.status_scheduled', 'Booked') }}
+              <span
+                v-if="group.scheduledCount > 0"
+                class="text-blue-600 font-semibold"
+              >
+                {{ group.scheduledCount }}
+                {{ t("radiology.status_scheduled", "Booked") }}
               </span>
-              <span v-if="group.inProgressCount > 0" class="text-purple-600 font-semibold">
-                {{ group.inProgressCount }} {{ t('radiology.status_in_progress', 'Scanning') }}
+              <span
+                v-if="group.inProgressCount > 0"
+                class="text-purple-600 font-semibold"
+              >
+                {{ group.inProgressCount }}
+                {{ t("radiology.status_in_progress", "Scanning") }}
               </span>
-              <span v-if="group.completedCount > 0" class="text-emerald-600 font-semibold">
-                {{ group.completedCount }} {{ t('radiology.status_completed', 'Reported') }}
+              <span
+                v-if="group.completedCount > 0"
+                class="text-emerald-600 font-semibold"
+              >
+                {{ group.completedCount }}
+                {{ t("radiology.status_completed", "Reported") }}
               </span>
             </div>
 
@@ -369,9 +472,16 @@ function getRelativeTime(dateStr: string | null | undefined): string {
           class="py-12 px-4 text-center text-xs text-muted-foreground flex flex-col items-center gap-2"
         >
           <ScanLine class="size-8 text-muted-foreground/40 stroke-1" />
-          <p class="font-medium text-foreground">{{ t('radiology.no_studies_found', 'No imaging studies found') }}</p>
+          <p class="font-medium text-foreground">
+            {{ t("radiology.no_studies_found", "No imaging studies found") }}
+          </p>
           <p class="text-[11px] text-muted-foreground max-w-[200px]">
-            {{ t('radiology.try_adjusting_filters', 'Try selecting "All" or clearing the search box.') }}
+            {{
+              t(
+                "radiology.try_adjusting_filters",
+                'Try selecting "All" or clearing the search box.',
+              )
+            }}
           </p>
         </div>
 
@@ -390,21 +500,24 @@ function getRelativeTime(dateStr: string | null | undefined): string {
           <!-- Top Row: Patient Name & Acuity Badge -->
           <div class="flex items-center justify-between gap-1.5">
             <span class="truncate text-[12px] font-bold text-foreground">
-              {{ order.patientName ?? t('radiology.unknown_patient', 'Unknown Patient') }}
+              {{
+                order.patientName ??
+                t("radiology.unknown_patient", "Unknown Patient")
+              }}
             </span>
             <Badge
               v-if="order.priority === 'stat'"
               variant="outline"
               class="shrink-0 animate-pulse border-rose-500/50 bg-rose-500/15 px-1.5 py-0 font-mono text-[9px] font-bold uppercase text-rose-600 dark:text-rose-400"
             >
-              {{ t('radiology.priority_stat', 'STAT') }}
+              {{ t("radiology.priority_stat", "STAT") }}
             </Badge>
             <Badge
               v-else-if="order.priority === 'urgent'"
               variant="outline"
               class="shrink-0 border-amber-500/50 bg-amber-500/15 px-1.5 py-0 font-mono text-[9px] font-bold uppercase text-amber-600 dark:text-amber-400"
             >
-              {{ t('radiology.priority_urgent', 'URGENT') }}
+              {{ t("radiology.priority_urgent", "URGENT") }}
             </Badge>
           </div>
 
@@ -422,7 +535,9 @@ function getRelativeTime(dateStr: string | null | undefined): string {
           </div>
 
           <!-- Patient MRN & Accession -->
-          <div class="flex items-center justify-between gap-1 font-mono text-[10px] text-muted-foreground">
+          <div
+            class="flex items-center justify-between gap-1 font-mono text-[10px] text-muted-foreground"
+          >
             <span class="text-primary truncate">{{ order.patientMrn }}</span>
             <span v-if="order.orderNumber" class="text-[9.5px] truncate">
               Acc: {{ order.orderNumber }}
@@ -430,7 +545,9 @@ function getRelativeTime(dateStr: string | null | undefined): string {
           </div>
 
           <!-- Bottom Row: Study Status & Slot Time & Visit Stage -->
-          <div class="flex flex-wrap items-center justify-between gap-1 border-t border-border/40 pt-1">
+          <div
+            class="flex flex-wrap items-center justify-between gap-1 border-t border-border/40 pt-1"
+          >
             <div class="flex items-center gap-1">
               <!-- Study Status -->
               <Badge

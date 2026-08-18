@@ -33,7 +33,11 @@ function renderParametersTable(order: LaboratoryOrder): string {
     .map((param, index) => {
       const isCritical = param.flag === "critical";
       const isAbnormal = param.flag === "abnormal";
-      const flagText = isCritical ? "CRITICAL" : isAbnormal ? "ABNORMAL" : "NORMAL";
+      const flagText = isCritical
+        ? "CRITICAL"
+        : isAbnormal
+          ? "ABNORMAL"
+          : "NORMAL";
       const flagStyle = isCritical
         ? "color: #dc2626; font-weight: bold; background: #fef2f2;"
         : isAbnormal
@@ -79,7 +83,9 @@ function renderParametersTable(order: LaboratoryOrder): string {
  */
 export function printLaboratoryReport(order: LaboratoryOrder): void {
   const isReleased = !!order.verifiedAt;
-  const statusBadgeText = isReleased ? "FINAL VERIFIED REPORT" : "DRAFT / PRE-RELEASE";
+  const statusBadgeText = isReleased
+    ? "FINAL VERIFIED REPORT"
+    : "DRAFT / PRE-RELEASE";
   const statusBadgeColor = isReleased ? "#059669" : "#d97706";
 
   const bodyHtml = `
@@ -101,7 +107,9 @@ export function printLaboratoryReport(order: LaboratoryOrder): void {
     {
       title: "Chief Technologist / Verifier",
       name: order.verifiedBy || "Senior MLS / Pathologist",
-      designation: isReleased ? "Electronically Authorized & Released" : "Pending Supervisor Release",
+      designation: isReleased
+        ? "Electronically Authorized & Released"
+        : "Pending Supervisor Release",
       timestamp: order.verifiedAt || undefined,
       isVerified: isReleased,
     },
@@ -138,12 +146,16 @@ export function printLaboratoryReport(order: LaboratoryOrder): void {
 /**
  * Prints a consolidated encounter report containing ALL verified tests for the active patient.
  */
-export function printConsolidatedLaboratoryReport(orders: LaboratoryOrder[]): void {
+export function printConsolidatedLaboratoryReport(
+  orders: LaboratoryOrder[],
+): void {
   if (!orders || orders.length === 0) return;
 
   const firstOrder = orders[0];
   const allReleased = orders.every((o) => !!o.verifiedAt);
-  const statusBadgeText = allReleased ? "FINAL CONSOLIDATED REPORT" : "PARTIAL / DRAFT ENCOUNTER";
+  const statusBadgeText = allReleased
+    ? "FINAL CONSOLIDATED REPORT"
+    : "PARTIAL / DRAFT ENCOUNTER";
   const statusBadgeColor = allReleased ? "#059669" : "#d97706";
 
   // Group tests by department
@@ -181,11 +193,14 @@ export function printConsolidatedLaboratoryReport(orders: LaboratoryOrder[]): vo
 
   // Combined Remarks
   const combinedRemarks = orders
-    .map((o) => (o.verificationNote ? `[${o.testName}]: ${o.verificationNote}` : null))
+    .map((o) =>
+      o.verificationNote ? `[${o.testName}]: ${o.verificationNote}` : null,
+    )
     .filter(Boolean)
     .join(" | ");
 
-  const verifierName = orders.find((o) => o.verifiedBy)?.verifiedBy || "Senior MLS / Pathologist";
+  const verifierName =
+    orders.find((o) => o.verifiedBy)?.verifiedBy || "Senior MLS / Pathologist";
 
   const signatures: DocumentSignatureInfo[] = [
     {
@@ -198,7 +213,9 @@ export function printConsolidatedLaboratoryReport(orders: LaboratoryOrder[]): vo
     {
       title: "Chief Technologist / Verifier",
       name: verifierName,
-      designation: allReleased ? "All Investigations Electronically Authorized" : "Partial Encounter Release",
+      designation: allReleased
+        ? "All Investigations Electronically Authorized"
+        : "Partial Encounter Release",
       timestamp: firstOrder.verifiedAt || undefined,
       isVerified: allReleased,
     },

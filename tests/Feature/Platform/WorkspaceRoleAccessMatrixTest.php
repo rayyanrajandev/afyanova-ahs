@@ -102,6 +102,18 @@ function workspaceAccessMatrix(): array
                 '/api/v1/radiology/orders/status-counts',
             ],
         ],
+        // Pharmacy, added with its workspace routes. Availability is listed
+        // alongside the worklist because the bench requests it on mount: a
+        // dispenser needs to know what is actually on the shelf before promising
+        // any of it, so a 403 there breaks the screen just as surely.
+        'pharmacy' => [
+            'roles' => ['PHARMACY.STAFF', 'PHARMACY.SUPERVISOR'],
+            'endpoints' => [
+                '/api/v1/pharmacy/orders?perPage=50',
+                '/api/v1/pharmacy/orders/status-counts',
+                '/api/v1/pharmacy/availability',
+            ],
+        ],
     ];
 }
 

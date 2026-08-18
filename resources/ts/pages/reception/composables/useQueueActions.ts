@@ -14,7 +14,7 @@
  * Waiting Doctor / OPD Consultation, In Consultation) with live stage counters.
  */
 
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { QueueItem } from "@/components/common/Queue.vue";
 import { stepBadgeStatus, stepLabelKey } from "@/composables/patientFlowStep";
@@ -33,6 +33,12 @@ export interface UseQueueActionsOptions {
    * gap this closes the frontend half of).
    */
   onCancelled?: (patientId: string) => void;
+  /**
+   * Stage to open on. Taken as an argument rather than assigned afterwards
+   * because this queue fetches per stage: setting the ref post-construction
+   * would leave the first request already in flight for the default.
+   */
+  initialStage?: ReceptionQueueStage;
 }
 
 export function useQueueActions(options: UseQueueActionsOptions = {}) {
@@ -42,7 +48,7 @@ export function useQueueActions(options: UseQueueActionsOptions = {}) {
   const queueStore = useQueueStore();
   const recentStore = useRecentStore();
 
-  const selectedStage = ref<ReceptionQueueStage>("waiting_triage");
+  const selectedStage = ref<ReceptionQueueStage>(options.initialStage ?? "waiting_triage");
   const stageCounts = computed(() => queueStore.stageCounts);
 
   function tierLabel(arrivalMode: QueueTask["arrivalMode"]): string | undefined {
@@ -129,13 +135,20 @@ export function useQueueActions(options: UseQueueActionsOptions = {}) {
     await queueStore.fetchStageCounts();
   }
 
-  async function setStage(stage: ReceptionQueueStage) {
+  function setStage(stage: ReceptionQueueStage) {
     selectedStage.value = stage;
-    await queueStore.fetchReceptionQueue(stage);
   }
 
-  // Load the initial queue and stage counts when workspace mounts
-  void queueStore.fetchReceptionQueue(selectedStage.value);
+  // One loader for every way the stage can change — clicking a tab, restoring
+  // the last session, or following a link. `immediate` covers the initial load,
+  // so there is no separate mount-time fetch to fall out of step with this.
+  watch(
+    selectedStage,
+    (stage) => {
+      void queueStore.fetchReceptionQueue(stage);
+    },
+    { immediate: true },
+  );
 
   /**
    * Re-fetch on a live patient-flow board update (§10.4, useReceptionLiveSync)

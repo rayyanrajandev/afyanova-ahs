@@ -75,21 +75,13 @@ watch(
 );
 
 /**
- * Prescriptions keep their own pharmacy vocabulary; diagnostics are relabelled
- * to the clinician-facing stage so this list agrees with the Results tab and
- * with the "Send for Diagnostics" control.
+ * This tab is lab and imaging only. Medication orders were being listed here as
+ * well as in Prescriptions, so a prescription appeared twice under two
+ * different headings and inflated the diagnostics count on the tab itself.
  */
-function isDiagnostic(order: PlacedClinicalOrder): boolean {
-  return order.type === "lab" || order.type === "imaging";
-}
+const diagnosticOrders = computed<PlacedClinicalOrder[]>(() => props.orders.diagnosticOrders.value);
 
 function orderStatusLabel(order: PlacedClinicalOrder): string {
-  if (!isDiagnostic(order)) {
-    // Explicit default: vue-i18n returns the key itself when one is missing, so
-    // `|| order.status` never fired and a gap rendered as "status.dispensed".
-    return t(`status.${order.status}`, order.status);
-  }
-
   switch (diagnosticOrderStage(order)) {
     case "awaiting_collection":
       return t("clinician.order_stage_awaiting_collection", "Awaiting sample");
@@ -107,15 +99,6 @@ function orderStatusLabel(order: PlacedClinicalOrder): string {
 type OrderBadgeVariant = "success" | "info" | "critical" | "warning";
 
 function orderBadgeVariant(order: PlacedClinicalOrder): OrderBadgeVariant {
-  if (!isDiagnostic(order)) {
-    if (order.status === "dispensed") return "success";
-    if (order.status === "cancelled") return "critical";
-
-    return order.status === "in_preparation" || order.status === "partially_dispensed"
-      ? "info"
-      : "warning";
-  }
-
   switch (diagnosticOrderStage(order)) {
     case "resulted":
       return "success";
@@ -168,8 +151,10 @@ const filteredRadExams = computed(() => {
   );
 });
 
+// Diagnostics only. This summed medication too, so the figure a doctor read as
+// "cost of tests ordered" silently included the prescription bill.
 const totalPlacedDiagnosticCost = computed(() =>
-  props.orders.activeOrders.value
+  diagnosticOrders.value
     .filter((o) => o.status !== "cancelled")
     .reduce((acc, cur) => acc + (cur.price || 0), 0)
 );
@@ -318,7 +303,7 @@ async function handlePlaceRadOrder() {
           {{ t("clinician.estimated_total", "Est. Total:") }} <strong class="text-emerald-700 dark:text-emerald-400 font-bold">TZS {{ totalPlacedDiagnosticCost.toLocaleString() }}</strong>
         </span>
         <span class="text-muted-foreground">
-          {{ orders.activeOrders.value.length }} {{ t("clinician.orders") }}
+          {{ diagnosticOrders.length }} {{ t("clinician.orders") }}
         </span>
       </div>
     </div>
@@ -634,11 +619,11 @@ async function handlePlaceRadOrder() {
     </div>
 
     <!-- 3. Placed Orders List -->
-    <div v-if="orders.activeOrders.value.length > 0" class="rounded-lg border border-border/70 bg-card/60 p-3 space-y-2">
+    <div v-if="diagnosticOrders.length > 0" class="rounded-lg border border-border/70 bg-card/60 p-3 space-y-2">
       <div class="flex items-center justify-between pb-1.5 border-b border-border/50">
         <span class="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
           <Clock class="size-3.5 text-muted-foreground" />
-          <span>{{ t("clinician.orders") }} ({{ orders.activeOrders.value.length }})</span>
+          <span>{{ t("clinician.orders") }} ({{ diagnosticOrders.length }})</span>
         </span>
         <span v-if="totalPlacedDiagnosticCost > 0" class="text-xs text-muted-foreground font-mono">
           {{ t("clinician.estimated_total", "Est. Total:") }} <strong class="text-emerald-700 dark:text-emerald-400 font-bold">TZS {{ totalPlacedDiagnosticCost.toLocaleString() }}</strong>
@@ -648,16 +633,16 @@ async function handlePlaceRadOrder() {
       <div>
         <ul class="divide-y divide-border/60">
           <li
-            v-for="order in orders.activeOrders.value"
+            v-for="order in diagnosticOrders"
             :key="order.id"
             class="py-2 flex items-center justify-between gap-3 text-xs"
           >
             <div class="flex items-center gap-2 min-w-0">
               <Badge
-                :variant="order.type === 'lab' ? 'default' : order.type === 'imaging' ? 'info' : 'secondary'"
+                :variant="order.type === 'lab' ? 'default' : 'info'"
                 class="uppercase text-[9px] px-1.5 py-0 font-mono shrink-0"
               >
-                {{ order.type === 'lab' ? t('clinician.order_type_lab') : order.type === 'imaging' ? t('clinician.order_type_imaging') : t('clinician.order_type_medication') }}
+                {{ order.type === 'lab' ? t('clinician.order_type_lab') : t('clinician.order_type_imaging') }}
               </Badge>
               <div>
                 <span class="font-bold text-foreground text-[12px] block">{{ order.name }}</span>
@@ -692,7 +677,7 @@ async function handlePlaceRadOrder() {
 
               <!-- Cancel Button for Pending Orders -->
               <Button
-                v-if="(order.status === 'pending' || order.status === 'ordered') && props.clinicalMode === 'active'"
+                v-if="order.status === 'ordered' && props.clinicalMode === 'active'"
                 type="button"
                 variant="ghost"
                 class="h-6 px-1.5 text-muted-foreground hover:text-critical hover:bg-critical/10 text-[11px] gap-1 cursor-pointer"

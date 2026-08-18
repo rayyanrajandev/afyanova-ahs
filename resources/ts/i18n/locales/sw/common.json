@@ -276,7 +276,8 @@
     "search": "Tafuta",
     "loading": "Inapakia...",
     "no_data": "Hakuna data",
-    "error_generic": "Kuna hitilafu"
+    "error_generic": "Kuna hitilafu",
+    "just_now": "sasa hivi"
   },
   "validation": {
     "required": "Uwanja huu unahitajika",
@@ -1027,7 +1028,8 @@
   "flow_timeline": {
     "label": "Shughuli",
     "empty": "Hakuna hatua zilizorekodiwa kwa mgonjwa huyu bado.",
-    "load_failed": "Imeshindwa kupakia rekodi ya shughuli."
+    "load_failed": "Imeshindwa kupakia rekodi ya shughuli.",
+    "loading": "Inapakia ratiba ya shughuli za kimatibabu"
   },
   "laboratory": {
     "workspace_title": "Kituo cha Kazi cha Maabara",
@@ -1208,6 +1210,34 @@
     "release_blocked_note": "Maelezo ya kutoa yanahitajika.",
     "release_blocked_review": "Thibitisha tamko la ukaguzi wa pili kwanza.",
     "already_released": "Imetolewa — ripoti hii ni ya mwisho na iko kwenye rekodi ya mgonjwa.",
-    "ready_to_release": "Tayari kutolewa kwenye rekodi ya mgonjwa."
+    "ready_to_release": "Tayari kutolewa kwenye rekodi ya mgonjwa.",
+    "dept_clinical_chemistry": "Kemia ya Kliniki",
+    "dept_serology_immunology": "Serolojia na Kinga",
+    "status_verified": "Imethibitishwa",
+    "status_cancelled": "Imeghairiwa",
+    "load_failed": "Imeshindwa kupakia orodha ya kazi. Jaribu tena."
+  },
+  "pharmacy": {
+    "by_patient": "Wagonjwa",
+    "by_prescription": "Maagizo",
+    "status_all": "Zote",
+    "status_pending": "Zinasubiri",
+    "status_in_preparation": "Zinaandaliwa",
+    "status_partial": "Sehemu",
+    "status_partially_dispensed": "Imetolewa kwa sehemu",
+    "status_dispensed": "Zimetolewa",
+    "status_cancelled": "Imefutwa",
+    "search_placeholder": "Tafuta mgonjwa, MRN, dawa...",
+    "loading_patient_queue": "Inapakia foleni ya utoaji dawa...",
+    "loading_prescriptions": "Inapakia maagizo...",
+    "no_patients_found": "Hakuna wagonjwa waliopatikana.",
+    "no_orders_found": "Hakuna maagizo yanayolingana yaliyopatikana.",
+    "unknown_patient": "Mgonjwa",
+    "item_count": "Bidhaa {count}",
+    "units": "vipimo",
+    "partial_progress_hint": "Kiasi kilichotolewa, kati ya kilichoagizwa",
+    "locked_dispense": "Imefungwa hadi agizo likubaliwe na maandalizi kuanza",
+    "locked_verify": "Imefungwa hadi dawa itolewe kwa mgonjwa",
+    "locked_cancelled": "Agizo hili limeghairiwa — hakuna kilichobaki kujaza au kuidhinisha"
   }
 }

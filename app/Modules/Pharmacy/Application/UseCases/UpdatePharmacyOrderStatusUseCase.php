@@ -2,12 +2,14 @@
 
 namespace App\Modules\Pharmacy\Application\UseCases;
 
+use App\Modules\Appointment\Infrastructure\Models\AppointmentModel;
 use App\Modules\Department\Domain\Repositories\DepartmentRepositoryInterface;
 use App\Modules\InventoryProcurement\Application\Exceptions\InventoryItemNotFoundException;
 use App\Modules\InventoryProcurement\Application\Services\DepartmentStockService;
 use App\Modules\InventoryProcurement\Application\Services\InventoryBatchStockService;
 use App\Modules\InventoryProcurement\Domain\Repositories\InventoryItemRepositoryInterface;
 use App\Modules\Pharmacy\Application\Exceptions\PharmacyOrderStatusUpdateNotAllowedException;
+use App\Modules\Pharmacy\Application\Services\RecordPharmacyFlowTransitionService;
 use App\Modules\Pharmacy\Application\Support\ApprovedMedicineGovernance;
 use App\Modules\Pharmacy\Domain\Events\PharmacyOrderDispensed;
 use App\Modules\Pharmacy\Domain\Repositories\PharmacyOrderAuditLogRepositoryInterface;
@@ -20,6 +22,19 @@ use Illuminate\Support\Facades\DB;
 
 class UpdatePharmacyOrderStatusUseCase
 {
+    /**
+     * Staff-facing write paths for the flow log, keyed by the status moved *to*.
+     *
+     * Cancellation is absent on purpose: it withdraws work rather than advancing
+     * it, and the flow vocabulary has no word for that — the same choice the
+     * laboratory and radiology paths make.
+     */
+    private const FLOW_SOURCES_BY_STATUS = [
+        PharmacyOrderStatus::IN_PREPARATION->value => 'pharmacy.preparation_started',
+        PharmacyOrderStatus::PARTIALLY_DISPENSED->value => 'pharmacy.partially_dispensed',
+        PharmacyOrderStatus::DISPENSED->value => 'pharmacy.dispensed',
+    ];
+
     public function __construct(
         private readonly PharmacyOrderRepositoryInterface $pharmacyOrderRepository,
         private readonly PharmacyOrderAuditLogRepositoryInterface $auditLogRepository,
@@ -29,6 +44,7 @@ class UpdatePharmacyOrderStatusUseCase
         private readonly DepartmentStockService $departmentStockService,
         private readonly DepartmentRepositoryInterface $departmentRepository,
         private readonly CurrentPlatformScopeContextInterface $platformScopeContext,
+        private readonly RecordPharmacyFlowTransitionService $recordFlowTransition,
     ) {}
 
     public function execute(
@@ -97,6 +113,21 @@ class UpdatePharmacyOrderStatusUseCase
                 $payload['quantity_dispensed'] = $quantityPrescribed;
             }
             $payload['dispensed_at'] = now();
+        }
+
+        // Who released the medicine, so verification can insist on someone
+        // else. Recorded on the first release and left alone afterwards: a
+        // partial fill is a release, and the pharmacist who began handing the
+        // medicine over is the one the second pair of eyes is checking.
+        if (in_array(
+            $status,
+            [
+                PharmacyOrderStatus::PARTIALLY_DISPENSED->value,
+                PharmacyOrderStatus::DISPENSED->value,
+            ],
+            true,
+        ) && ($existing['dispensed_by_user_id'] ?? null) === null) {
+            $payload['dispensed_by_user_id'] = $actorId;
         }
 
         $stockIssueQuantity = $this->resolveStockIssueQuantity(
@@ -191,6 +222,21 @@ class UpdatePharmacyOrderStatusUseCase
                     'inventory_issue_unit' => $updated['dispensed_unit'] ?? $existing['dispensed_unit'] ?? $existing['prescribed_unit'] ?? null,
                 ],
             );
+
+            // Recorded after the update so the resolver sees the new status.
+            // `partially_dispensed` stays in openWorklistValues(), so a partial
+            // fill records the work and leaves the patient waiting; only a
+            // completed dispense releases the visit.
+            $flowSource = self::FLOW_SOURCES_BY_STATUS[$updated['status'] ?? ''] ?? null;
+            if ($flowSource !== null) {
+                $this->recordFlowTransition->recordForOrder(
+                    order: $updated,
+                    source: $flowSource,
+                    actorId: $actorId,
+                    isDispenseComplete: ($updated['status'] ?? null) === PharmacyOrderStatus::DISPENSED->value,
+                    metadata: ['pharmacy_order_id' => $id],
+                );
+            }
 
             if (($updated['status'] ?? null) === PharmacyOrderStatus::DISPENSED->value) {
                 DB::afterCommit(function () use ($id, $updated, $actorId): void {
@@ -352,7 +398,7 @@ class UpdatePharmacyOrderStatusUseCase
     }
 
     /**
-     * @param array<string, mixed> $order
+     * @param  array<string, mixed>  $order
      */
     private function resolveDispensedUnit(array $order, ?string $requestedUnit): ?string
     {
@@ -368,8 +414,8 @@ class UpdatePharmacyOrderStatusUseCase
     }
 
     /**
-     * @param array<string, mixed> $existing
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $existing
+     * @param  array<string, mixed>  $payload
      */
     private function resolveStockIssueQuantity(
         array $existing,
@@ -402,14 +448,14 @@ class UpdatePharmacyOrderStatusUseCase
     }
 
     /**
-     * @param array<string, mixed> $existing
-     * @param array<string, mixed> $updated
+     * @param  array<string, mixed>  $existing
+     * @param  array<string, mixed>  $updated
      */
     private function recordDispenseStockIssue(
         array $existing,
         array $updated,
         float $quantityIssued,
-        ?string $batchId = null,
+        ?string $batchId,
         ?int $actorId
     ): void {
         [$dispenseTargetCode, $dispenseTargetName] = $this->resolveDispenseTargetMedication($updated);
@@ -468,7 +514,7 @@ class UpdatePharmacyOrderStatusUseCase
     }
 
     /**
-     * @param array<string, mixed> $order
+     * @param  array<string, mixed>  $order
      * @return array{0: string|null, 1: string|null}
      */
     private function resolveDispenseTargetMedication(array $order): array
@@ -489,7 +535,7 @@ class UpdatePharmacyOrderStatusUseCase
     }
 
     /**
-     * @param array<string, mixed> $order
+     * @param  array<string, mixed>  $order
      */
     private function orderIndicatesSubstitution(array $order): bool
     {
@@ -504,7 +550,7 @@ class UpdatePharmacyOrderStatusUseCase
     }
 
     /**
-     * @param array<string, mixed> $order
+     * @param  array<string, mixed>  $order
      */
     private function recordDepartmentStockConsumption(
         array $order,
@@ -541,18 +587,18 @@ class UpdatePharmacyOrderStatusUseCase
             source: 'pharmacy_dispense',
             sourceId: $order['id'] ?? null,
             actorId: $actorId,
-            notes: 'Pharmacy dispense – order ' . ($order['order_number'] ?? $order['id'] ?? ''),
+            notes: 'Pharmacy dispense – order '.($order['order_number'] ?? $order['id'] ?? ''),
         );
     }
 
     /**
-     * @param array<string, mixed> $order
+     * @param  array<string, mixed>  $order
      */
     private function resolveDepartmentId(array $order): ?string
     {
         $appointmentId = $order['appointment_id'] ?? null;
         if ($appointmentId !== null) {
-            $appointment = \App\Modules\Appointment\Infrastructure\Models\AppointmentModel::query()->find($appointmentId);
+            $appointment = AppointmentModel::query()->find($appointmentId);
             $departmentName = $appointment['department'] ?? null;
             if ($departmentName !== null && trim((string) $departmentName) !== '') {
                 $department = $this->departmentRepository->findActiveByName((string) $departmentName);

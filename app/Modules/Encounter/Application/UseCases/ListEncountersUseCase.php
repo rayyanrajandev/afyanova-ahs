@@ -3,6 +3,7 @@
 namespace App\Modules\Encounter\Application\UseCases;
 
 use App\Modules\Encounter\Domain\Repositories\EncounterRepositoryInterface;
+use App\Modules\Encounter\Domain\ValueObjects\ClinicianQueueStage;
 use App\Modules\Encounter\Domain\ValueObjects\EncounterStatus;
 use Illuminate\Support\Str;
 
@@ -55,6 +56,11 @@ class ListEncountersUseCase
         $toDateTime = isset($filters['to']) ? trim((string) $filters['to']) : null;
         $toDateTime = $toDateTime === '' ? null : $toDateTime;
 
+        // The clinician queue asks for one pile at a time. Filtering in SQL is
+        // what lets the list be a real page of that pile rather than whatever
+        // the first page of all encounters happened to contain.
+        $queueStage = ClinicianQueueStage::tryFromFilter($filters['queueStage'] ?? null);
+
         return $this->encounterRepository->search(
             query: $query,
             patientId: $patientId,
@@ -66,6 +72,7 @@ class ListEncountersUseCase
             perPage: $perPage,
             sortBy: $sortBy,
             sortDirection: $sortDirection,
+            queueStage: $queueStage,
         );
     }
 }

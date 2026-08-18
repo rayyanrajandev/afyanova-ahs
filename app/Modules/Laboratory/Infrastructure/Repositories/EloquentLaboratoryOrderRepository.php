@@ -9,6 +9,8 @@ use App\Modules\Platform\Infrastructure\Support\PlatformScopeQueryApplier;
 use App\Support\ClinicalOrders\ClinicalOrderEntryState;
 use App\Support\ClinicalOrders\ClinicalOrderPatientTextSearch;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use App\Modules\Platform\Domain\ValueObjects\ClinicalCatalogType;
+use App\Modules\Platform\Infrastructure\Models\ClinicalCatalogItemModel;
 use Illuminate\Database\Eloquent\Builder;
 
 class EloquentLaboratoryOrderRepository implements LaboratoryOrderRepositoryInterface
@@ -84,7 +86,8 @@ class EloquentLaboratoryOrderRepository implements LaboratoryOrderRepositoryInte
         int $page,
         int $perPage,
         ?string $sortBy,
-        string $sortDirection
+        string $sortDirection,
+        ?string $department = null
     ): array {
         $sortBy = in_array($sortBy, ['order_number', 'ordered_at', 'status', 'priority', 'created_at', 'updated_at'], true)
             ? $sortBy
@@ -106,6 +109,7 @@ class EloquentLaboratoryOrderRepository implements LaboratoryOrderRepositoryInte
                 fn (Builder $builder) => $builder->whereIn('status', $statuses),
             )
             ->when($priority, fn (Builder $builder, string $requestedPriority) => $builder->where('priority', $requestedPriority))
+            ->when($department, fn (Builder $builder, string $requestedDepartment) => $this->applyDepartmentFilter($builder, $requestedDepartment))
             ->when($fromDateTime, fn (Builder $builder, string $startDateTime) => $builder->where('ordered_at', '>=', $startDateTime))
             ->when($toDateTime, fn (Builder $builder, string $endDateTime) => $builder->where('ordered_at', '<=', $endDateTime))
             ->orderBy($sortBy, $sortDirection);
@@ -120,6 +124,26 @@ class EloquentLaboratoryOrderRepository implements LaboratoryOrderRepositoryInte
         return $this->toSearchResult($paginator);
     }
 
+
+    /**
+     * Narrow to one laboratory discipline.
+     *
+     * Sourced from the catalog item's own category rather than a column on the
+     * order, because that is where the discipline actually lives. Doing it here
+     * is what lets the worklist's department pills be a query instead of a
+     * filter over whichever page happened to arrive.
+     */
+    private function applyDepartmentFilter(Builder $builder, string $department): Builder
+    {
+        return $builder->whereIn(
+            'lab_test_catalog_item_id',
+            ClinicalCatalogItemModel::query()
+                ->select('id')
+                ->where('catalog_type', ClinicalCatalogType::LAB_TEST->value)
+                ->whereRaw('LOWER(category) = ?', [strtolower($department)]),
+        );
+    }
+
     public function statusCounts(
         ?string $query,
         ?string $patientId,
@@ -127,7 +151,8 @@ class EloquentLaboratoryOrderRepository implements LaboratoryOrderRepositoryInte
         ?string $admissionId,
         ?string $priority,
         ?string $fromDateTime,
-        ?string $toDateTime
+        ?string $toDateTime,
+        ?string $department = null
     ): array {
         $queryBuilder = LaboratoryOrderModel::query();
         $this->applyPlatformScopeIfEnabled($queryBuilder);
@@ -139,6 +164,7 @@ class EloquentLaboratoryOrderRepository implements LaboratoryOrderRepositoryInte
             ->when($appointmentId, fn (Builder $builder, string $requestedAppointmentId) => $builder->where('appointment_id', $requestedAppointmentId))
             ->when($admissionId, fn (Builder $builder, string $requestedAdmissionId) => $builder->where('admission_id', $requestedAdmissionId))
             ->when($priority, fn (Builder $builder, string $requestedPriority) => $builder->where('priority', $requestedPriority))
+            ->when($department, fn (Builder $builder, string $requestedDepartment) => $this->applyDepartmentFilter($builder, $requestedDepartment))
             ->when($fromDateTime, fn (Builder $builder, string $startDateTime) => $builder->where('ordered_at', '>=', $startDateTime))
             ->when($toDateTime, fn (Builder $builder, string $endDateTime) => $builder->where('ordered_at', '<=', $endDateTime));
 

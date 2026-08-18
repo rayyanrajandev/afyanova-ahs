@@ -94,6 +94,10 @@ export interface PlacedClinicalOrder {
    * `completed` and the clinician still cannot see anything.
    */
   verifiedAt?: string | null;
+  /** Medication only — what was prescribed, and what it costs. */
+  quantityPrescribed?: number | null;
+  prescribedUnit?: string | null;
+  unitPrice?: number | null;
 }
 
 /**
@@ -149,6 +153,16 @@ export function diagnosticOrderStage(order: PlacedClinicalOrder): DiagnosticOrde
   return "awaiting_collection";
 }
 
+/** Lab and imaging. What the Diagnostic Orders tab is about. */
+export function isDiagnosticOrder(order: PlacedClinicalOrder): boolean {
+  return order.type === "lab" || order.type === "imaging";
+}
+
+/** A placed prescription, as opposed to an unsubmitted draft. */
+export function isMedicationOrder(order: PlacedClinicalOrder): boolean {
+  return order.type === "medication";
+}
+
 /**
  * Whether a diagnostic order is still owed back to the clinician.
  *
@@ -156,7 +170,7 @@ export function diagnosticOrderStage(order: PlacedClinicalOrder): DiagnosticOrde
  * medication is leaving, not coming back for the doctor to read a result.
  */
 export function isDiagnosticOrderOutstanding(order: PlacedClinicalOrder): boolean {
-  if (order.type !== "lab" && order.type !== "imaging") {
+  if (!isDiagnosticOrder(order)) {
     return false;
   }
 
@@ -214,6 +228,30 @@ export function useClinicianOrders() {
 
   // Prescriptions state for the active consultation
   const prescriptionDrafts = ref<ActivePrescriptionOrder[]>([]);
+
+  /**
+   * Lab and imaging only. Medication orders were being counted as diagnostics
+   * and listed in the Diagnostic Orders tab, so a prescription showed up twice
+   * under two headings and inflated that tab's badge.
+   */
+  const diagnosticOrders = computed<PlacedClinicalOrder[]>(() =>
+    activeOrders.value.filter(isDiagnosticOrder),
+  );
+
+  /** Medication orders already placed, as opposed to unsubmitted drafts. */
+  const placedMedicationOrders = computed<PlacedClinicalOrder[]>(() =>
+    activeOrders.value.filter(isMedicationOrder),
+  );
+
+  /**
+   * What the Prescriptions tab actually holds: medicines already prescribed for
+   * this patient plus any still sitting in the draft basket. The tab badge read
+   * `prescriptionDrafts.length` alone, so a patient with prescriptions on file
+   * and nothing being typed showed no count at all.
+   */
+  const prescriptionCount = computed<number>(
+    () => placedMedicationOrders.value.length + prescriptionDrafts.value.length,
+  );
 
   async function searchMedicationCatalog(query = ""): Promise<MedicationCatalogItem[]> {
     isSearchingMedications.value = true;
@@ -462,6 +500,9 @@ export function useClinicianOrders() {
             status: (created?.status?.toLowerCase() as any) || "pending",
             createdAt: created?.orderedAt || created?.createdAt || new Date().toISOString(),
             details: `${item.dosage} · ${item.route} · ${item.frequency} for ${item.durationDays} days · Qty: ${qty}`,
+            quantityPrescribed: qty,
+            prescribedUnit: created?.prescribedUnit ?? null,
+            unitPrice: item.unitPrice ?? null,
             price: (item.unitPrice || 0) * qty,
           };
         })
@@ -588,7 +629,10 @@ export function useClinicianOrders() {
           status: (med.status?.toLowerCase() as any) || "pending",
           createdAt: med.orderedAt || med.createdAt || new Date().toISOString(),
           details: med.dosageInstruction || `${dosageStr ?? ""} ${routeStr ?? ""} ${freqStr ?? ""}`.trim() || undefined,
-          price: med.price || med.totalPrice,
+          quantityPrescribed: med.quantityPrescribed ?? null,
+          prescribedUnit: med.prescribedUnit ?? null,
+          unitPrice: med.unitPrice ?? null,
+          price: med.totalPrice ?? med.price ?? undefined,
         });
       });
     }
@@ -636,7 +680,10 @@ export function useClinicianOrders() {
             status: (med.status?.toLowerCase() as any) || "pending",
             createdAt: med.orderedAt || med.createdAt || new Date().toISOString(),
             details: med.dosageInstruction || `${dosageStr ?? ""} ${routeStr ?? ""} ${freqStr ?? ""}`.trim() || undefined,
-            price: med.price || med.totalPrice,
+            quantityPrescribed: med.quantityPrescribed ?? null,
+            prescribedUnit: med.prescribedUnit ?? null,
+            unitPrice: med.unitPrice ?? null,
+            price: med.totalPrice ?? med.price ?? undefined,
           });
         }
       }
@@ -721,6 +768,9 @@ export function useClinicianOrders() {
     cancelOrder,
     hydrateOrdersFromWorkspace,
     fetchOrders,
+    diagnosticOrders,
+    placedMedicationOrders,
+    prescriptionCount,
     clearOrders,
   };
 }

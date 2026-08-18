@@ -79,7 +79,12 @@ export const MODALITY_NODES: PacsModalityNode[] = [
  * Creates SVG Data URIs representing high-contrast realistic medical imaging captures.
  */
 function createMedicalSvgDataUri(
-  type: "ultrasound_abdomen" | "ultrasound_obstetric" | "xray_chest" | "xray_pelvis" | "ct_abdomen",
+  type:
+    | "ultrasound_abdomen"
+    | "ultrasound_obstetric"
+    | "xray_chest"
+    | "xray_pelvis"
+    | "ct_abdomen",
   viewLabel: string,
   measurements?: string,
 ): string {
@@ -190,13 +195,20 @@ function createMedicalSvgDataUri(
 /**
  * Generates sample diagnostic imaging series matching a procedure.
  */
-export function generateDefaultDicomSeries(modality: string, studyDescription: string): DicomImageInstance[] {
+export function generateDefaultDicomSeries(
+  modality: string,
+  studyDescription: string,
+): DicomImageInstance[] {
   const mod = modality?.toLowerCase() || "";
   const desc = studyDescription?.toLowerCase() || "";
   const now = new Date().toISOString();
 
   if (mod.includes("us") || mod.includes("ultrasound")) {
-    if (desc.includes("obstetric") || desc.includes("pregnancy") || desc.includes("pelvic")) {
+    if (
+      desc.includes("obstetric") ||
+      desc.includes("pregnancy") ||
+      desc.includes("pelvic")
+    ) {
       return [
         {
           id: "inst-us-01",
@@ -204,7 +216,10 @@ export function generateDefaultDicomSeries(modality: string, studyDescription: s
           seriesDescription: "Sagittal Intrauterine Gestation",
           modality: "US",
           instanceNumber: 1,
-          imageUrl: createMedicalSvgDataUri("ultrasound_obstetric", "Sagittal Uterus Viability"),
+          imageUrl: createMedicalSvgDataUri(
+            "ultrasound_obstetric",
+            "Sagittal Uterus Viability",
+          ),
           isKeyImage: true,
           acquisitionDateTime: now,
           windowCenter: 128,
@@ -218,13 +233,18 @@ export function generateDefaultDicomSeries(modality: string, studyDescription: s
           seriesDescription: "Biparietal Diameter (BPD) Biometry",
           modality: "US",
           instanceNumber: 2,
-          imageUrl: createMedicalSvgDataUri("ultrasound_obstetric", "BPD Caliper Measurement", "BPD: 52.4mm"),
+          imageUrl: createMedicalSvgDataUri(
+            "ultrasound_obstetric",
+            "BPD Caliper Measurement",
+            "BPD: 52.4mm",
+          ),
           isKeyImage: true,
           acquisitionDateTime: now,
           windowCenter: 128,
           windowWidth: 256,
           matrixSize: "800x600",
-          notes: "BPD calipers placed outer-to-inner. Gestational age matches LMP.",
+          notes:
+            "BPD calipers placed outer-to-inner. Gestational age matches LMP.",
         },
         {
           id: "inst-us-03",
@@ -232,7 +252,10 @@ export function generateDefaultDicomSeries(modality: string, studyDescription: s
           seriesDescription: "Fundal Placental Localization",
           modality: "US",
           instanceNumber: 3,
-          imageUrl: createMedicalSvgDataUri("ultrasound_abdomen", "Placental Site Grade I"),
+          imageUrl: createMedicalSvgDataUri(
+            "ultrasound_abdomen",
+            "Placental Site Grade I",
+          ),
           isKeyImage: false,
           acquisitionDateTime: now,
           windowCenter: 128,
@@ -250,13 +273,17 @@ export function generateDefaultDicomSeries(modality: string, studyDescription: s
         seriesDescription: "Liver Parenchyma & Right Kidney",
         modality: "US",
         instanceNumber: 1,
-        imageUrl: createMedicalSvgDataUri("ultrasound_abdomen", "Hepatorenal Interface"),
+        imageUrl: createMedicalSvgDataUri(
+          "ultrasound_abdomen",
+          "Hepatorenal Interface",
+        ),
         isKeyImage: true,
         acquisitionDateTime: now,
         windowCenter: 128,
         windowWidth: 256,
         matrixSize: "800x600",
-        notes: "Liver echotexture normal. Corticomedullary differentiation intact.",
+        notes:
+          "Liver echotexture normal. Corticomedullary differentiation intact.",
       },
       {
         id: "inst-us-02",
@@ -264,7 +291,10 @@ export function generateDefaultDicomSeries(modality: string, studyDescription: s
         seriesDescription: "Gallbladder Longitudinal & CBD",
         modality: "US",
         instanceNumber: 2,
-        imageUrl: createMedicalSvgDataUri("ultrasound_abdomen", "Gallbladder Long View"),
+        imageUrl: createMedicalSvgDataUri(
+          "ultrasound_abdomen",
+          "Gallbladder Long View",
+        ),
         isKeyImage: true,
         acquisitionDateTime: now,
         windowCenter: 128,
@@ -278,7 +308,10 @@ export function generateDefaultDicomSeries(modality: string, studyDescription: s
         seriesDescription: "Spleen & Left Kidney Long View",
         modality: "US",
         instanceNumber: 3,
-        imageUrl: createMedicalSvgDataUri("ultrasound_abdomen", "Splenorenal View"),
+        imageUrl: createMedicalSvgDataUri(
+          "ultrasound_abdomen",
+          "Splenorenal View",
+        ),
         isKeyImage: false,
         acquisitionDateTime: now,
         windowCenter: 128,
@@ -296,7 +329,10 @@ export function generateDefaultDicomSeries(modality: string, studyDescription: s
       seriesDescription: "Chest PA Erect Projection",
       modality: "DX",
       instanceNumber: 1,
-      imageUrl: createMedicalSvgDataUri("xray_chest", "Chest Radiograph PA View"),
+      imageUrl: createMedicalSvgDataUri(
+        "xray_chest",
+        "Chest Radiograph PA View",
+      ),
       isKeyImage: true,
       acquisitionDateTime: now,
       windowCenter: 2048,
@@ -304,7 +340,8 @@ export function generateDefaultDicomSeries(modality: string, studyDescription: s
       kvp: 120,
       mas: 4.5,
       matrixSize: "2048x2048",
-      notes: "Erect PA inspiratory view. Lung parenchyma clear without active consolidations.",
+      notes:
+        "Erect PA inspiratory view. Lung parenchyma clear without active consolidations.",
     },
     {
       id: "inst-xr-02",

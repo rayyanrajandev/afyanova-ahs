@@ -28,7 +28,8 @@ interface LaboratoryOrderRepositoryInterface
         int $page,
         int $perPage,
         ?string $sortBy,
-        string $sortDirection
+        string $sortDirection,
+        ?string $department = null
     ): array;
 
     public function statusCounts(
@@ -38,7 +39,8 @@ interface LaboratoryOrderRepositoryInterface
         ?string $admissionId,
         ?string $priority,
         ?string $fromDateTime,
-        ?string $toDateTime
+        ?string $toDateTime,
+        ?string $department = null
     ): array;
 
     public function recentVerifiedResultsForPatient(string $patientId, int $limit = 10): array;

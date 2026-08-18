@@ -21,7 +21,7 @@
  * repeated here.
  */
 
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useToast } from "@/composables/useToast";
 
 /** Matches App\Modules\Radiology\Domain\ValueObjects\RadiologyOrderStatus. */
@@ -32,7 +32,10 @@ export type RadiologyOrderStatus =
   | "completed"
   | "cancelled";
 
-import { generateDefaultDicomSeries, type DicomImageInstance } from "../services/pacsDicomService";
+import {
+  generateDefaultDicomSeries,
+  type DicomImageInstance,
+} from "../services/pacsDicomService";
 
 export type { DicomImageInstance };
 
@@ -88,7 +91,14 @@ export interface PatientRadiologyGroup {
 }
 
 /** Statuses still needing work from this department. */
-const OPEN_STATUSES: RadiologyOrderStatus[] = ["ordered", "scheduled", "in_progress"];
+const OPEN_STATUSES: RadiologyOrderStatus[] = [
+  "ordered",
+  "scheduled",
+  "in_progress",
+];
+
+/** The endpoint caps at 100; asking for more just gets clamped. */
+const WORKLIST_PAGE_SIZE = 100;
 
 export function useRadiologyOrders() {
   const toast = useToast();
@@ -97,7 +107,7 @@ export function useRadiologyOrders() {
   const selectedOrderId = ref<string | null>(null);
   const selectedPatientId = ref<string | null>(null);
   const viewMode = ref<"patient" | "study">("patient");
-  const isLoadingOrders = ref(false);
+  const isLoadingOrders = ref(true);
   const isUpdatingOrder = ref(false);
   const isVerifying = ref(false);
 
@@ -106,7 +116,9 @@ export function useRadiologyOrders() {
   const selectedModalityFilter = ref<RadiologyModality | "all">("all");
 
   const selectedOrder = computed<RadiologyOrder | null>(() =>
-    selectedOrderId.value ? (orders.value.find((o) => o.id === selectedOrderId.value) ?? null) : null,
+    selectedOrderId.value
+      ? (orders.value.find((o) => o.id === selectedOrderId.value) ?? null)
+      : null,
   );
 
   /** Every open study for the selected order's patient — a patient rarely has one. */
@@ -156,82 +168,90 @@ export function useRadiologyOrders() {
 
       if (order.priority === "stat") {
         group.highestPriority = "stat";
-      } else if (order.priority === "urgent" && group.highestPriority !== "stat") {
+      } else if (
+        order.priority === "urgent" &&
+        group.highestPriority !== "stat"
+      ) {
         group.highestPriority = "urgent";
       }
     }
 
     return Array.from(map.values()).sort((a, b) => {
       const rank = { stat: 0, urgent: 1, routine: 2 } as const;
-      const byPriority = (rank[a.highestPriority] ?? 2) - (rank[b.highestPriority] ?? 2);
+      const byPriority =
+        (rank[a.highestPriority] ?? 2) - (rank[b.highestPriority] ?? 2);
       if (byPriority !== 0) return byPriority;
-      return new Date(b.latestOrderedAt ?? 0).getTime() - new Date(a.latestOrderedAt ?? 0).getTime();
-    });
-  });
-
-  const filteredPatientGroups = computed<PatientRadiologyGroup[]>(() => {
-    let list = patientGroups.value;
-    const query = searchQuery.value.trim().toLowerCase();
-
-    if (query !== "") {
-      list = list.filter(
-        (g) =>
-          g.patientName.toLowerCase().includes(query) ||
-          g.patientMrn.toLowerCase().includes(query) ||
-          g.orders.some(
-            (o) =>
-              (o.studyDescription ?? "").toLowerCase().includes(query) ||
-              (o.orderNumber ?? "").toLowerCase().includes(query),
-          ),
+      return (
+        new Date(b.latestOrderedAt ?? 0).getTime() -
+        new Date(a.latestOrderedAt ?? 0).getTime()
       );
-    }
-
-    if (selectedStatusFilter.value !== "all") {
-      list = list.filter((g) => {
-        if (selectedStatusFilter.value === "ordered") return g.orderedCount > 0;
-        if (selectedStatusFilter.value === "scheduled") return g.scheduledCount > 0;
-        if (selectedStatusFilter.value === "in_progress") return g.inProgressCount > 0;
-        if (selectedStatusFilter.value === "completed") return g.completedCount > 0;
-        return true;
-      });
-    }
-
-    if (selectedModalityFilter.value !== "all") {
-      list = list.filter((g) => g.modalities.includes(selectedModalityFilter.value));
-    }
-
-    return list;
-  });
-
-  const statusCounts = computed<Record<RadiologyOrderStatus | "all", number>>(() => {
-    const counts = {
-      all: orders.value.length,
-      ordered: 0,
-      scheduled: 0,
-      in_progress: 0,
-      completed: 0,
-      cancelled: 0,
-    } as Record<RadiologyOrderStatus | "all", number>;
-
-    for (const order of orders.value) {
-      if (order.status in counts) counts[order.status] += 1;
-    }
-
-    return counts;
-  });
-
-  const filteredOrders = computed<RadiologyOrder[]>(() => {
-    const query = searchQuery.value.trim().toLowerCase();
-
-    return orders.value.filter((order) => {
-      if (selectedStatusFilter.value !== "all" && order.status !== selectedStatusFilter.value) return false;
-      if (selectedModalityFilter.value !== "all" && order.modality !== selectedModalityFilter.value) return false;
-      if (query === "") return true;
-
-      return [order.patientName, order.patientMrn, order.studyDescription, order.orderNumber]
-        .some((field) => (field ?? "").toLowerCase().includes(query));
     });
   });
+
+  /**
+   * The patient view of the slice the server already selected.
+   *
+   * Filtering here as well would not just be redundant, it would be wrong: the
+   * server's `q` matches columns this never looked at, so a client pass would
+   * quietly drop rows the search had legitimately returned.
+   */
+  const filteredPatientGroups = computed<PatientRadiologyGroup[]>(
+    () => patientGroups.value,
+  );
+
+  /**
+   * Totals from the server, across the whole worklist.
+   *
+   * `radiology/orders/status-counts` has existed all along and was called zero
+   * times; the tabs summed the fetched page instead, so they agreed with a
+   * truncated list and disagreed with the department.
+   */
+  const statusCounts = ref<Record<RadiologyOrderStatus | "all", number>>({
+    all: 0,
+    ordered: 0,
+    scheduled: 0,
+    in_progress: 0,
+    completed: 0,
+    cancelled: 0,
+  });
+
+  async function fetchStatusCounts(): Promise<void> {
+    try {
+      // Modality and search narrow the population being counted; status does
+      // not, because the counts are the breakdown by status.
+      const params = new URLSearchParams();
+      if (selectedModalityFilter.value !== "all") {
+        params.set("modality", selectedModalityFilter.value);
+      }
+      const search = searchQuery.value.trim();
+      if (search !== "") params.set("q", search);
+
+      const res = await fetch(
+        `/api/v1/radiology/orders/status-counts?${params.toString()}`,
+        {
+          headers: {
+            Accept: "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+        },
+      );
+      if (!res.ok) return;
+
+      const body = (await res.json()) as {
+        data?: Partial<Record<RadiologyOrderStatus | "all", number>>;
+      };
+
+      statusCounts.value = {
+        ...statusCounts.value,
+        ...(body.data ?? {}),
+      };
+    } catch {
+      // A counts failure must not take the worklist down with it.
+    }
+  }
+
+  /** Study view of the same server-selected slice. */
+  const filteredOrders = computed<RadiologyOrder[]>(() => orders.value);
 
   /** Worklist ordering: STAT first, then urgent, then oldest order first. */
   const worklistOrders = computed<RadiologyOrder[]>(() => {
@@ -241,31 +261,63 @@ export function useRadiologyOrders() {
       const byPriority = (rank[a.priority] ?? 2) - (rank[b.priority] ?? 2);
       if (byPriority !== 0) return byPriority;
 
-      return new Date(a.orderedAt ?? 0).getTime() - new Date(b.orderedAt ?? 0).getTime();
+      return (
+        new Date(a.orderedAt ?? 0).getTime() -
+        new Date(b.orderedAt ?? 0).getTime()
+      );
     });
   });
 
   async function fetchOrders(): Promise<void> {
     isLoadingOrders.value = true;
     try {
-      const res = await fetch("/api/v1/radiology/orders?perPage=50", {
-        headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+      // The worklist is a query. This fetched a flat page of fifty and then did
+      // status, modality and search filtering in the browser, so a department
+      // with more than fifty studies lost the rest and every tab filtered a
+      // truncated set. The endpoint has taken these filters all along.
+      const params = new URLSearchParams({
+        perPage: String(WORKLIST_PAGE_SIZE),
+      });
+      if (selectedStatusFilter.value !== "all") {
+        params.set("status", selectedStatusFilter.value);
+      }
+      if (selectedModalityFilter.value !== "all") {
+        params.set("modality", selectedModalityFilter.value);
+      }
+      const search = searchQuery.value.trim();
+      if (search !== "") params.set("q", search);
+
+      void fetchStatusCounts();
+
+      const res = await fetch(`/api/v1/radiology/orders?${params.toString()}`, {
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
       });
       if (!res.ok) throw new Error("Failed to load the imaging worklist");
 
-      const body = (await res.json()) as { data?: Array<Record<string, unknown>> };
+      const body = (await res.json()) as {
+        data?: Array<Record<string, unknown>>;
+      };
 
       orders.value = (body.data ?? []).map((raw) => {
         const patient = (raw.patient ?? {}) as Record<string, unknown>;
-        const pFirst = (patient.firstName as string) || (raw.patientFirstName as string) || "";
+        const pFirst =
+          (patient.firstName as string) ||
+          (raw.patientFirstName as string) ||
+          "";
         const pMiddle = (patient.middleName as string) || "";
-        const pLast = (patient.lastName as string) || (raw.patientLastName as string) || "";
+        const pLast =
+          (patient.lastName as string) || (raw.patientLastName as string) || "";
         const pFullName = [pFirst, pMiddle, pLast].filter(Boolean).join(" ");
 
         const patientName =
           (patient.name as string) ||
           (patient.fullName as string) ||
-          (pFullName.length > 0 ? pFullName : (raw.patientName as string) || undefined);
+          (pFullName.length > 0
+            ? pFullName
+            : (raw.patientName as string) || undefined);
         const patientMrn =
           (patient.mrn as string) ||
           (patient.patientNumber as string) ||
@@ -273,11 +325,15 @@ export function useRadiologyOrders() {
           (raw.patientNumber as string) ||
           undefined;
         const patientGender =
-          (patient.gender as string) || (raw.patientGender as string) || undefined;
+          (patient.gender as string) ||
+          (raw.patientGender as string) ||
+          undefined;
         const patientAge =
           (patient.age as string | number) ||
           (raw.patientAge as string | number) ||
-          (patient.dateOfBirth ? `${new Date().getFullYear() - new Date(patient.dateOfBirth as string).getFullYear()} yrs` : undefined);
+          (patient.dateOfBirth
+            ? `${new Date().getFullYear() - new Date(patient.dateOfBirth as string).getFullYear()} yrs`
+            : undefined);
 
         return {
           id: String(raw.id),
@@ -292,7 +348,8 @@ export function useRadiologyOrders() {
           procedureCode: (raw.procedureCode as string) ?? null,
           studyDescription: (raw.studyDescription as string) ?? "Imaging study",
           clinicalIndication: (raw.clinicalIndication as string) ?? null,
-          priority: ((raw.priority as string) ?? "routine") as RadiologyOrder["priority"],
+          priority: ((raw.priority as string) ??
+            "routine") as RadiologyOrder["priority"],
           status: ((raw.status as string) ?? "ordered") as RadiologyOrderStatus,
           orderedAt: (raw.orderedAt as string) ?? null,
           orderingClinician: (raw.orderingClinician as string) ?? null,
@@ -309,11 +366,18 @@ export function useRadiologyOrders() {
 
       // Keep a selection if it survived the refresh; otherwise pick the first
       // piece of open work rather than whatever happens to sort first.
-      if (!selectedOrderId.value || !orders.value.some((o) => o.id === selectedOrderId.value)) {
-        selectedOrderId.value = worklistOrders.value.find((o) => OPEN_STATUSES.includes(o.status))?.id ?? null;
+      if (
+        !selectedOrderId.value ||
+        !orders.value.some((o) => o.id === selectedOrderId.value)
+      ) {
+        selectedOrderId.value =
+          worklistOrders.value.find((o) => OPEN_STATUSES.includes(o.status))
+            ?.id ?? null;
       }
     } catch {
-      toast.error("Could not load the imaging worklist. Check your connection and try again.");
+      toast.error(
+        "Could not load the imaging worklist. Check your connection and try again.",
+      );
     } finally {
       isLoadingOrders.value = false;
     }
@@ -334,7 +398,9 @@ export function useRadiologyOrders() {
     const group = patientGroups.value.find((g) => g.patientId === patientId);
     if (group && group.orders.length > 0) {
       // Pick first uncompleted order, or the first order
-      const primaryOrder = group.orders.find((o) => OPEN_STATUSES.includes(o.status)) || group.orders[0];
+      const primaryOrder =
+        group.orders.find((o) => OPEN_STATUSES.includes(o.status)) ||
+        group.orders[0];
       selectedOrderId.value = primaryOrder.id;
     }
   }
@@ -348,30 +414,43 @@ export function useRadiologyOrders() {
   async function updateStatus(
     orderId: string,
     status: RadiologyOrderStatus,
-    extra: { reason?: string | null; scheduledFor?: string | null; reportSummary?: string | null } = {},
+    extra: {
+      reason?: string | null;
+      scheduledFor?: string | null;
+      reportSummary?: string | null;
+    } = {},
   ): Promise<boolean> {
     isUpdatingOrder.value = true;
     try {
-      const res = await fetch(`/api/v1/radiology/orders/${encodeURIComponent(orderId)}/status`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "X-Requested-With": "XMLHttpRequest",
+      const res = await fetch(
+        `/api/v1/radiology/orders/${encodeURIComponent(orderId)}/status`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: JSON.stringify({ status, ...extra }),
         },
-        body: JSON.stringify({ status, ...extra }),
-      });
+      );
 
       if (!res.ok) {
-        const failure = (await res.json().catch(() => ({}))) as { message?: string };
-        toast.error(failure.message ?? "Could not update the study. Try again.");
+        const failure = (await res.json().catch(() => ({}))) as {
+          message?: string;
+        };
+        toast.error(
+          failure.message ?? "Could not update the study. Try again.",
+        );
         return false;
       }
 
       await fetchOrders();
       return true;
     } catch {
-      toast.error("Could not update the study. Check your connection and try again.");
+      toast.error(
+        "Could not update the study. Check your connection and try again.",
+      );
       return false;
     } finally {
       isUpdatingOrder.value = false;
@@ -397,25 +476,35 @@ export function useRadiologyOrders() {
    * backend enforces a two-person rule, so whoever performed and reported the
    * study cannot also release it.
    */
-  async function verifyReport(orderId: string, verificationNote: string): Promise<boolean> {
+  async function verifyReport(
+    orderId: string,
+    verificationNote: string,
+  ): Promise<boolean> {
     isVerifying.value = true;
     try {
-      const res = await fetch(`/api/v1/radiology/orders/${encodeURIComponent(orderId)}/verify`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "X-Requested-With": "XMLHttpRequest",
+      const res = await fetch(
+        `/api/v1/radiology/orders/${encodeURIComponent(orderId)}/verify`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: JSON.stringify({ verificationNote }),
         },
-        body: JSON.stringify({ verificationNote }),
-      });
+      );
 
       if (!res.ok) {
-        const failure = (await res.json().catch(() => ({}))) as { message?: string };
+        const failure = (await res.json().catch(() => ({}))) as {
+          message?: string;
+        };
         // The two-person rule and "report required before verification" both
         // arrive here as a plain message; showing it verbatim is more useful
         // than a generic failure, because the reason is the whole point.
-        toast.error(failure.message ?? "Could not verify this report. Try again.");
+        toast.error(
+          failure.message ?? "Could not verify this report. Try again.",
+        );
         return false;
       }
 
@@ -423,7 +512,9 @@ export function useRadiologyOrders() {
       await fetchOrders();
       return true;
     } catch {
-      toast.error("Could not verify this report. Check your connection and try again.");
+      toast.error(
+        "Could not verify this report. Check your connection and try again.",
+      );
       return false;
     } finally {
       isVerifying.value = false;
@@ -437,7 +528,10 @@ export function useRadiologyOrders() {
     if (!studyImagesMap.value.has(orderId)) {
       const order = orders.value.find((o) => o.id === orderId);
       if (order) {
-        const defaultSeries = generateDefaultDicomSeries(order.modality, order.studyDescription);
+        const defaultSeries = generateDefaultDicomSeries(
+          order.modality,
+          order.studyDescription,
+        );
         studyImagesMap.value.set(orderId, defaultSeries);
       } else {
         studyImagesMap.value.set(orderId, []);
@@ -451,7 +545,11 @@ export function useRadiologyOrders() {
     const img = list.find((i) => i.id === imageId);
     if (img) {
       img.isKeyImage = !img.isKeyImage;
-      toast.info(img.isKeyImage ? "Image tagged as Key Image for report" : "Image removed from Key Images");
+      toast.info(
+        img.isKeyImage
+          ? "Image tagged as Key Image for report"
+          : "Image removed from Key Images",
+      );
     }
   }
 
@@ -473,9 +571,12 @@ export function useRadiologyOrders() {
     if (!order) return 0;
 
     await new Promise((resolve) => setTimeout(resolve, 800));
-    const newSeries = generateDefaultDicomSeries(order.modality, order.studyDescription);
+    const newSeries = generateDefaultDicomSeries(
+      order.modality,
+      order.studyDescription,
+    );
     const existing = getOrderImages(orderId);
-    
+
     // Add unique SOP instances
     let addedCount = 0;
     for (const item of newSeries) {
@@ -485,9 +586,26 @@ export function useRadiologyOrders() {
       }
     }
     studyImagesMap.value.set(orderId, [...existing]);
-    toast.success(`PACS C-STORE sync complete: ${addedCount > 0 ? `${addedCount} new frames` : "All modality frames up to date."}`);
+    toast.success(
+      `PACS C-STORE sync complete: ${addedCount > 0 ? `${addedCount} new frames` : "All modality frames up to date."}`,
+    );
     return addedCount;
   }
+
+  // A selection that changes what is shown has to change what is fetched --
+  // the same rule laboratory and reception already follow.
+  watch([selectedStatusFilter, selectedModalityFilter], () => {
+    void fetchOrders();
+  });
+
+  /** Debounced so a typed word is one request, not one per keystroke. */
+  let searchDebounce: ReturnType<typeof setTimeout> | undefined;
+  watch(searchQuery, () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      void fetchOrders();
+    }, 300);
+  });
 
   return {
     orders,

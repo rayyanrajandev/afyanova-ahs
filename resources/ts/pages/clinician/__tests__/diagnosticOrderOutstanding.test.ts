@@ -11,7 +11,9 @@
 import { describe, expect, it } from "vitest";
 import {
   diagnosticOrderStage,
+  isDiagnosticOrder,
   isDiagnosticOrderOutstanding,
+  isMedicationOrder,
   type ClinicalOrderStatus,
   type PlacedClinicalOrder,
 } from "../composables/useClinicianOrders";
@@ -155,5 +157,30 @@ describe("diagnosticOrderStage", () => {
     expect(
       diagnosticOrderStage(order({ status: "cancelled", verifiedAt: "2026-08-17T09:00:00Z" })),
     ).toBe("cancelled");
+  });
+});
+
+describe("what belongs in each tab", () => {
+  const orders: PlacedClinicalOrder[] = [
+    order({ id: "lab", type: "lab" }),
+    order({ id: "img", type: "imaging" }),
+    order({ id: "med", type: "medication", status: "pending" }),
+    order({ id: "ref", type: "referral" }),
+  ];
+
+  it("keeps prescriptions out of the Diagnostic Orders tab", () => {
+    // They were listed here as well as under Prescriptions, so one prescription
+    // appeared twice under two headings and inflated the diagnostics badge.
+    expect(orders.filter(isDiagnosticOrder).map((o) => o.id)).toEqual(["lab", "img"]);
+  });
+
+  it("counts only medication as a prescription", () => {
+    expect(orders.filter(isMedicationOrder).map((o) => o.id)).toEqual(["med"]);
+  });
+
+  it("splits every order into exactly one of the two, or neither", () => {
+    for (const o of orders) {
+      expect(isDiagnosticOrder(o) && isMedicationOrder(o)).toBe(false);
+    }
   });
 });

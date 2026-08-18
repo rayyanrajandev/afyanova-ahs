@@ -9,6 +9,7 @@ use App\Modules\Encounter\Application\Exceptions\InvalidEncounterStatusTransitio
 use App\Modules\Encounter\Application\UseCases\GetEncounterUseCase;
 use App\Modules\Encounter\Application\UseCases\GetEncounterWorkspaceUseCase;
 use App\Modules\Encounter\Application\UseCases\ListEncounterAuditLogsUseCase;
+use App\Modules\Encounter\Application\UseCases\ListClinicianQueueStageCountsUseCase;
 use App\Modules\Encounter\Application\UseCases\ListEncounterStatusCountsUseCase;
 use App\Modules\Encounter\Application\UseCases\ListEncountersUseCase;
 use App\Modules\Encounter\Application\UseCases\ResolveEncounterForAppointmentUseCase;
@@ -52,6 +53,16 @@ class EncounterController extends Controller
                 $result['data'],
             ),
             'meta' => $result['meta'],
+        ]);
+    }
+
+    /**
+     * Totals per clinician-queue pile, across the whole set rather than a page.
+     */
+    public function queueStageCounts(Request $request, ListClinicianQueueStageCountsUseCase $useCase): JsonResponse
+    {
+        return response()->json([
+            'data' => $useCase->execute($request->all()),
         ]);
     }
 

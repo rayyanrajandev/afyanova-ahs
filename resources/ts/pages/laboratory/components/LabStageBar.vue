@@ -1,19 +1,23 @@
-/**
- * LabStageBar — The Bench Workflow Tracker (Volume 2.4)
- * ======================================================
- * The workspace previously had no visible notion of "which step am I on".
- * Every action button was live at once, so a technician could release a report
- * for a specimen that had never arrived. This bar is the answer to the only
- * question a lab tech has when they open an order: *what do I do next?*
- *
- * It renders the four bench steps in order, marks exactly one as current, and
- * states the next action in plain language. It is display-only — the buttons
- * live in the tab that owns each step, so there is never more than one place to
- * click for a given step.
- */
+/** * LabStageBar — The Bench Workflow Tracker (Volume 2.4) *
+====================================================== * The workspace
+previously had no visible notion of "which step am I on". * Every action button
+was live at once, so a technician could release a report * for a specimen that
+had never arrived. This bar is the answer to the only * question a lab tech has
+when they open an order: *what do I do next?* * * It renders the four bench
+steps in order, marks exactly one as current, and * states the next action in
+plain language. It is display-only — the buttons * live in the tab that owns
+each step, so there is never more than one place to * click for a given step. */
 
 <script setup lang="ts">
-import { Check, CircleDot, FlaskConical, Lock, ShieldCheck, TestTube2, XCircle } from "lucide-vue-next";
+import {
+  Check,
+  CircleDot,
+  FlaskConical,
+  Lock,
+  ShieldCheck,
+  TestTube2,
+  XCircle,
+} from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { Badge } from "@/components/ui/badge";
@@ -145,14 +149,18 @@ const nextAction = computed<{ text: string; blocked: boolean }>(() => {
   }
 });
 
-const isTerminal = computed(() => stage.value === "released" || stage.value === "rejected");
+const isTerminal = computed(
+  () => stage.value === "released" || stage.value === "rejected",
+);
 </script>
 
 <template>
   <div
     class="shrink-0 border-b border-border bg-muted/20 px-4 py-2 flex flex-wrap items-center justify-between gap-3"
     role="group"
-    :aria-label="t('laboratory.stage_bar_label', 'Laboratory bench workflow progress')"
+    :aria-label="
+      t('laboratory.stage_bar_label', 'Laboratory bench workflow progress')
+    "
   >
     <!-- Left: The four bench steps -->
     <ol class="flex items-center gap-1 overflow-x-auto no-scrollbar shrink-0">
@@ -168,22 +176,30 @@ const isTerminal = computed(() => stage.value === "released" || stage.value === 
               stepState(index) === 'done',
             'border-primary bg-primary text-primary-foreground shadow-2xs':
               stepState(index) === 'current',
-            'border-border/70 bg-surface text-muted-foreground': stepState(index) === 'todo',
+            'border-border/70 bg-surface text-muted-foreground':
+              stepState(index) === 'todo',
           }"
           :aria-current="stepState(index) === 'current' ? 'step' : undefined"
         >
           <Check v-if="stepState(index) === 'done'" class="size-3.5 shrink-0" />
-          <component :is="STEP_META[step].icon" v-else class="size-3.5 shrink-0" />
+          <component
+            :is="STEP_META[step].icon"
+            v-else
+            class="size-3.5 shrink-0"
+          />
 
           <span class="whitespace-nowrap">
-            {{ index + 1 }}. {{ t(STEP_META[step].labelKey, STEP_META[step].fallback) }}
+            {{ index + 1 }}.
+            {{ t(STEP_META[step].labelKey, STEP_META[step].fallback) }}
           </span>
         </div>
 
         <span
           v-if="index < LAB_STAGE_SEQUENCE.length - 1"
           class="h-px w-3 shrink-0"
-          :class="stepState(index) === 'done' ? 'bg-emerald-500/50' : 'bg-border'"
+          :class="
+            stepState(index) === 'done' ? 'bg-emerald-500/50' : 'bg-border'
+          "
           aria-hidden="true"
         />
       </li>
@@ -214,12 +230,18 @@ const isTerminal = computed(() => stage.value === "released" || stage.value === 
     <!-- Right: What to do now (Next step guidance on same horizontal bar) -->
     <div
       class="flex items-center gap-1.5 text-xs min-w-0 max-w-xl"
-      :class="nextAction.blocked ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'"
+      :class="
+        nextAction.blocked
+          ? 'text-amber-700 dark:text-amber-300'
+          : 'text-muted-foreground'
+      "
     >
       <Lock v-if="nextAction.blocked" class="size-3.5 shrink-0" />
       <CircleDot v-else class="size-3.5 shrink-0 text-primary" />
       <p class="truncate text-[11.5px]">
-        <strong class="text-foreground font-semibold">{{ t("laboratory.next_step_label", "Next:") }}</strong>
+        <strong class="text-foreground font-semibold">{{
+          t("laboratory.next_step_label", "Next:")
+        }}</strong>
         {{ nextAction.text }}
       </p>
     </div>

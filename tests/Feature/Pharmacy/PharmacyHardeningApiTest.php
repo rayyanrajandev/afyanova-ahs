@@ -8,6 +8,7 @@ use App\Modules\Patient\Infrastructure\Models\PatientModel;
 use App\Modules\Platform\Infrastructure\Models\ClinicalCatalogItemModel;
 use App\Modules\Pharmacy\Infrastructure\Models\PharmacyOrderAuditLogModel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
@@ -55,11 +56,15 @@ function pharmacyHardeningMakeUser(array $permissions = []): User
 {
     $user = User::factory()->create();
 
+    // The abilities the routes declare. `pharmacy.orders.create` and
+    // `pharmacy.orders.update-status` are granted by no role and consulted by no
+    // route — prescribing and dispensing are separate abilities.
     foreach (array_merge([
         'pharmacy.orders.read',
-        'pharmacy.orders.create',
-        'pharmacy.orders.update-status',
+        'medication.prescribe',
+        'medication.dispense',
         'pharmacy.orders.verify-dispense',
+        'pharmacy.orders.audit-logs.view',
     ], $permissions) as $permission) {
         pharmacyHardeningGrantPermission($user, $permission);
     }
@@ -88,6 +93,47 @@ function pharmacyHardeningMakePatient(array $overrides = []): PatientModel
         'status' => 'active',
         'status_reason' => null,
     ], $overrides));
+}
+
+/**
+ * Stock the dispense path can actually issue against.
+ *
+ * @return array{0: InventoryItemModel, 1: ClinicalCatalogItemModel}
+ */
+function pharmacyHardeningEnsureDispensableStock(): array
+{
+    $catalogItem = pharmacyHardeningEnsureActiveApprovedMedicineCatalogItem();
+
+    $inventoryItem = InventoryItemModel::query()->firstOrCreate([
+        'item_code' => 'ATC:N02BE01',
+    ], [
+        'tenant_id' => null,
+        'facility_id' => null,
+        'clinical_catalog_item_id' => $catalogItem->id,
+        'item_name' => 'Paracetamol 500mg',
+        'category' => 'pharmaceutical',
+        'unit' => 'tablet',
+        'current_stock' => 100,
+        'reorder_level' => 10,
+        'max_stock_level' => 200,
+        'status' => 'active',
+    ]);
+
+    InventoryItemUnitModel::query()->firstOrCreate([
+        'item_id' => $inventoryItem->id,
+        'unit_name' => $inventoryItem->unit,
+    ], [
+        'tenant_id' => $inventoryItem->tenant_id,
+        'facility_id' => $inventoryItem->facility_id,
+        'unit_code' => null,
+        'base_quantity' => 1,
+        'is_base_unit' => true,
+        'is_default_sales_unit' => true,
+        'is_default_purchase_unit' => true,
+        'is_active' => true,
+    ]);
+
+    return [$inventoryItem, $catalogItem];
 }
 
 /**
@@ -163,6 +209,11 @@ it('writes pharmacy verify and reconciliation parity metadata in audit logs', fu
     $user = pharmacyHardeningMakeUser([
         'pharmacy.orders.reconcile',
     ]);
+    // Verification now refuses the pharmacist who released the medicine, so
+    // this fixture needs the second pair of eyes it always implied.
+    $checker = pharmacyHardeningMakeUser([
+        'pharmacy.orders.reconcile',
+    ]);
     $patient = pharmacyHardeningMakePatient();
     $catalogItem = pharmacyHardeningEnsureActiveApprovedMedicineCatalogItem();
     $inventoryItem = InventoryItemModel::query()->create([
@@ -211,7 +262,7 @@ it('writes pharmacy verify and reconciliation parity metadata in audit logs', fu
         ->assertOk()
         ->assertJsonPath('data.status', 'dispensed');
 
-    $this->actingAs($user)
+    $this->actingAs($checker)
         ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/verify', [
             'verificationNote' => 'Dispense verified by pharmacist.',
         ])
@@ -288,4 +339,228 @@ it('rejects pharmacy detail update when lifecycle fields are provided', function
             'reconciliationStatus',
             'verificationNote',
         ]);
+});
+
+/**
+ * The dispensing sequence is a safety control, not a convenience: medicine
+ * cannot be handed over before someone has accepted the prescription and
+ * prepared it, and cannot be signed off before it has been handed over.
+ * PharmacyOrderStatus::allowedWorkflowTransitions is where that is decided,
+ * and nothing had been pinning it.
+ */
+it('refuses to dispense a prescription that was never prepared', function (): void {
+    $user = pharmacyHardeningMakeUser();
+    $patient = pharmacyHardeningMakePatient();
+    $order = pharmacyHardeningCreateOrder($user, $patient->id);
+
+    expect($order['status'])->toBe('pending');
+
+    $this->actingAs($user)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'dispensed',
+            'quantityDispensed' => 12,
+        ])
+        ->assertUnprocessable();
+
+    // The refusal has to leave the order where it was, not half-moved.
+    $this->actingAs($user)
+        ->getJson('/api/v1/pharmacy-orders/'.$order['id'])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'pending');
+});
+
+it('refuses to verify a dispense that has not happened', function (): void {
+    $user = pharmacyHardeningMakeUser();
+    $patient = pharmacyHardeningMakePatient();
+    $order = pharmacyHardeningCreateOrder($user, $patient->id);
+
+    $this->actingAs($user)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/verify', [
+            'verificationNote' => 'Checked',
+        ])
+        ->assertUnprocessable();
+});
+
+it('refuses to reopen an order that has already been cancelled', function (): void {
+    $user = pharmacyHardeningMakeUser();
+    $patient = pharmacyHardeningMakePatient();
+    $order = pharmacyHardeningCreateOrder($user, $patient->id);
+
+    $this->actingAs($user)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'cancelled',
+            'reason' => 'Prescriber withdrew the order',
+        ])
+        ->assertOk();
+
+    $this->actingAs($user)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'in_preparation',
+        ])
+        ->assertUnprocessable();
+});
+
+/**
+ * Verification is the second pair of eyes, so it has to be a second pair.
+ *
+ * The table carried verified_by_user_id from the start and no counterpart, so
+ * pharmacy wrote down who signed off with nothing to compare it against. The
+ * laboratory and radiology release paths have refused self-verification since
+ * they were built.
+ */
+it('records who released the medicine', function (): void {
+    $user = pharmacyHardeningMakeUser();
+    $patient = pharmacyHardeningMakePatient();
+    pharmacyHardeningEnsureDispensableStock();
+    $order = pharmacyHardeningCreateOrder($user, $patient->id);
+
+    $this->actingAs($user)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'in_preparation',
+        ])
+        ->assertOk();
+
+    $this->actingAs($user)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'dispensed',
+            'quantityDispensed' => 12,
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.dispensedByUserId', $user->id);
+});
+
+it('refuses a pharmacist verifying their own dispense', function (): void {
+    $dispenser = pharmacyHardeningMakeUser();
+    $patient = pharmacyHardeningMakePatient();
+    pharmacyHardeningEnsureDispensableStock();
+    $order = pharmacyHardeningCreateOrder($dispenser, $patient->id);
+
+    $this->actingAs($dispenser)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'in_preparation',
+        ])
+        ->assertOk();
+
+    $this->actingAs($dispenser)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'dispensed',
+            'quantityDispensed' => 12,
+        ])
+        ->assertOk();
+
+    $this->actingAs($dispenser)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/verify', [
+            'verificationNote' => 'Checked my own work',
+        ])
+        ->assertUnprocessable();
+
+    // And the refusal leaves no half-written sign-off behind.
+    $this->actingAs($dispenser)
+        ->getJson('/api/v1/pharmacy-orders/'.$order['id'])
+        ->assertOk()
+        ->assertJsonPath('data.verifiedAt', null)
+        ->assertJsonPath('data.verifiedByUserId', null);
+});
+
+it('lets a second pharmacist verify the same dispense', function (): void {
+    $dispenser = pharmacyHardeningMakeUser();
+    $checker = pharmacyHardeningMakeUser();
+    $patient = pharmacyHardeningMakePatient();
+    pharmacyHardeningEnsureDispensableStock();
+    $order = pharmacyHardeningCreateOrder($dispenser, $patient->id);
+
+    $this->actingAs($dispenser)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'in_preparation',
+        ])
+        ->assertOk();
+
+    $this->actingAs($dispenser)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'dispensed',
+            'quantityDispensed' => 12,
+        ])
+        ->assertOk();
+
+    $this->actingAs($checker)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/verify', [
+            'verificationNote' => 'Counted against the prescription',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.verifiedByUserId', $checker->id);
+});
+
+/**
+ * A partial fill is a release: whoever starts handing the medicine over is the
+ * dispenser, and completing the fill later must not reassign that identity to
+ * whoever happened to finish it.
+ */
+it('keeps the first releaser as the dispenser across a partial fill', function (): void {
+    $starter = pharmacyHardeningMakeUser();
+    $finisher = pharmacyHardeningMakeUser();
+    $patient = pharmacyHardeningMakePatient();
+    pharmacyHardeningEnsureDispensableStock();
+    $order = pharmacyHardeningCreateOrder($starter, $patient->id);
+
+    $this->actingAs($starter)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'in_preparation',
+        ])
+        ->assertOk();
+
+    $this->actingAs($starter)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'partially_dispensed',
+            'quantityDispensed' => 5,
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.dispensedByUserId', $starter->id);
+
+    $this->actingAs($finisher)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'dispensed',
+            'quantityDispensed' => 12,
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.dispensedByUserId', $starter->id);
+
+    // So the person who finished the fill is still an acceptable checker, and
+    // the person who started it is not.
+    $this->actingAs($starter)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/verify', [
+            'verificationNote' => 'Mine',
+        ])
+        ->assertUnprocessable();
+});
+
+it('still allows verification when the dispenser was never recorded', function (): void {
+    $user = pharmacyHardeningMakeUser();
+    $patient = pharmacyHardeningMakePatient();
+    pharmacyHardeningEnsureDispensableStock();
+    $order = pharmacyHardeningCreateOrder($user, $patient->id);
+
+    $this->actingAs($user)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'in_preparation',
+        ])
+        ->assertOk();
+
+    $this->actingAs($user)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/status', [
+            'status' => 'dispensed',
+            'quantityDispensed' => 12,
+        ])
+        ->assertOk();
+
+    // An order released before the column existed. Refusing these would strand
+    // every pre-migration dispense unverified for no gain in safety.
+    DB::table('pharmacy_orders')
+        ->where('id', $order['id'])
+        ->update(['dispensed_by_user_id' => null]);
+
+    $this->actingAs($user)
+        ->patchJson('/api/v1/pharmacy-orders/'.$order['id'].'/verify', [
+            'verificationNote' => 'Legacy order',
+        ])
+        ->assertOk();
 });

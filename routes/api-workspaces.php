@@ -208,6 +208,12 @@ Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTen
         Route::get('clinician/encounters', [EncounterController::class, 'index'])
             ->middleware('can:medical.records.read')
             ->name('clinician.encounters');
+        // Tab totals for the queue. Same ability as the list it labels, and
+        // declared before `encounters/{id}` so "queue-stage-counts" is not
+        // swallowed as an encounter id.
+        Route::get('clinician/encounters/queue-stage-counts', [EncounterController::class, 'queueStageCounts'])
+            ->middleware('can:medical.records.read')
+            ->name('clinician.encounters.queue-stage-counts');
         Route::get('clinician/encounters/by-appointment/{appointmentId}', [EncounterController::class, 'resolveForAppointment'])
             ->middleware('can:medical.records.read')
             ->name('clinician.encounters.by-appointment');
@@ -508,4 +514,67 @@ Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTen
         Route::get('radiology/patients/{patientId}/flow-timeline', [PatientFlowController::class, 'patientTimeline'])
             ->middleware('can:radiology.orders.read')
             ->name('radiology.patients.flow-timeline');
+
+        // ============================================================
+        // PHARMACY WORKSPACE ROUTES (Volume 2.6)
+        // ============================================================
+        // The dispensing bench. Reuses PharmacyOrderController unchanged, and
+        // every ability matches that action's legacy twin in routes/api.php —
+        // what RouteAuthorizationContractTest enforces.
+        //
+        // Prescribing stays on the clinician's side: store, update, sign,
+        // discardDraft and applyLifecycleAction are deliberately absent, exactly
+        // as the laboratory and radiology blocks omit them. Pharmacy receives
+        // orders; it does not write them.
+        //
+        // Pharmacy carries four things the diagnostic workspaces do not, and all
+        // four belong to the bench rather than the prescriber: a safety review
+        // the dispenser reads before handing anything over, live stock
+        // availability, medication reconciliation, and formulary policy review.
+        // The last two are supervisor work and keep their own abilities.
+        Route::get('pharmacy/orders', [PharmacyOrderController::class, 'index'])
+            ->middleware('can:pharmacy.orders.read')
+            ->name('pharmacy.orders.index');
+        // Declared before `orders/{id}` so these are not swallowed as an order id.
+        Route::get('pharmacy/orders/status-counts', [PharmacyOrderController::class, 'statusCounts'])
+            ->middleware('can:pharmacy.orders.read')
+            ->name('pharmacy.orders.status-counts');
+        // Stock on hand for the medicines on the worklist. A dispenser needs to
+        // know what can actually be handed over before promising it.
+        Route::get('pharmacy/availability', [PharmacyOrderController::class, 'availability'])
+            ->middleware('can:pharmacy.orders.read')
+            ->name('pharmacy.availability');
+        Route::get('pharmacy/approved-medicines-catalog', [PharmacyOrderController::class, 'approvedMedicinesCatalog'])
+            ->middleware('can:pharmacy.orders.read')
+            ->name('pharmacy.approved-medicines-catalog');
+        Route::get('pharmacy/orders/{id}', [PharmacyOrderController::class, 'show'])
+            ->middleware('can:pharmacy.orders.read')
+            ->name('pharmacy.orders.show');
+        // Interactions, allergies and blockers for this order, read at the
+        // counter before the medicine changes hands.
+        Route::get('pharmacy/orders/{id}/safety-review', [PharmacyOrderController::class, 'safetyReview'])
+            ->middleware('can:pharmacy.orders.read')
+            ->name('pharmacy.orders.safety-review');
+        // Moving an order through preparation and dispensing, including a
+        // partial fill — the state neither diagnostic workspace has.
+        Route::patch('pharmacy/orders/{id}/status', [PharmacyOrderController::class, 'updateStatus'])
+            ->middleware('can:medication.dispense')
+            ->name('pharmacy.orders.update-status');
+        // Supervisor sign-off on a completed dispense, the seniority split that
+        // mirrors laboratory result verification.
+        Route::patch('pharmacy/orders/{id}/verify', [PharmacyOrderController::class, 'verifyDispense'])
+            ->middleware('can:pharmacy.orders.verify-dispense')
+            ->name('pharmacy.orders.verify');
+        Route::patch('pharmacy/orders/{id}/reconciliation', [PharmacyOrderController::class, 'reconcile'])
+            ->middleware('can:pharmacy.orders.reconcile')
+            ->name('pharmacy.orders.reconciliation');
+        Route::patch('pharmacy/orders/{id}/policy', [PharmacyOrderController::class, 'updatePolicy'])
+            ->middleware('can:pharmacy.orders.manage-policy')
+            ->name('pharmacy.orders.policy');
+        Route::get('pharmacy/orders/{id}/audit-logs', [PharmacyOrderController::class, 'auditLogs'])
+            ->middleware('can:pharmacy.orders.audit-logs.view')
+            ->name('pharmacy.orders.audit-logs');
+        Route::get('pharmacy/patients/{patientId}/flow-timeline', [PatientFlowController::class, 'patientTimeline'])
+            ->middleware('can:pharmacy.orders.read')
+            ->name('pharmacy.patients.flow-timeline');
     });

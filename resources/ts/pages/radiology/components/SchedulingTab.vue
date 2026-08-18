@@ -1,10 +1,8 @@
-/**
- * SchedulingTab — Modality Booking & Pre-Exam Preparation (2027 Standard)
- * =========================================================================
- * - Quick Time Slot Presets (30m, 2h, Tomorrow Morning, Tomorrow Afternoon)
- * - Examination Suite & Modality Equipment Assignment
- * - Pre-Procedure Patient Preparation Checklist (Fasting, Hydration, Contrast)
- */
+/** * SchedulingTab — Modality Booking & Pre-Exam Preparation (2027 Standard) *
+========================================================================= * -
+Quick Time Slot Presets (30m, 2h, Tomorrow Morning, Tomorrow Afternoon) * -
+Examination Suite & Modality Equipment Assignment * - Pre-Procedure Patient
+Preparation Checklist (Fasting, Hydration, Contrast) */
 
 <script setup lang="ts">
 import {
@@ -25,7 +23,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { RadiologyOrder, UseRadiologyOrders } from "../composables/useRadiologyOrders";
+import type {
+  RadiologyOrder,
+  UseRadiologyOrders,
+} from "../composables/useRadiologyOrders";
 
 const props = defineProps<{
   order: RadiologyOrder;
@@ -75,7 +76,10 @@ function applyTomorrowPreset(hour: number) {
 
 async function book() {
   if (!slot.value) return;
-  await props.radiology.scheduleStudy(props.order.id, new Date(slot.value).toISOString());
+  await props.radiology.scheduleStudy(
+    props.order.id,
+    new Date(slot.value).toISOString(),
+  );
 }
 
 async function handleStart() {
@@ -91,15 +95,28 @@ async function handleStart() {
       <div class="flex items-center gap-2">
         <CalendarClock class="size-4 text-primary" />
         <h3 class="text-sm font-bold text-foreground">
-          {{ t('radiology.scheduling_title', 'Modality Scheduling & Patient Preparation') }}
+          {{
+            t(
+              "radiology.scheduling_title",
+              "Modality Scheduling & Patient Preparation",
+            )
+          }}
         </h3>
       </div>
       <Badge
         variant="outline"
         class="text-[10px] font-mono uppercase px-2 py-0.5"
-        :class="isBooked ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10' : 'border-amber-500 text-amber-600 bg-amber-500/10'"
+        :class="
+          isBooked
+            ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10'
+            : 'border-amber-500 text-amber-600 bg-amber-500/10'
+        "
       >
-        {{ isBooked ? t('radiology.slot_booked', 'Booked & Reserved') : t('radiology.walk_in_eligible', 'Walk-in / Unscheduled') }}
+        {{
+          isBooked
+            ? t("radiology.slot_booked", "Booked & Reserved")
+            : t("radiology.walk_in_eligible", "Walk-in / Unscheduled")
+        }}
       </Badge>
     </div>
 
@@ -109,13 +126,22 @@ async function handleStart() {
       class="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3.5"
     >
       <div class="flex items-center gap-3">
-        <CheckCircle2 class="size-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+        <CheckCircle2
+          class="size-5 text-emerald-600 dark:text-emerald-400 shrink-0"
+        />
         <div>
           <p class="font-bold text-xs text-foreground">
-            {{ t('radiology.scheduled_banner', 'Examination Slot Confirmed') }}
+            {{ t("radiology.scheduled_banner", "Examination Slot Confirmed") }}
           </p>
           <p class="text-xs text-muted-foreground mt-0.5 font-mono">
-            {{ props.order.scheduledFor ? new Date(props.order.scheduledFor).toLocaleString([], { dateStyle: 'full', timeStyle: 'short' }) : t('radiology.no_slot_recorded', 'No slot set') }}
+            {{
+              props.order.scheduledFor
+                ? new Date(props.order.scheduledFor).toLocaleString([], {
+                    dateStyle: "full",
+                    timeStyle: "short",
+                  })
+                : t("radiology.no_slot_recorded", "No slot set")
+            }}
           </p>
         </div>
       </div>
@@ -129,19 +155,28 @@ async function handleStart() {
         @click="handleStart"
       >
         <Zap class="size-3.5" />
-        <span>{{ t('radiology.call_patient_start', 'Call Patient & Start Scan') }}</span>
+        <span>{{
+          t("radiology.call_patient_start", "Call Patient & Start Scan")
+        }}</span>
       </Button>
     </div>
 
     <!-- Booking Form & Presets Grid -->
-    <div v-if="isBookable || isBooked" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div
+      v-if="isBookable || isBooked"
+      class="grid grid-cols-1 md:grid-cols-2 gap-4"
+    >
       <!-- Left: Slot Picker & Quick Presets -->
-      <section class="rounded-lg border border-border bg-surface p-4 space-y-3.5 shadow-2xs">
+      <section
+        class="rounded-lg border border-border bg-surface p-4 space-y-3.5 shadow-2xs"
+      >
         <div class="flex items-center justify-between">
           <Label class="text-xs font-bold text-foreground">
-            {{ t('radiology.select_slot', 'Select Appointment Slot') }}
+            {{ t("radiology.select_slot", "Select Appointment Slot") }}
           </Label>
-          <span class="text-[10px] text-muted-foreground font-mono">{{ t('radiology.standard_slot_hint', 'Standard 30m slot') }}</span>
+          <span class="text-[10px] text-muted-foreground font-mono">{{
+            t("radiology.standard_slot_hint", "Standard 30m slot")
+          }}</span>
         </div>
 
         <Input
@@ -153,7 +188,7 @@ async function handleStart() {
         <!-- Quick 1-Click Presets -->
         <div class="space-y-1.5 pt-1">
           <span class="text-[10.5px] font-semibold text-muted-foreground block">
-            {{ t('radiology.quick_presets', 'Quick Presets') }}:
+            {{ t("radiology.quick_presets", "Quick Presets") }}:
           </span>
           <div class="grid grid-cols-2 gap-1.5">
             <Button
@@ -164,7 +199,9 @@ async function handleStart() {
               @click="applyPreset(30)"
             >
               <Clock class="size-3 text-primary mr-1 shrink-0" />
-              <span>{{ t('radiology.preset_today_30m', 'Today +30 mins') }}</span>
+              <span>{{
+                t("radiology.preset_today_30m", "Today +30 mins")
+              }}</span>
             </Button>
 
             <Button
@@ -175,7 +212,9 @@ async function handleStart() {
               @click="applyPreset(120)"
             >
               <Clock class="size-3 text-primary mr-1 shrink-0" />
-              <span>{{ t('radiology.preset_today_2h', 'Today +2 hours') }}</span>
+              <span>{{
+                t("radiology.preset_today_2h", "Today +2 hours")
+              }}</span>
             </Button>
 
             <Button
@@ -186,7 +225,9 @@ async function handleStart() {
               @click="applyTomorrowPreset(9)"
             >
               <Calendar class="size-3 text-primary mr-1 shrink-0" />
-              <span>{{ t('radiology.preset_tomorrow_morning', 'Tomorrow 09:00 AM') }}</span>
+              <span>{{
+                t("radiology.preset_tomorrow_morning", "Tomorrow 09:00 AM")
+              }}</span>
             </Button>
 
             <Button
@@ -197,7 +238,9 @@ async function handleStart() {
               @click="applyTomorrowPreset(14)"
             >
               <Calendar class="size-3 text-primary mr-1 shrink-0" />
-              <span>{{ t('radiology.preset_tomorrow_afternoon', 'Tomorrow 02:00 PM') }}</span>
+              <span>{{
+                t("radiology.preset_tomorrow_afternoon", "Tomorrow 02:00 PM")
+              }}</span>
             </Button>
           </div>
         </div>
@@ -210,41 +253,88 @@ async function handleStart() {
           @click="book"
         >
           <CalendarClock class="size-3.5" />
-          <span>{{ isBooked ? t('radiology.reschedule_action', 'Update Reserved Slot') : t('radiology.schedule_action', 'Confirm Booking') }}</span>
+          <span>{{
+            isBooked
+              ? t("radiology.reschedule_action", "Update Reserved Slot")
+              : t("radiology.schedule_action", "Confirm Booking")
+          }}</span>
         </Button>
       </section>
 
       <!-- Right: Preparation Checklist & Clinical Indication -->
-      <section class="rounded-lg border border-border bg-surface p-4 space-y-3.5 shadow-2xs">
+      <section
+        class="rounded-lg border border-border bg-surface p-4 space-y-3.5 shadow-2xs"
+      >
         <div>
-          <h4 class="text-xs font-bold text-foreground">{{ t('radiology.prep_guidelines', 'Patient Preparation Guidelines') }}</h4>
-          <p class="text-[11px] text-muted-foreground mt-0.5">{{ t('radiology.prep_guidelines_desc', { study: props.order.studyDescription }) }}</p>
+          <h4 class="text-xs font-bold text-foreground">
+            {{
+              t("radiology.prep_guidelines", "Patient Preparation Guidelines")
+            }}
+          </h4>
+          <p class="text-[11px] text-muted-foreground mt-0.5">
+            {{
+              t("radiology.prep_guidelines_desc", {
+                study: props.order.studyDescription,
+              })
+            }}
+          </p>
         </div>
 
         <div class="space-y-2 text-xs">
-          <div class="flex items-start gap-2 p-2 rounded-md bg-muted/30 border border-border/60">
+          <div
+            class="flex items-start gap-2 p-2 rounded-md bg-muted/30 border border-border/60"
+          >
             <Droplet class="size-4 text-sky-600 shrink-0 mt-0.5" />
             <div>
-              <span class="font-bold text-foreground">{{ t('radiology.prep_hydration_title', 'Hydration & Bladder:') }}</span>
-              <p class="text-[11px] text-muted-foreground mt-0.5">{{ t('radiology.prep_hydration_desc', 'For pelvic and lower abdominal ultrasound, ensure full bladder (drink 750ml water 1 hr prior).') }}</p>
+              <span class="font-bold text-foreground">{{
+                t("radiology.prep_hydration_title", "Hydration & Bladder:")
+              }}</span>
+              <p class="text-[11px] text-muted-foreground mt-0.5">
+                {{
+                  t(
+                    "radiology.prep_hydration_desc",
+                    "For pelvic and lower abdominal ultrasound, ensure full bladder (drink 750ml water 1 hr prior).",
+                  )
+                }}
+              </p>
             </div>
           </div>
 
-          <div class="flex items-start gap-2 p-2 rounded-md bg-muted/30 border border-border/60">
+          <div
+            class="flex items-start gap-2 p-2 rounded-md bg-muted/30 border border-border/60"
+          >
             <UtensilsCrossed class="size-4 text-amber-600 shrink-0 mt-0.5" />
             <div>
-              <span class="font-bold text-foreground">{{ t('radiology.prep_fasting_title', 'Fasting Protocol:') }}</span>
-              <p class="text-[11px] text-muted-foreground mt-0.5">{{ t('radiology.prep_fasting_desc', 'NPO for 6 hours prior to hepatobiliary ultrasound or IV contrast studies.') }}</p>
+              <span class="font-bold text-foreground">{{
+                t("radiology.prep_fasting_title", "Fasting Protocol:")
+              }}</span>
+              <p class="text-[11px] text-muted-foreground mt-0.5">
+                {{
+                  t(
+                    "radiology.prep_fasting_desc",
+                    "NPO for 6 hours prior to hepatobiliary ultrasound or IV contrast studies.",
+                  )
+                }}
+              </p>
             </div>
           </div>
         </div>
 
         <!-- Clinical Indication Callout -->
-        <div v-if="props.order.clinicalIndication" class="border-t border-border/60 pt-2.5">
-          <span class="text-[10.5px] font-bold text-foreground uppercase tracking-wider block mb-1">
-            {{ t('radiology.clinical_indication', 'Doctor Clinical Indication') }}
+        <div
+          v-if="props.order.clinicalIndication"
+          class="border-t border-border/60 pt-2.5"
+        >
+          <span
+            class="text-[10.5px] font-bold text-foreground uppercase tracking-wider block mb-1"
+          >
+            {{
+              t("radiology.clinical_indication", "Doctor Clinical Indication")
+            }}
           </span>
-          <p class="rounded-md border border-border/70 bg-muted/20 p-2 text-xs text-foreground font-medium">
+          <p
+            class="rounded-md border border-border/70 bg-muted/20 p-2 text-xs text-foreground font-medium"
+          >
             {{ props.order.clinicalIndication }}
           </p>
         </div>

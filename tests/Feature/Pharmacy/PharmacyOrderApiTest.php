@@ -233,17 +233,32 @@ function grantPharmacyReadPermission(User $user): void
     grantPharmacyPermission($user, 'pharmacy.orders.read');
 }
 
+/**
+ * A user who can work the whole pharmacy order lifecycle.
+ *
+ * The abilities here are the ones the routes actually declare. Three of them
+ * used to be names granted by no role in config/roles.php and consulted by no
+ * route — `pharmacy.orders.create`, `pharmacy.orders.update-status`, and
+ * `pharmacy-orders.view-audit-logs` (the segments of the real
+ * `pharmacy.orders.audit-logs.view`, transposed). User::givePermissionTo()
+ * firstOrCreate()s the row, so each grant silently succeeded while authorizing
+ * nothing, and every write in this file 403'd.
+ *
+ * Prescribing and dispensing are deliberately separate abilities: a physician
+ * places the order (`medication.prescribe`), pharmacy fulfils it
+ * (`medication.dispense`), and only a supervisor verifies or reconciles it.
+ */
 function makePharmacyUser(array $permissions = []): User
 {
     $user = User::factory()->create();
     grantPharmacyPermissions($user, array_merge([
         'pharmacy.orders.read',
-        'pharmacy.orders.create',
-        'pharmacy.orders.update-status',
+        'medication.prescribe',
+        'medication.dispense',
         'pharmacy.orders.verify-dispense',
         'pharmacy.orders.manage-policy',
         'pharmacy.orders.reconcile',
-        'pharmacy-orders.view-audit-logs',
+        'pharmacy.orders.audit-logs.view',
     ], $permissions));
 
     return $user;
@@ -295,8 +310,11 @@ function createVerifiedDispensedPharmacyOrder(
         ])
         ->assertOk();
 
+    // Verification refuses the pharmacist who released the medicine, so the
+    // check is made by someone else. Kept inside the helper so every caller
+    // gets a realistic two-person flow without restating it.
     return test()
-        ->actingAs($user)
+        ->actingAs(makePharmacyUser())
         ->patchJson('/api/v1/pharmacy-orders/'.$created['id'].'/verify', [
             'verificationNote' => 'Release verified.',
         ])
@@ -3088,17 +3106,21 @@ it('verifies dispensed pharmacy order and stores verification metadata', functio
         ])
         ->assertOk();
 
-    $this->actingAs($user)
+    // Not $user: they dispensed it, and a dispenser may not verify their own
+    // release. The sign-off is recorded against whoever actually checked it.
+    $checker = makePharmacyUser();
+
+    $this->actingAs($checker)
         ->patchJson('/api/v1/pharmacy-orders/'.$created['id'].'/verify', [
             'verificationNote' => 'Pharmacist release check completed.',
         ])
         ->assertOk()
-        ->assertJsonPath('data.verifiedByUserId', $user->id)
+        ->assertJsonPath('data.verifiedByUserId', $checker->id)
         ->assertJsonPath('data.verificationNote', 'Pharmacist release check completed.');
 
     $record = PharmacyOrderModel::query()->find($created['id']);
     expect($record?->verified_at)->not->toBeNull();
-    expect($record?->verified_by_user_id)->toBe($user->id);
+    expect($record?->verified_by_user_id)->toBe($checker->id);
     expect($record?->verification_note)->toBe('Pharmacist release check completed.');
 });
 
@@ -3130,7 +3152,7 @@ it('requires verification note when verifying dispensed substitution release', f
         ])
         ->assertOk();
 
-    $this->actingAs($user)
+    $this->actingAs(makePharmacyUser())
         ->patchJson('/api/v1/pharmacy-orders/'.$created['id'].'/verify', [])
         ->assertStatus(422)
         ->assertJsonValidationErrors(['verification']);
@@ -3554,7 +3576,7 @@ it('writes pharmacy order audit logs for create update and status change', funct
 
 it('lists pharmacy order audit logs when authorized', function (): void {
     $user = makePharmacyUser();
-    $user->givePermissionTo('pharmacy-orders.view-audit-logs');
+    grantPharmacyPermission($user, 'pharmacy.orders.audit-logs.view');
     $patient = makePharmacyPatient();
 
     $created = $this->actingAs($user)
@@ -3586,7 +3608,7 @@ it('lists pharmacy order audit logs when authorized', function (): void {
 
 it('filters pharmacy order audit logs by action text actor type and actor id', function (): void {
     $user = makePharmacyUser();
-    $user->givePermissionTo('pharmacy-orders.view-audit-logs');
+    grantPharmacyPermission($user, 'pharmacy.orders.audit-logs.view');
     $patient = makePharmacyPatient();
 
     $created = $this->actingAs($user)
@@ -3637,7 +3659,7 @@ it('filters pharmacy order audit logs by action text actor type and actor id', f
 
 it('exports pharmacy order audit logs as csv when authorized and applies filters', function (): void {
     $user = makePharmacyUser();
-    $user->givePermissionTo('pharmacy-orders.view-audit-logs');
+    grantPharmacyPermission($user, 'pharmacy.orders.audit-logs.view');
     $patient = makePharmacyPatient();
 
     $created = $this->actingAs($user)
@@ -3684,7 +3706,7 @@ it('creates pharmacy order audit log csv export job when authorized', function (
     Queue::fake();
 
     $user = makePharmacyUser();
-    $user->givePermissionTo('pharmacy-orders.view-audit-logs');
+    grantPharmacyPermission($user, 'pharmacy.orders.audit-logs.view');
     $patient = makePharmacyPatient();
 
     $created = $this->actingAs($user)
@@ -3723,7 +3745,7 @@ it('creates pharmacy order audit log csv export job when authorized', function (
 
 it('shows pharmacy order audit log csv export job status for creator', function (): void {
     $user = makePharmacyUser();
-    $user->givePermissionTo('pharmacy-orders.view-audit-logs');
+    grantPharmacyPermission($user, 'pharmacy.orders.audit-logs.view');
     $patient = makePharmacyPatient();
 
     $created = $this->actingAs($user)
@@ -3758,7 +3780,7 @@ it('downloads completed pharmacy order audit log csv export job', function (): v
     Storage::fake('local');
 
     $user = makePharmacyUser();
-    $user->givePermissionTo('pharmacy-orders.view-audit-logs');
+    grantPharmacyPermission($user, 'pharmacy.orders.audit-logs.view');
     $patient = makePharmacyPatient();
 
     $created = $this->actingAs($user)
@@ -3792,7 +3814,7 @@ it('downloads completed pharmacy order audit log csv export job', function (): v
 
 it('returns 409 when pharmacy order audit log csv export job is not ready', function (): void {
     $user = makePharmacyUser();
-    $user->givePermissionTo('pharmacy-orders.view-audit-logs');
+    grantPharmacyPermission($user, 'pharmacy.orders.audit-logs.view');
     $patient = makePharmacyPatient();
 
     $created = $this->actingAs($user)
@@ -3814,7 +3836,7 @@ it('returns 409 when pharmacy order audit log csv export job is not ready', func
 
 it('lists pharmacy order audit log csv export jobs for creator only', function (): void {
     $user = makePharmacyUser();
-    $user->givePermissionTo('pharmacy-orders.view-audit-logs');
+    grantPharmacyPermission($user, 'pharmacy.orders.audit-logs.view');
     $otherUser = makePharmacyUser();
     $patient = makePharmacyPatient();
 
@@ -3862,7 +3884,7 @@ it('retries pharmacy order audit log csv export job when authorized', function (
     Queue::fake();
 
     $user = makePharmacyUser();
-    $user->givePermissionTo('pharmacy-orders.view-audit-logs');
+    grantPharmacyPermission($user, 'pharmacy.orders.audit-logs.view');
     $patient = makePharmacyPatient();
 
     $created = $this->actingAs($user)
@@ -3973,10 +3995,13 @@ it('forbids pharmacy order audit log csv export access without permission', func
 });
 
 it('forbids pharmacy order audit logs when gate override denies', function (): void {
-    Gate::define('pharmacy-orders.view-audit-logs', static fn (): bool => false);
+    // Must be the ability the route actually consults. Defined on the old
+    // transposed name, this test passed only because the user happened to lack
+    // the real permission — the override itself did nothing.
+    Gate::define('pharmacy.orders.audit-logs.view', static fn (): bool => false);
 
     $user = makePharmacyUser();
-    $user->givePermissionTo('pharmacy-orders.view-audit-logs');
+    grantPharmacyPermission($user, 'pharmacy.orders.audit-logs.view');
     $patient = makePharmacyPatient();
 
     $created = $this->actingAs($user)
@@ -3990,7 +4015,7 @@ it('forbids pharmacy order audit logs when gate override denies', function (): v
 
 it('returns 404 for pharmacy order audit logs of unknown id', function (): void {
     $user = makePharmacyUser();
-    $user->givePermissionTo('pharmacy-orders.view-audit-logs');
+    grantPharmacyPermission($user, 'pharmacy.orders.audit-logs.view');
 
     $this->actingAs($user)
         ->getJson('/api/v1/pharmacy-orders/060afc03-2ce9-4b1d-a1c2-326d2722ce25/audit-logs')

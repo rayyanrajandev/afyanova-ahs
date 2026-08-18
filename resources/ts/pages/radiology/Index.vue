@@ -1,29 +1,25 @@
-/**
- * Radiology Workspace — the imaging bench
- * =============================================================================
- * Workspace 5, built on the same spine as Laboratory: a SplitPane with the
- * worklist on the left and the study being worked on to the right.
- *
- * The bench runs in one direction and the tabs say so:
- *
- *   ordered -> scheduled -> in_progress -> completed -> verified
- *   Schedule    Perform      Report        Verify
- *
- * Two deliberate differences from Laboratory, both from the domain rather than
- * taste:
- *
- *  - **Scheduling is a real step.** A study is booked against a modality and a
- *    time before anyone touches the patient, so the first tab is a scheduler.
- *    The lab has no equivalent — a specimen simply arrives.
- *
- *  - **Reporting and releasing are two acts by two people.** The backend
- *    enforces a two-person rule, so whoever reported a study cannot verify it.
- *    The UI states that up front rather than letting a radiographer discover it
- *    as a failed request.
- */
+/** * Radiology Workspace — the imaging bench *
+============================================================================= *
+Workspace 5, built on the same spine as Laboratory: a SplitPane with the *
+worklist on the left and the study being worked on to the right. * * The bench
+runs in one direction and the tabs say so: * * ordered -> scheduled ->
+in_progress -> completed -> verified * Schedule Perform Report Verify * * Two
+deliberate differences from Laboratory, both from the domain rather than *
+taste: * * - **Scheduling is a real step.** A study is booked against a modality
+and a * time before anyone touches the patient, so the first tab is a scheduler.
+* The lab has no equivalent — a specimen simply arrives. * * - **Reporting and
+releasing are two acts by two people.** The backend * enforces a two-person
+rule, so whoever reported a study cannot verify it. * The UI states that up
+front rather than letting a radiographer discover it * as a failed request. */
 
 <script setup lang="ts">
-import { Activity, FileCheck, History, ScanLine, ShieldCheck } from "lucide-vue-next";
+import {
+  Activity,
+  FileCheck,
+  History,
+  ScanLine,
+  ShieldCheck,
+} from "lucide-vue-next";
 import { onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import EmptyState from "@/components/common/EmptyState.vue";
@@ -85,20 +81,41 @@ watch(
 
 <template>
   <div class="flex h-full w-full flex-col overflow-hidden bg-background">
-    <SplitPane persist-key="afyanova:radiology" :initial-ratio="0.28" :min-size="280">
+    <SplitPane
+      persist-key="afyanova:radiology"
+      :initial-ratio="0.28"
+      :min-size="280"
+    >
       <!-- Worklist -->
       <template #start>
-        <aside class="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface">
+        <aside
+          class="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface"
+        >
           <RadiologyQueuePanel :radiology="radiology" />
         </aside>
       </template>
 
       <!-- The study being worked on -->
       <template #end>
-        <div class="flex h-full gap-4">
-          <main class="flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface">
+        <div class="flex h-full w-full min-w-0">
+          <main
+            class="flex flex-1 flex-col overflow-hidden rounded-lg border border-border bg-surface w-full min-w-0"
+          >
+            <!-- Loading Skeleton while orders are loading on initial page mount -->
             <div
-              v-if="!radiology.selectedOrder.value"
+              v-if="
+                radiology.isLoadingOrders.value &&
+                !radiology.selectedOrder.value
+              "
+              class="flex flex-1 flex-col p-6 space-y-4 animate-pulse w-full"
+            >
+              <div class="h-20 rounded-lg bg-muted/40 w-full" />
+              <div class="h-9 rounded-lg bg-muted/30 w-full" />
+              <div class="flex-1 rounded-lg bg-muted/20 w-full" />
+            </div>
+
+            <div
+              v-else-if="!radiology.selectedOrder.value"
               class="flex flex-1 items-center justify-center p-6"
             >
               <EmptyState
@@ -109,7 +126,7 @@ watch(
               />
             </div>
 
-            <div v-else class="flex flex-1 flex-col overflow-hidden">
+            <div v-else class="flex flex-1 flex-col overflow-hidden w-full">
               <RadiologyOrderHeader
                 :order="radiology.selectedOrder.value"
                 :patient-orders="radiology.selectedPatientOrders.value"
@@ -118,11 +135,12 @@ watch(
                 @start-study="activeTab = 'report'"
               />
 
-              <RadiologyStageBar
-                :order="radiology.selectedOrder.value"
-              />
+              <RadiologyStageBar :order="radiology.selectedOrder.value" />
 
-              <Tabs v-model="activeTab" class="flex flex-1 flex-col overflow-hidden">
+              <Tabs
+                v-model="activeTab"
+                class="flex flex-1 flex-col overflow-hidden"
+              >
                 <div class="shrink-0 border-b border-border bg-surface px-4">
                   <TabsList class="h-9 gap-1 bg-transparent p-0">
                     <TabsTrigger
@@ -130,36 +148,45 @@ watch(
                       class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-3 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
                     >
                       <Activity class="size-3.5 text-primary" />
-                      <span>{{ t('radiology.tab_scheduling') }}</span>
+                      <span>{{ t("radiology.tab_scheduling") }}</span>
                     </TabsTrigger>
 
                     <TabsTrigger
                       value="report"
                       class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-3 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
                     >
-                      <ScanLine class="size-3.5 text-blue-600 dark:text-blue-400" />
-                      <span>{{ t('radiology.tab_report') }}</span>
+                      <ScanLine
+                        class="size-3.5 text-blue-600 dark:text-blue-400"
+                      />
+                      <span>{{ t("radiology.tab_report") }}</span>
                     </TabsTrigger>
 
                     <TabsTrigger
                       value="verification"
                       class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-3 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
                     >
-                      <ShieldCheck class="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                      <span>{{ t('radiology.tab_verification') }}</span>
+                      <ShieldCheck
+                        class="size-3.5 text-emerald-600 dark:text-emerald-400"
+                      />
+                      <span>{{ t("radiology.tab_verification") }}</span>
                     </TabsTrigger>
 
                     <TabsTrigger
                       value="journey"
                       class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-3 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
                     >
-                      <History class="size-3.5 text-teal-600 dark:text-teal-400" />
-                      <span>{{ t('radiology.tab_journey') }}</span>
+                      <History
+                        class="size-3.5 text-teal-600 dark:text-teal-400"
+                      />
+                      <span>{{ t("radiology.tab_journey") }}</span>
                     </TabsTrigger>
                   </TabsList>
                 </div>
 
-                <TabsContent value="scheduling" class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
+                <TabsContent
+                  value="scheduling"
+                  class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden"
+                >
                   <SchedulingTab
                     :order="radiology.selectedOrder.value"
                     :radiology="radiology"
@@ -167,15 +194,30 @@ watch(
                   />
                 </TabsContent>
 
-                <TabsContent value="report" class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
-                  <ReportEntryTab :order="radiology.selectedOrder.value" :radiology="radiology" />
+                <TabsContent
+                  value="report"
+                  class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden"
+                >
+                  <ReportEntryTab
+                    :order="radiology.selectedOrder.value"
+                    :radiology="radiology"
+                  />
                 </TabsContent>
 
-                <TabsContent value="verification" class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
-                  <VerificationTab :order="radiology.selectedOrder.value" :radiology="radiology" />
+                <TabsContent
+                  value="verification"
+                  class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden"
+                >
+                  <VerificationTab
+                    :order="radiology.selectedOrder.value"
+                    :radiology="radiology"
+                  />
                 </TabsContent>
 
-                <TabsContent value="journey" class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden">
+                <TabsContent
+                  value="journey"
+                  class="flex-1 overflow-y-auto m-0 data-[state=inactive]:hidden"
+                >
                   <PatientFlowTimeline
                     :patient-id="radiology.selectedOrder.value.patientId"
                     workspace="radiology"

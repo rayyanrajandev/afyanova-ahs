@@ -13,7 +13,10 @@ import {
   type ClinicalDocumentOptions,
   type DocumentSignatureInfo,
 } from "@/services/print/clinicalPrintEngine";
-import type { DicomImageInstance, RadiologyOrder } from "./composables/useRadiologyOrders";
+import type {
+  DicomImageInstance,
+  RadiologyOrder,
+} from "./composables/useRadiologyOrders";
 
 /**
  * Prints an official Diagnostic Imaging Examination Report with optional Key Image attachments.
@@ -23,10 +26,14 @@ export function printRadiologyReport(
   images?: DicomImageInstance[],
 ): void {
   const isReleased = Boolean(order.verifiedAt);
-  const statusBadgeText = isReleased ? "FINAL VERIFIED REPORT" : "PRELIMINARY / DRAFT";
+  const statusBadgeText = isReleased
+    ? "FINAL VERIFIED REPORT"
+    : "PRELIMINARY / DRAFT";
   const statusBadgeColor = isReleased ? "#059669" : "#d97706";
 
-  const studyDate = formatPrintDate(order.completedAt || order.scheduledFor || order.orderedAt);
+  const studyDate = formatPrintDate(
+    order.completedAt || order.scheduledFor || order.orderedAt,
+  );
 
   // Parse structured report sections if available, or format raw report
   const rawReport =
@@ -35,7 +42,8 @@ export function printRadiologyReport(
 
   // Filter key images or first 2 images
   const keyImages = (images || []).filter((i) => i.isKeyImage).slice(0, 3);
-  const displayImages = keyImages.length > 0 ? keyImages : (images || []).slice(0, 2);
+  const displayImages =
+    keyImages.length > 0 ? keyImages : (images || []).slice(0, 2);
 
   let keyImagesHtml = "";
   if (displayImages.length > 0) {
@@ -110,7 +118,9 @@ ${escapeHtml(rawReport)}
     {
       title: "Consultant Radiologist / Verifier",
       name: order.verifiedBy || "Consultant Radiologist / Imaging Specialist",
-      designation: isReleased ? "Electronically Authorized & Chart Released" : "Pending Verifier Authorization",
+      designation: isReleased
+        ? "Electronically Authorized & Chart Released"
+        : "Pending Verifier Authorization",
       timestamp: order.verifiedAt || undefined,
       isVerified: isReleased,
     },
@@ -120,7 +130,8 @@ ${escapeHtml(rawReport)}
     documentTitle: "Official Diagnostic Radiology Report",
     documentBadge: statusBadgeText,
     documentBadgeColor: statusBadgeColor,
-    documentNumber: order.orderNumber || `RAD-${order.id.slice(0, 8).toUpperCase()}`,
+    documentNumber:
+      order.orderNumber || `RAD-${order.id.slice(0, 8).toUpperCase()}`,
     patient: {
       name: order.patientName || "Patient",
       mrn: order.patientMrn || "MRN-0000",

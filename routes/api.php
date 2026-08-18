@@ -1360,6 +1360,11 @@ Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTen
     Route::patch('pharmacy-orders/{id}', [PharmacyOrderController::class, 'update'])
         ->middleware('can:medication.prescribe')
         ->name('pharmacy-orders.update');
+    // Commits a drafted prescription. Guarded like its laboratory and radiology
+    // twins: the prescriber who may place the order is the one who signs it.
+    Route::post('pharmacy-orders/{id}/sign', [PharmacyOrderController::class, 'sign'])
+        ->middleware('can:medication.prescribe')
+        ->name('pharmacy-orders.sign');
     Route::delete('pharmacy-orders/{id}/draft', [PharmacyOrderController::class, 'discardDraft'])
         ->middleware('can:medication.prescribe')
         ->name('pharmacy-orders.discard-draft');

@@ -11,7 +11,7 @@
  * - Critical value panic alert notification pipeline
  */
 
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useToast } from "@/composables/useToast";
 
 export interface LabTestParameter {
@@ -63,7 +63,12 @@ export interface LaboratoryOrder {
   collectedAt?: string | null;
   collectedBy?: string | null;
   barcode?: string;
-  specimenIntegrity?: "adequate" | "hemolyzed" | "clotted" | "lipemic" | "insufficient";
+  specimenIntegrity?:
+    | "adequate"
+    | "hemolyzed"
+    | "clotted"
+    | "lipemic"
+    | "insufficient";
   rejectionReason?: string | null;
   parameters: LabTestParameter[];
   resultValue?: string | number | null;
@@ -124,7 +129,12 @@ export type LabStage =
   | "released"
   | "rejected";
 
-export type LabTabId = "results" | "accessioning" | "verification" | "audit" | "journey";
+export type LabTabId =
+  | "results"
+  | "accessioning"
+  | "verification"
+  | "audit"
+  | "journey";
 
 /** The four steps a technician actually walks. `released`/`rejected` are outcomes. */
 export type LabBenchStep = Exclude<LabStage, "released" | "rejected">;
@@ -141,9 +151,12 @@ export function benchStepIndex(stage: LabStage): number {
   return (LAB_STAGE_SEQUENCE as readonly LabStage[]).indexOf(stage);
 }
 
-export function labStageOf(order: Pick<LaboratoryOrder, "status" | "verifiedAt">): LabStage {
+export function labStageOf(
+  order: Pick<LaboratoryOrder, "status" | "verifiedAt">,
+): LabStage {
   if (order.status === "cancelled") return "rejected";
-  if (order.status === "completed") return order.verifiedAt ? "released" : "awaiting_release";
+  if (order.status === "completed")
+    return order.verifiedAt ? "released" : "awaiting_release";
   if (order.status === "in_progress") return "in_analysis";
   if (order.status === "collected") return "ready_for_analysis";
 
@@ -182,7 +195,10 @@ export function isLabTabReachable(tab: LabTabId, stage: LabStage): boolean {
 /** Parameters the technician still has to fill before results can be saved. */
 export function missingParameters(order: LaboratoryOrder): LabTestParameter[] {
   return order.parameters.filter(
-    (p) => p.value === null || p.value === undefined || String(p.value).trim() === "",
+    (p) =>
+      p.value === null ||
+      p.value === undefined ||
+      String(p.value).trim() === "",
   );
 }
 
@@ -199,10 +215,17 @@ const SECOND_REVIEW_TEST_CODES = new Set(["LAB-SER-HIV-RDT", "LAB-BB-ABO-RH"]);
 const SECOND_REVIEW_DEPARTMENTS = new Set(["Blood Bank"]);
 
 export function secondReviewReason(order: LaboratoryOrder): string | null {
-  if (order.parameters.some((p) => p.flag === "critical_low" || p.flag === "critical_high")) {
+  if (
+    order.parameters.some(
+      (p) => p.flag === "critical_low" || p.flag === "critical_high",
+    )
+  ) {
     return "critical";
   }
-  if (SECOND_REVIEW_TEST_CODES.has(order.testCode) || SECOND_REVIEW_DEPARTMENTS.has(order.department)) {
+  if (
+    SECOND_REVIEW_TEST_CODES.has(order.testCode) ||
+    SECOND_REVIEW_DEPARTMENTS.has(order.department)
+  ) {
     return "high_stakes";
   }
 
@@ -212,51 +235,258 @@ export function secondReviewReason(order: LaboratoryOrder): string | null {
 // Built-in Standard Clinical Lab Panel Profiles (2027 CLSI / WHO Guidelines)
 export const LAB_PANEL_TEMPLATES: Record<string, LabTestParameter[]> = {
   "LAB-HEM-HB": [
-    { key: "hb", name: "Hemoglobin (Hb)", value: null, unit: "g/dL", referenceRange: "12.0 – 17.5", minNormal: 12.0, maxNormal: 17.5, minCritical: 7.0, maxCritical: 20.0, flag: "normal", previousValue: "13.2" },
+    {
+      key: "hb",
+      name: "Hemoglobin (Hb)",
+      value: null,
+      unit: "g/dL",
+      referenceRange: "12.0 – 17.5",
+      minNormal: 12.0,
+      maxNormal: 17.5,
+      minCritical: 7.0,
+      maxCritical: 20.0,
+      flag: "normal",
+      previousValue: "13.2",
+    },
   ],
   "LAB-PAR-MRDT": [
-    { key: "mrdt", name: "Malaria Pf/Pan Antigen", value: null, unit: "result", referenceRange: "Negative", flag: "normal" },
-    { key: "density", name: "Parasite Density (if +ve)", value: null, unit: "parasites/µL", referenceRange: "0", flag: "normal" },
+    {
+      key: "mrdt",
+      name: "Malaria Pf/Pan Antigen",
+      value: null,
+      unit: "result",
+      referenceRange: "Negative",
+      flag: "normal",
+    },
+    {
+      key: "density",
+      name: "Parasite Density (if +ve)",
+      value: null,
+      unit: "parasites/µL",
+      referenceRange: "0",
+      flag: "normal",
+    },
   ],
   "LAB-BIO-GLUCOSE-RBG": [
-    { key: "rbg", name: "Random Blood Glucose", value: null, unit: "mmol/L", referenceRange: "4.0 – 7.8", minNormal: 4.0, maxNormal: 7.8, minCritical: 2.8, maxCritical: 25.0, flag: "normal", previousValue: "5.4" },
+    {
+      key: "rbg",
+      name: "Random Blood Glucose",
+      value: null,
+      unit: "mmol/L",
+      referenceRange: "4.0 – 7.8",
+      minNormal: 4.0,
+      maxNormal: 7.8,
+      minCritical: 2.8,
+      maxCritical: 25.0,
+      flag: "normal",
+      previousValue: "5.4",
+    },
   ],
   "LAB-SER-HIV-RDT": [
-    { key: "hiv_sd", name: "HIV 1/2 Screening (Determine)", value: null, unit: "result", referenceRange: "Non-Reactive", flag: "normal" },
-    { key: "hiv_conf", name: "HIV 1/2 Confirmatory (Uni-Gold)", value: null, unit: "result", referenceRange: "Non-Reactive", flag: "normal" },
+    {
+      key: "hiv_sd",
+      name: "HIV 1/2 Screening (Determine)",
+      value: null,
+      unit: "result",
+      referenceRange: "Non-Reactive",
+      flag: "normal",
+    },
+    {
+      key: "hiv_conf",
+      name: "HIV 1/2 Confirmatory (Uni-Gold)",
+      value: null,
+      unit: "result",
+      referenceRange: "Non-Reactive",
+      flag: "normal",
+    },
   ],
   "LAB-URI-ROUTINE": [
-    { key: "color", name: "Appearance / Color", value: null, unit: "visual", referenceRange: "Clear / Straw", flag: "normal" },
-    { key: "ph", name: "Urine pH", value: null, unit: "pH", referenceRange: "5.0 – 7.5", minNormal: 5.0, maxNormal: 7.5, flag: "normal" },
-    { key: "protein", name: "Protein (Albumin)", value: null, unit: "mg/dL", referenceRange: "Negative (<15)", flag: "normal" },
-    { key: "glucose", name: "Glucose (Glycosuria)", value: null, unit: "mmol/L", referenceRange: "Negative", flag: "normal" },
-    { key: "leukocytes", name: "Leukocyte Esterase", value: null, unit: "cells/µL", referenceRange: "Negative", flag: "normal" },
-    { key: "nitrite", name: "Nitrite", value: null, unit: "result", referenceRange: "Negative", flag: "normal" },
-    { key: "blood", name: "Blood / Hemoglobin", value: null, unit: "Ery/µL", referenceRange: "Negative", flag: "normal" },
+    {
+      key: "color",
+      name: "Appearance / Color",
+      value: null,
+      unit: "visual",
+      referenceRange: "Clear / Straw",
+      flag: "normal",
+    },
+    {
+      key: "ph",
+      name: "Urine pH",
+      value: null,
+      unit: "pH",
+      referenceRange: "5.0 – 7.5",
+      minNormal: 5.0,
+      maxNormal: 7.5,
+      flag: "normal",
+    },
+    {
+      key: "protein",
+      name: "Protein (Albumin)",
+      value: null,
+      unit: "mg/dL",
+      referenceRange: "Negative (<15)",
+      flag: "normal",
+    },
+    {
+      key: "glucose",
+      name: "Glucose (Glycosuria)",
+      value: null,
+      unit: "mmol/L",
+      referenceRange: "Negative",
+      flag: "normal",
+    },
+    {
+      key: "leukocytes",
+      name: "Leukocyte Esterase",
+      value: null,
+      unit: "cells/µL",
+      referenceRange: "Negative",
+      flag: "normal",
+    },
+    {
+      key: "nitrite",
+      name: "Nitrite",
+      value: null,
+      unit: "result",
+      referenceRange: "Negative",
+      flag: "normal",
+    },
+    {
+      key: "blood",
+      name: "Blood / Hemoglobin",
+      value: null,
+      unit: "Ery/µL",
+      referenceRange: "Negative",
+      flag: "normal",
+    },
   ],
   "LAB-BIO-LIPID-CHO": [
-    { key: "chol_total", name: "Total Cholesterol", value: null, unit: "mmol/L", referenceRange: "< 5.2", maxNormal: 5.2, maxCritical: 10.0, flag: "normal" },
-    { key: "triglycerides", name: "Triglycerides", value: null, unit: "mmol/L", referenceRange: "< 1.7", maxNormal: 1.7, flag: "normal" },
-    { key: "hdl", name: "HDL ('Good') Cholesterol", value: null, unit: "mmol/L", referenceRange: "> 1.0", minNormal: 1.0, flag: "normal" },
-    { key: "ldl", name: "LDL ('Bad') Cholesterol", value: null, unit: "mmol/L", referenceRange: "< 3.0", maxNormal: 3.0, flag: "normal" },
+    {
+      key: "chol_total",
+      name: "Total Cholesterol",
+      value: null,
+      unit: "mmol/L",
+      referenceRange: "< 5.2",
+      maxNormal: 5.2,
+      maxCritical: 10.0,
+      flag: "normal",
+    },
+    {
+      key: "triglycerides",
+      name: "Triglycerides",
+      value: null,
+      unit: "mmol/L",
+      referenceRange: "< 1.7",
+      maxNormal: 1.7,
+      flag: "normal",
+    },
+    {
+      key: "hdl",
+      name: "HDL ('Good') Cholesterol",
+      value: null,
+      unit: "mmol/L",
+      referenceRange: "> 1.0",
+      minNormal: 1.0,
+      flag: "normal",
+    },
+    {
+      key: "ldl",
+      name: "LDL ('Bad') Cholesterol",
+      value: null,
+      unit: "mmol/L",
+      referenceRange: "< 3.0",
+      maxNormal: 3.0,
+      flag: "normal",
+    },
   ],
   "LAB-BIO-RENAL-URIC": [
-    { key: "creatinine", name: "Serum Creatinine", value: null, unit: "µmol/L", referenceRange: "60 – 110", minNormal: 60, maxNormal: 110, maxCritical: 450, flag: "normal", previousValue: "88" },
-    { key: "urea", name: "Blood Urea Nitrogen (BUN)", value: null, unit: "mmol/L", referenceRange: "2.5 – 7.1", minNormal: 2.5, maxNormal: 7.1, maxCritical: 30.0, flag: "normal" },
-    { key: "uric_acid", name: "Uric Acid", value: null, unit: "µmol/L", referenceRange: "200 – 420", minNormal: 200, maxNormal: 420, flag: "normal" },
-    { key: "egfr", name: "Estimated GFR (CKD-EPI)", value: null, unit: "mL/min/1.73m²", referenceRange: "> 90", minNormal: 90, minCritical: 15, flag: "normal" },
+    {
+      key: "creatinine",
+      name: "Serum Creatinine",
+      value: null,
+      unit: "µmol/L",
+      referenceRange: "60 – 110",
+      minNormal: 60,
+      maxNormal: 110,
+      maxCritical: 450,
+      flag: "normal",
+      previousValue: "88",
+    },
+    {
+      key: "urea",
+      name: "Blood Urea Nitrogen (BUN)",
+      value: null,
+      unit: "mmol/L",
+      referenceRange: "2.5 – 7.1",
+      minNormal: 2.5,
+      maxNormal: 7.1,
+      maxCritical: 30.0,
+      flag: "normal",
+    },
+    {
+      key: "uric_acid",
+      name: "Uric Acid",
+      value: null,
+      unit: "µmol/L",
+      referenceRange: "200 – 420",
+      minNormal: 200,
+      maxNormal: 420,
+      flag: "normal",
+    },
+    {
+      key: "egfr",
+      name: "Estimated GFR (CKD-EPI)",
+      value: null,
+      unit: "mL/min/1.73m²",
+      referenceRange: "> 90",
+      minNormal: 90,
+      minCritical: 15,
+      flag: "normal",
+    },
   ],
   "LAB-HEM-ESR": [
-    { key: "esr", name: "ESR (Westergren)", value: null, unit: "mm/hr", referenceRange: "0 – 20", maxNormal: 20, maxCritical: 100, flag: "normal" },
+    {
+      key: "esr",
+      name: "ESR (Westergren)",
+      value: null,
+      unit: "mm/hr",
+      referenceRange: "0 – 20",
+      maxNormal: 20,
+      maxCritical: 100,
+      flag: "normal",
+    },
   ],
   "LAB-BB-ABO-RH": [
-    { key: "abo", name: "ABO Blood Group", value: null, unit: "group", referenceRange: "A / B / AB / O", flag: "normal" },
-    { key: "rh", name: "Rhesus (Rh D) Factor", value: null, unit: "result", referenceRange: "Positive / Negative", flag: "normal" },
+    {
+      key: "abo",
+      name: "ABO Blood Group",
+      value: null,
+      unit: "group",
+      referenceRange: "A / B / AB / O",
+      flag: "normal",
+    },
+    {
+      key: "rh",
+      name: "Rhesus (Rh D) Factor",
+      value: null,
+      unit: "result",
+      referenceRange: "Positive / Negative",
+      flag: "normal",
+    },
   ],
 };
 
-export function inferLaboratoryDepartment(testCode?: string, testName?: string, explicitDept?: string): string {
-  if (explicitDept && explicitDept !== "General Lab" && explicitDept !== "Laboratory" && explicitDept !== "General") {
+export function inferLaboratoryDepartment(
+  testCode?: string,
+  testName?: string,
+  explicitDept?: string,
+): string {
+  if (
+    explicitDept &&
+    explicitDept !== "General Lab" &&
+    explicitDept !== "Laboratory" &&
+    explicitDept !== "General"
+  ) {
     return explicitDept;
   }
   const code = (testCode || "").toUpperCase();
@@ -362,9 +592,17 @@ export function useLaboratoryOrders() {
   const orders = ref<LaboratoryOrder[]>([]);
   const selectedOrderId = ref<string | null>(null);
   const selectedPatientId = ref<string | null>(null);
+  /**
+   * A page of the worklist, asked for explicitly. Large enough for a real
+   * bench list, and visible here rather than buried in a query string.
+   */
+  const WORKLIST_PAGE_SIZE = 200;
+
   const viewMode = ref<"patient" | "test">("patient"); // default to 2027 Patient-Centric Console
 
-  const isLoadingOrders = ref(false);
+  const isLoadingOrders = ref(true);
+  /** A load that failed is not a load that returned nothing. */
+  const loadFailed = ref(false);
   const isUpdatingOrder = ref(false);
   const isSavingResults = ref(false);
   const isVerifying = ref(false);
@@ -403,7 +641,7 @@ export function useLaboratoryOrders() {
       const pid = order.patientId || order.patientMrn || "unknown-pat";
       if (!map.has(pid)) {
         map.set(pid, {
-          patientId: order.patientId,
+          patientId: order.patientId || pid,
           patientName: order.patientName || "Patient",
           patientMrn: order.patientMrn || "MRN-0000",
           patientGender: order.patientGender || "—",
@@ -434,7 +672,10 @@ export function useLaboratoryOrders() {
       // Evaluate highest priority
       if (order.priority === "stat") {
         group.highestPriority = "stat";
-      } else if (order.priority === "urgent" && group.highestPriority !== "stat") {
+      } else if (
+        order.priority === "urgent" &&
+        group.highestPriority !== "stat"
+      ) {
         group.highestPriority = "urgent";
       }
     }
@@ -444,14 +685,22 @@ export function useLaboratoryOrders() {
 
   const selectedPatientGroup = computed(() => {
     if (!selectedPatientId.value) return null;
-    return patientGroups.value.find((g) => g.patientId === selectedPatientId.value) ?? null;
+    return (
+      patientGroups.value.find(
+        (g) => g.patientId === selectedPatientId.value,
+      ) ?? null
+    );
   });
 
   const selectedPatientOrders = computed(() => {
     if (!selectedPatientId.value) {
       return selectedOrder.value ? [selectedOrder.value] : [];
     }
-    return orders.value.filter((o) => o.patientId === selectedPatientId.value);
+    return orders.value.filter(
+      (o) =>
+        (o.patientId || o.patientMrn || "unknown-pat") ===
+        selectedPatientId.value,
+    );
   });
 
   function selectPatient(patientId: string) {
@@ -466,18 +715,29 @@ export function useLaboratoryOrders() {
     selectedOrderId.value = orderId;
     const order = orders.value.find((o) => o.id === orderId);
     if (order) {
-      selectedPatientId.value = order.patientId;
+      selectedPatientId.value =
+        order.patientId || order.patientMrn || "unknown-pat";
     }
   }
 
   // Auto-evaluate parameter flag based on CLSI thresholds
-  function evaluateParameterFlag(param: LabTestParameter): LabTestParameter["flag"] {
-    const num = typeof param.value === "number" ? param.value : parseFloat(String(param.value || ""));
+  function evaluateParameterFlag(
+    param: LabTestParameter,
+  ): LabTestParameter["flag"] {
+    const num =
+      typeof param.value === "number"
+        ? param.value
+        : parseFloat(String(param.value || ""));
     if (isNaN(num)) {
       if (typeof param.value === "string") {
         const lower = param.value.toLowerCase();
-        if (lower.includes("positive") || lower.includes("reactive") || lower.includes("detected")) {
-          return param.referenceRange.toLowerCase().includes("negative") || param.referenceRange.toLowerCase().includes("non-reactive")
+        if (
+          lower.includes("positive") ||
+          lower.includes("reactive") ||
+          lower.includes("detected")
+        ) {
+          return param.referenceRange.toLowerCase().includes("negative") ||
+            param.referenceRange.toLowerCase().includes("non-reactive")
             ? "abnormal"
             : "normal";
         }
@@ -485,10 +745,14 @@ export function useLaboratoryOrders() {
       return "normal";
     }
 
-    if (param.minCritical !== undefined && num <= param.minCritical) return "critical_low";
-    if (param.maxCritical !== undefined && num >= param.maxCritical) return "critical_high";
-    if (param.minNormal !== undefined && num < param.minNormal) return "abnormal";
-    if (param.maxNormal !== undefined && num > param.maxNormal) return "abnormal";
+    if (param.minCritical !== undefined && num <= param.minCritical)
+      return "critical_low";
+    if (param.maxCritical !== undefined && num >= param.maxCritical)
+      return "critical_high";
+    if (param.minNormal !== undefined && num < param.minNormal)
+      return "abnormal";
+    if (param.maxNormal !== undefined && num > param.maxNormal)
+      return "abnormal";
     return "normal";
   }
 
@@ -496,9 +760,34 @@ export function useLaboratoryOrders() {
   async function fetchOrders() {
     isLoadingOrders.value = true;
     try {
-      const res = await fetch("/api/v1/laboratory/orders?perPage=50", {
-        headers: { "X-Requested-With": "XMLHttpRequest" },
+      // The worklist is a query. This asked for a flat `?perPage=50` and then
+      // did status, discipline and priority filtering in the browser, so a lab
+      // with more than 50 open orders silently lost the rest and every filter
+      // was applied to a truncated set.
+      const params = new URLSearchParams({
+        perPage: String(WORKLIST_PAGE_SIZE),
       });
+      if (
+        selectedStatusFilter.value !== "all" &&
+        selectedStatusFilter.value !== "critical"
+      ) {
+        params.set("status", selectedStatusFilter.value);
+      }
+      if (selectedDepartmentFilter.value !== "all") {
+        params.set("department", selectedDepartmentFilter.value);
+      }
+      if (selectedPriorityFilter.value !== "all") {
+        params.set("priority", selectedPriorityFilter.value);
+      }
+      const search = searchQuery.value.trim();
+      if (search !== "") params.set("q", search);
+
+      const res = await fetch(
+        `/api/v1/laboratory/orders?${params.toString()}`,
+        {
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        },
+      );
       if (!res.ok) throw new Error("Failed to fetch lab orders");
       const json = await res.json();
       const rawOrders = (json.data ?? []) as any[];
@@ -506,17 +795,28 @@ export function useLaboratoryOrders() {
       orders.value = rawOrders.map((raw: any) => {
         const testCode = raw.testCode || raw.code || "LAB-GEN";
         const testName = raw.testName || "Laboratory Investigation";
-        const department = inferLaboratoryDepartment(testCode, testName, raw.department);
-        const defaultParams = LAB_PANEL_TEMPLATES[testCode] ? JSON.parse(JSON.stringify(LAB_PANEL_TEMPLATES[testCode])) : [
-          {
-            key: "result",
-            name: testName,
-            value: raw.resultValue ?? null,
-            unit: raw.unit ?? "",
-            referenceRange: raw.referenceRange ?? "Normal",
-            flag: raw.flag === "critical" ? "critical_high" : raw.flag === "abnormal" ? "abnormal" : "normal",
-          },
-        ];
+        // Server-supplied, from the catalog item's own category. The local
+        // inference stays only as a fallback for an order whose catalog entry
+        // has no category recorded.
+        const department =
+          raw.department || inferLaboratoryDepartment(testCode, testName);
+        const defaultParams = LAB_PANEL_TEMPLATES[testCode]
+          ? JSON.parse(JSON.stringify(LAB_PANEL_TEMPLATES[testCode]))
+          : [
+              {
+                key: "result",
+                name: testName,
+                value: raw.resultValue ?? null,
+                unit: raw.unit ?? "",
+                referenceRange: raw.referenceRange ?? "Normal",
+                flag:
+                  raw.flag === "critical"
+                    ? "critical_high"
+                    : raw.flag === "abnormal"
+                      ? "abnormal"
+                      : "normal",
+              },
+            ];
 
         const patientObj = raw.patient || {};
         const pFirst = patientObj.firstName || raw.patientFirstName || "";
@@ -524,35 +824,56 @@ export function useLaboratoryOrders() {
         const pLast = patientObj.lastName || raw.patientLastName || "";
         const pFullName = [pFirst, pMiddle, pLast].filter(Boolean).join(" ");
 
-        const patientName = patientObj.name || (pFullName.length > 0 ? pFullName : (raw.patientName || "Patient"));
-        const patientMrn = patientObj.mrn || patientObj.patientNumber || raw.patientMrn || raw.patientNumber || "MRN-0000";
+        const patientName =
+          patientObj.name ||
+          (pFullName.length > 0 ? pFullName : raw.patientName || "Patient");
+        const patientMrn =
+          patientObj.mrn ||
+          patientObj.patientNumber ||
+          raw.patientMrn ||
+          raw.patientNumber ||
+          "MRN-0000";
         const patientGender = patientObj.gender || raw.patientGender || "—";
-        const patientAge = patientObj.age || raw.patientAge || (patientObj.dateOfBirth ? `${new Date().getFullYear() - new Date(patientObj.dateOfBirth).getFullYear()} yrs` : "—");
+        const patientAge =
+          patientObj.age ||
+          raw.patientAge ||
+          (patientObj.dateOfBirth
+            ? `${new Date().getFullYear() - new Date(patientObj.dateOfBirth).getFullYear()} yrs`
+            : "—");
 
         const status = (raw.status || "ordered") as LaboratoryOrderStatus;
 
-
         let parameters = defaultParams;
-        if (Array.isArray(raw.resultParameters) && raw.resultParameters.length > 0) {
+        if (
+          Array.isArray(raw.resultParameters) &&
+          raw.resultParameters.length > 0
+        ) {
           parameters = raw.resultParameters.map((rp: any) => ({
             key: rp.code || rp.key || "res",
             name: rp.name || "Parameter",
             value: rp.value ?? null,
             unit: rp.unit || "",
             referenceRange: rp.referenceRange || "Normal",
-            flag: rp.flag === "critical" ? "critical_high" : rp.flag === "abnormal" ? "abnormal" : "normal",
+            flag:
+              rp.flag === "critical"
+                ? "critical_high"
+                : rp.flag === "abnormal"
+                  ? "abnormal"
+                  : "normal",
           }));
         }
 
         return {
           id: raw.id,
-          orderNumber: raw.orderNumber || `LAB-${raw.id.slice(0, 8).toUpperCase()}`,
+          orderNumber:
+            raw.orderNumber || `LAB-${raw.id.slice(0, 8).toUpperCase()}`,
           patientId: raw.patientId,
           patientName,
           patientMrn,
           patientGender,
           patientAge,
-          patientDob: patientObj.dateOfBirth || patientObj.dob || raw.patientDob,
+          patientDob:
+            patientObj.dateOfBirth || patientObj.dob || raw.patientDob,
           testCode,
           testName,
           department,
@@ -560,8 +881,18 @@ export function useLaboratoryOrders() {
           tubeType: raw.tubeType || "Standard Tube",
           priority: raw.priority || "routine",
           status,
-          clinicalIndication: raw.clinicalIndication || raw.indication || "Routine diagnostic evaluation",
-          orderingClinician: raw.orderingClinician || "Attending Clinician",
+          clinicalIndication:
+            raw.clinicalIndication ||
+            raw.indication ||
+            "Routine diagnostic evaluation",
+          // ClinicalOrderUserSummaryEnricher attaches `orderedBy: {id, name}`.
+          // Reading `orderingClinician` — a key the API never sends — meant the
+          // header always fell through to the placeholder, so every order looked
+          // as though nobody in particular had prescribed it.
+          orderingClinician:
+            raw.orderedBy?.name ||
+            raw.orderingClinician ||
+            "Attending Clinician",
           createdAt: raw.createdAt || new Date().toISOString(),
           collectedAt: raw.collectedAt,
           collectedBy: raw.collectedBy,
@@ -583,19 +914,89 @@ export function useLaboratoryOrders() {
         };
       });
 
-      updateLocalStatusCounts();
+      void fetchStatusCounts();
 
-      // Auto-select first order & patient
-      if (!selectedOrderId.value && orders.value.length > 0) {
-        selectOrder(orders.value[0].id);
+      loadFailed.value = false;
+
+      // Auto-select first patient in queue if nothing is selected or previous
+      // selection is no longer in list.
+      if (
+        !selectedOrderId.value ||
+        !orders.value.some((o) => o.id === selectedOrderId.value)
+      ) {
+        if (
+          patientGroups.value.length > 0 &&
+          patientGroups.value[0].orders.length > 0
+        ) {
+          selectOrder(patientGroups.value[0].orders[0].id);
+        } else if (orders.value.length > 0) {
+          selectOrder(orders.value[0].id);
+        } else {
+          selectedOrderId.value = null;
+          selectedPatientId.value = null;
+        }
       }
     } catch (err) {
-      console.warn("Using sample mock dataset if laboratory orders endpoint empty", err);
-      if (orders.value.length === 0) {
-        populateDemoOrders();
-      }
+      // This used to swap in a hardcoded demo dataset — six invented patients,
+      // MRNs and all — whenever the worklist came back empty *or* the request
+      // failed. A filter with no matches showed fabricated orders under it, and
+      // so did a 500. Nothing in a clinical worklist may be made up: an empty
+      // result is empty, and a failed load says so.
+      console.error("Failed to fetch laboratory orders", err);
+      loadFailed.value = true;
     } finally {
       isLoadingOrders.value = false;
+    }
+  }
+
+  /**
+   * Totals from the server, across the whole worklist.
+   *
+   * `laboratory/orders/status-counts` has existed all along and was called zero
+   * times; the counts were summed from the fetched page instead, so the tabs
+   * agreed with a truncated list.
+   */
+  async function fetchStatusCounts() {
+    try {
+      const params = new URLSearchParams();
+      if (selectedDepartmentFilter.value !== "all") {
+        params.set("department", selectedDepartmentFilter.value);
+      }
+      if (selectedPriorityFilter.value !== "all") {
+        params.set("priority", selectedPriorityFilter.value);
+      }
+      const search = searchQuery.value.trim();
+      if (search !== "") params.set("q", search);
+
+      const res = await fetch(
+        `/api/v1/laboratory/orders/status-counts?${params.toString()}`,
+        {
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        },
+      );
+      if (!res.ok) return;
+
+      const body = await res.json();
+      const counts = body.data ?? {};
+      statusCounts.value = {
+        all: Object.values(counts).reduce(
+          (sum: number, n) => sum + Number(n || 0),
+          0,
+        ),
+        ordered: Number(counts.ordered ?? 0),
+        collected: Number(counts.collected ?? 0),
+        in_progress: Number(counts.in_progress ?? 0),
+        completed: Number(counts.completed ?? 0),
+        // Critical is a property of entered results, not a stored status, so it
+        // stays derived from the loaded page.
+        critical: orders.value.filter(
+          (o) =>
+            o.flag === "critical" ||
+            o.parameters.some((p) => p.flag.startsWith("critical")),
+        ).length,
+      };
+    } catch {
+      // Keep the last known totals rather than blanking the tabs.
     }
   }
 
@@ -604,175 +1005,15 @@ export function useLaboratoryOrders() {
       all: orders.value.length,
       ordered: orders.value.filter((o) => o.status === "ordered").length,
       collected: orders.value.filter((o) => o.status === "collected").length,
-      in_progress: orders.value.filter((o) => o.status === "in_progress").length,
+      in_progress: orders.value.filter((o) => o.status === "in_progress")
+        .length,
       completed: orders.value.filter((o) => o.status === "completed").length,
-      critical: orders.value.filter((o) => o.flag === "critical" || o.parameters.some((p) => p.flag.startsWith("critical"))).length,
+      critical: orders.value.filter(
+        (o) =>
+          o.flag === "critical" ||
+          o.parameters.some((p) => p.flag.startsWith("critical")),
+      ).length,
     };
-  }
-
-  function populateDemoOrders() {
-    orders.value = [
-      // Patient 1: Amina Juma Mohamed (2 tests: Hb + mRDT)
-      {
-        id: "lab-ord-001",
-        orderNumber: "LAB-2026-0841",
-        patientId: "pat-101",
-        patientName: "Amina Juma Mohamed",
-        patientMrn: "MRN-2026-0042",
-        patientGender: "Female",
-        patientAge: "34 yrs",
-        testCode: "LAB-HEM-HB",
-        testName: "Hemoglobin (Hb) Test",
-        department: "Hematology",
-        sampleType: "Whole Blood (EDTA)",
-        tubeType: "Lavender / Purple Top (EDTA K2)",
-        priority: "stat",
-        status: "ordered",
-        clinicalIndication: "Severe pallor, fatigue, suspected severe anemia",
-        orderingClinician: "Dr. K. Mwangi, MD",
-        createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-        barcode: "*LAB0841*",
-        specimenIntegrity: "adequate",
-        parameters: JSON.parse(JSON.stringify(LAB_PANEL_TEMPLATES["LAB-HEM-HB"])),
-        price: 5000,
-      },
-      {
-        id: "lab-ord-001b",
-        orderNumber: "LAB-2026-0841-B",
-        patientId: "pat-101",
-        patientName: "Amina Juma Mohamed",
-        patientMrn: "MRN-2026-0042",
-        patientGender: "Female",
-        patientAge: "34 yrs",
-        testCode: "LAB-PAR-MRDT",
-        testName: "Malaria Rapid Diagnostic Test (mRDT)",
-        department: "Parasitology",
-        sampleType: "Capillary Blood",
-        tubeType: "Fingerstick / EDTA Microtainer",
-        priority: "stat",
-        status: "ordered",
-        clinicalIndication: "Fever spikes with chills",
-        orderingClinician: "Dr. K. Mwangi, MD",
-        createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-        barcode: "*LAB0841B*",
-        specimenIntegrity: "adequate",
-        parameters: JSON.parse(JSON.stringify(LAB_PANEL_TEMPLATES["LAB-PAR-MRDT"])),
-        price: 5000,
-      },
-      // Patient 2: Juma Bakari Hassan (2 tests: Glucose + Urinalysis)
-      {
-        id: "lab-ord-002",
-        orderNumber: "LAB-2026-0842",
-        patientId: "pat-102",
-        patientName: "Juma Bakari Hassan",
-        patientMrn: "MRN-2026-0189",
-        patientGender: "Male",
-        patientAge: "48 yrs",
-        testCode: "LAB-BIO-GLUCOSE-RBG",
-        testName: "Random Blood Glucose (RBG)",
-        department: "Biochemistry",
-        sampleType: "Capillary / Fluoride Blood",
-        tubeType: "Gray Top (Sodium Fluoride)",
-        priority: "urgent",
-        status: "collected",
-        clinicalIndication: "Type 2 Diabetes re-evaluation, polydipsia",
-        orderingClinician: "Dr. S. Tarimo, MD",
-        createdAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
-        collectedAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
-        collectedBy: "Nurse Mary (OPD)",
-        barcode: "*LAB0842*",
-        specimenIntegrity: "adequate",
-        parameters: JSON.parse(JSON.stringify(LAB_PANEL_TEMPLATES["LAB-BIO-GLUCOSE-RBG"])),
-        price: 5000,
-      },
-      {
-        id: "lab-ord-002b",
-        orderNumber: "LAB-2026-0842-B",
-        patientId: "pat-102",
-        patientName: "Juma Bakari Hassan",
-        patientMrn: "MRN-2026-0189",
-        patientGender: "Male",
-        patientAge: "48 yrs",
-        testCode: "LAB-URI-ROUTINE",
-        testName: "Urinalysis (Dipstick + Microscopy)",
-        department: "Urinalysis",
-        sampleType: "Midstream Urine",
-        tubeType: "Sterile Urine Cup",
-        priority: "urgent",
-        status: "collected",
-        clinicalIndication: "Glycosuria / Proteinuria check",
-        orderingClinician: "Dr. S. Tarimo, MD",
-        createdAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
-        collectedAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
-        collectedBy: "Nurse Mary (OPD)",
-        barcode: "*LAB0842B*",
-        specimenIntegrity: "adequate",
-        parameters: JSON.parse(JSON.stringify(LAB_PANEL_TEMPLATES["LAB-URI-ROUTINE"])),
-        price: 8000,
-      },
-      // Patient 3: Fatma Said Rashid (1 test: HIV Screening)
-      {
-        id: "lab-ord-003",
-        orderNumber: "LAB-2026-0843",
-        patientId: "pat-103",
-        patientName: "Fatma Said Rashid",
-        patientMrn: "MRN-2026-0210",
-        patientGender: "Female",
-        patientAge: "26 yrs",
-        testCode: "LAB-SER-HIV-RDT",
-        testName: "HIV 1/2 Rapid Antibody Test",
-        department: "Serology",
-        sampleType: "Whole Blood / Serum",
-        tubeType: "Gold / Red Top (SST Gel)",
-        priority: "routine",
-        status: "in_progress",
-        clinicalIndication: "Antenatal first trimester screening",
-        orderingClinician: "Dr. K. Mwangi, MD",
-        createdAt: new Date(Date.now() - 50 * 60 * 1000).toISOString(),
-        collectedAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
-        collectedBy: "Lab Tech John",
-        barcode: "*LAB0843*",
-        specimenIntegrity: "adequate",
-        parameters: JSON.parse(JSON.stringify(LAB_PANEL_TEMPLATES["LAB-SER-HIV-RDT"])),
-        price: 5000,
-      },
-      // Patient 4: David Emmanuel Msangi (1 test: Renal Profile)
-      {
-        id: "lab-ord-004",
-        orderNumber: "LAB-2026-0844",
-        patientId: "pat-104",
-        patientName: "David Emmanuel Msangi",
-        patientMrn: "MRN-2026-0301",
-        patientGender: "Male",
-        patientAge: "55 yrs",
-        testCode: "LAB-BIO-RENAL-URIC",
-        testName: "Renal Function Profile",
-        department: "Biochemistry",
-        sampleType: "Serum",
-        tubeType: "Gold / Red Top (SST Gel)",
-        priority: "routine",
-        status: "completed",
-        clinicalIndication: "Hypertension baseline monitoring",
-        orderingClinician: "Dr. A. Temu, MD",
-        createdAt: new Date(Date.now() - 120 * 60 * 1000).toISOString(),
-        collectedAt: new Date(Date.now() - 100 * 60 * 1000).toISOString(),
-        collectedBy: "Nurse Mary (OPD)",
-        verifiedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-        verifiedBy: "MLS H. Mndeme (Lead Scientist)",
-        barcode: "*LAB0844*",
-        specimenIntegrity: "adequate",
-        parameters: [
-          { key: "creatinine", name: "Serum Creatinine", value: "92", unit: "µmol/L", referenceRange: "60 – 110", minNormal: 60, maxNormal: 110, flag: "normal", previousValue: "88" },
-          { key: "urea", name: "Blood Urea Nitrogen (BUN)", value: "5.1", unit: "mmol/L", referenceRange: "2.5 – 7.1", minNormal: 2.5, maxNormal: 7.1, flag: "normal" },
-          { key: "uric_acid", name: "Uric Acid", value: "310", unit: "µmol/L", referenceRange: "200 – 420", minNormal: 200, maxNormal: 420, flag: "normal" },
-          { key: "egfr", name: "Estimated GFR", value: "98", unit: "mL/min/1.73m²", referenceRange: "> 90", minNormal: 90, flag: "normal" },
-        ],
-        price: 20000,
-      },
-    ];
-
-    updateLocalStatusCounts();
-    selectPatient("pat-101");
   }
 
   /**
@@ -784,7 +1025,10 @@ export function useLaboratoryOrders() {
    * refused the transition, and the next live-sync refresh silently undid the
    * screen. Everything below exists so that can never happen again.
    */
-  async function readWriteError(res: Response, fallback: string): Promise<string> {
+  async function readWriteError(
+    res: Response,
+    fallback: string,
+  ): Promise<string> {
     try {
       const json = await res.json();
       if (typeof json?.message === "string" && json.message.trim() !== "") {
@@ -821,7 +1065,10 @@ export function useLaboratoryOrders() {
     if (!order) return false;
 
     const rollback = Object.fromEntries(
-      Object.keys(optimistic).map((key) => [key, order[key as keyof LaboratoryOrder]]),
+      Object.keys(optimistic).map((key) => [
+        key,
+        order[key as keyof LaboratoryOrder],
+      ]),
     );
 
     Object.assign(order, optimistic);
@@ -852,13 +1099,17 @@ export function useLaboratoryOrders() {
       Object.assign(order, rollback);
       updateLocalStatusCounts();
       toast.error(fallbackError, {
-        description: "The laboratory server could not be reached. Nothing was saved.",
+        description:
+          "The laboratory server could not be reached. Nothing was saved.",
       });
       return false;
     }
   }
 
-  function patchStatus(orderId: string, body: Record<string, unknown>): Promise<Response> {
+  function patchStatus(
+    orderId: string,
+    body: Record<string, unknown>,
+  ): Promise<Response> {
     return fetch(`/api/v1/laboratory/orders/${orderId}/status`, {
       method: "PATCH",
       headers: {
@@ -871,7 +1122,10 @@ export function useLaboratoryOrders() {
   }
 
   // Step 1 — Receive the specimen at the bench (ordered → collected)
-  async function acceptSpecimen(orderId: string, specimenNotes?: string): Promise<boolean> {
+  async function acceptSpecimen(
+    orderId: string,
+    specimenNotes?: string,
+  ): Promise<boolean> {
     isUpdatingOrder.value = true;
     try {
       const ok = await runOrderMutation(
@@ -880,7 +1134,9 @@ export function useLaboratoryOrders() {
         () =>
           patchStatus(orderId, {
             status: "collected",
-            reason: specimenNotes?.trim() || "Sample received and integrity validated",
+            reason:
+              specimenNotes?.trim() ||
+              "Sample received and integrity validated",
           }),
         "Could not accession this specimen.",
       );
@@ -893,7 +1149,10 @@ export function useLaboratoryOrders() {
   }
 
   // Off-ramp — Reject the specimen (only before analysis begins)
-  async function rejectSpecimen(orderId: string, reason: string): Promise<boolean> {
+  async function rejectSpecimen(
+    orderId: string,
+    reason: string,
+  ): Promise<boolean> {
     if (!reason.trim()) {
       toast.error("Please specify a reason for specimen rejection");
       return false;
@@ -903,12 +1162,19 @@ export function useLaboratoryOrders() {
     try {
       const ok = await runOrderMutation(
         orderId,
-        { status: "cancelled", specimenIntegrity: "insufficient", rejectionReason: reason },
+        {
+          status: "cancelled",
+          specimenIntegrity: "insufficient",
+          rejectionReason: reason,
+        },
         () => patchStatus(orderId, { status: "cancelled", reason }),
         "Could not reject this specimen.",
       );
 
-      if (ok) toast.info("Specimen rejected. The ordering clinician has been notified.");
+      if (ok)
+        toast.info(
+          "Specimen rejected. The ordering clinician has been notified.",
+        );
       return ok;
     } finally {
       isUpdatingOrder.value = false;
@@ -922,7 +1188,11 @@ export function useLaboratoryOrders() {
       const ok = await runOrderMutation(
         orderId,
         { status: "in_progress" },
-        () => patchStatus(orderId, { status: "in_progress", reason: "Analytical testing initiated" }),
+        () =>
+          patchStatus(orderId, {
+            status: "in_progress",
+            reason: "Analytical testing initiated",
+          }),
         "Could not start analysis on this order.",
       );
 
@@ -939,8 +1209,14 @@ export function useLaboratoryOrders() {
     if (!order) return;
 
     for (const p of order.parameters) {
-      if (p.unit === "result" || p.referenceRange.includes("Negative") || p.referenceRange.includes("Non-Reactive")) {
-        p.value = p.referenceRange.includes("Non-Reactive") ? "Non-Reactive" : "Negative";
+      if (
+        p.unit === "result" ||
+        p.referenceRange.includes("Negative") ||
+        p.referenceRange.includes("Non-Reactive")
+      ) {
+        p.value = p.referenceRange.includes("Non-Reactive")
+          ? "Non-Reactive"
+          : "Negative";
       } else if (p.minNormal !== undefined && p.maxNormal !== undefined) {
         p.value = Number(((p.minNormal + p.maxNormal) / 2).toFixed(1));
       } else if (p.maxNormal !== undefined) {
@@ -953,12 +1229,20 @@ export function useLaboratoryOrders() {
     toast.info("Normal reference values populated");
   }
 
-  function overallFlagOf(order: LaboratoryOrder): "critical" | "abnormal" | "normal" {
-    if (order.parameters.some((p) => p.flag === "critical_low" || p.flag === "critical_high")) {
+  function overallFlagOf(
+    order: LaboratoryOrder,
+  ): "critical" | "abnormal" | "normal" {
+    if (
+      order.parameters.some(
+        (p) => p.flag === "critical_low" || p.flag === "critical_high",
+      )
+    ) {
       return "critical";
     }
 
-    return order.parameters.some((p) => p.flag === "abnormal") ? "abnormal" : "normal";
+    return order.parameters.some((p) => p.flag === "abnormal")
+      ? "abnormal"
+      : "normal";
   }
 
   /**
@@ -975,14 +1259,19 @@ export function useLaboratoryOrders() {
 
     const missing = missingParameters(order);
     if (missing.length > 0) {
-      toast.error("Every parameter needs a value before results can be saved.", {
-        description: `Still empty: ${missing.map((p) => p.name).join(", ")}`,
-      });
+      toast.error(
+        "Every parameter needs a value before results can be saved.",
+        {
+          description: `Still empty: ${missing.map((p) => p.name).join(", ")}`,
+        },
+      );
       return false;
     }
 
     const resultSummary = [
-      order.parameters.map((p) => `${p.name}: ${p.value} ${p.unit}`.trim()).join(", "),
+      order.parameters
+        .map((p) => `${p.name}: ${p.value} ${p.unit}`.trim())
+        .join(", "),
       // The backend decides a result is critical by looking for this exact
       // phrase (VerifyLaboratoryOrderResultUseCase::isCriticalResultSummary),
       // which then makes the verification note mandatory. Emit it so a critical
@@ -1010,14 +1299,24 @@ export function useLaboratoryOrders() {
     try {
       const ok = await runOrderMutation(
         orderId,
-        { status: "completed", flag: overallFlagOf(order), resultValue: resultSummary },
-        () => patchStatus(orderId, { status: "completed", resultSummary, resultParameters }),
+        {
+          status: "completed",
+          flag: overallFlagOf(order),
+          resultValue: resultSummary,
+        },
+        () =>
+          patchStatus(orderId, {
+            status: "completed",
+            resultSummary,
+            resultParameters,
+          }),
         "Could not save these results.",
       );
 
       if (ok) {
         toast.success("Results saved as a draft report.", {
-          description: "Nothing has reached the patient chart yet — review and release it next.",
+          description:
+            "Nothing has reached the patient chart yet — review and release it next.",
         });
       }
       return ok;
@@ -1048,7 +1347,9 @@ export function useLaboratoryOrders() {
 
     const note = verificationNote.trim();
     if (note === "") {
-      toast.error("A release note is required before this report goes to the chart.");
+      toast.error(
+        "A release note is required before this report goes to the chart.",
+      );
       return false;
     }
 
@@ -1091,92 +1392,70 @@ export function useLaboratoryOrders() {
     if (order) {
       order.criticalNotifiedAt = new Date().toISOString();
       order.criticalNotifiedTo = clinicianName;
-      toast.success(`Critical value telephone read-back logged with ${clinicianName}`);
+      toast.success(
+        `Critical value telephone read-back logged with ${clinicianName}`,
+      );
     }
   }
 
-  // Filtered Orders for Test Mode
+  /**
+   * The server already returned this exact slice.
+   *
+   * Status, discipline, priority and search are query parameters now, so
+   * re-applying them here would filter an already-filtered set — and worse,
+   * would look like it worked while quietly hiding rows the server had chosen.
+   * Only `critical` stays local: it is a property of entered results, not a
+   * stored status the API can filter on.
+   */
   const filteredOrders = computed(() => {
-    let list = orders.value;
-
-    // Status filter
     if (selectedStatusFilter.value === "critical") {
-      list = list.filter((o) => o.flag === "critical" || o.parameters.some((p) => p.flag.startsWith("critical")));
-    } else if (selectedStatusFilter.value !== "all") {
-      list = list.filter((o) => o.status === selectedStatusFilter.value);
-    }
-
-    // Department filter
-    if (selectedDepartmentFilter.value !== "all") {
-      const targetDept = selectedDepartmentFilter.value.toLowerCase();
-      list = list.filter((o) => {
-        const orderDept = (o.department || "").toLowerCase();
-        return orderDept.includes(targetDept) || targetDept.includes(orderDept);
-      });
-    }
-
-    // Priority filter
-    if (selectedPriorityFilter.value !== "all") {
-      list = list.filter((o) => o.priority === selectedPriorityFilter.value);
-    }
-
-    // Text search
-    const q = searchQuery.value.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
+      return orders.value.filter(
         (o) =>
-          o.patientName?.toLowerCase().includes(q) ||
-          o.patientMrn?.toLowerCase().includes(q) ||
-          o.testName.toLowerCase().includes(q) ||
-          o.testCode.toLowerCase().includes(q) ||
-          o.orderNumber?.toLowerCase().includes(q),
+          o.flag === "critical" ||
+          o.parameters.some((p) => p.flag.startsWith("critical")),
       );
     }
 
-    return list;
+    return orders.value;
   });
 
-  // Filtered Patients for Patient Mode
+  /** Patient view of the same server-selected slice. */
   const filteredPatientGroups = computed(() => {
-    let list = patientGroups.value;
+    if (selectedStatusFilter.value !== "critical") return patientGroups.value;
 
-    // Priority filter
-    if (selectedPriorityFilter.value !== "all") {
-      list = list.filter((g) => g.highestPriority === selectedPriorityFilter.value);
-    }
+    const criticalIds = new Set(filteredOrders.value.map((o) => o.id));
 
-    // Status filter (check if any order in group matches status)
-    if (selectedStatusFilter.value !== "all") {
-      list = list.filter((g) => g.orders.some((o) => o.status === selectedStatusFilter.value));
-    }
+    return patientGroups.value.filter((g) =>
+      g.orders.some((o) => criticalIds.has(o.id)),
+    );
+  });
 
-    // Department filter
-    if (selectedDepartmentFilter.value !== "all") {
-      const targetDept = selectedDepartmentFilter.value.toLowerCase();
-      list = list.filter((g) =>
-        g.orders.some((o) => {
-          const orderDept = (o.department || "").toLowerCase();
-          return orderDept.includes(targetDept) || targetDept.includes(orderDept);
-        }),
-      );
-    }
+  // The filters drive the query, so every change re-asks the server — the same
+  // rule reception's queue needed: a selection that changes what is shown has to
+  // change what is fetched.
+  watch(
+    [selectedStatusFilter, selectedDepartmentFilter, selectedPriorityFilter],
+    () => {
+      void fetchOrders();
+    },
+  );
 
-    // Text search
-    const q = searchQuery.value.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (g) =>
-          g.patientName.toLowerCase().includes(q) ||
-          g.patientMrn.toLowerCase().includes(q) ||
-          g.orders.some((o) => o.testName.toLowerCase().includes(q) || o.testCode.toLowerCase().includes(q)),
-      );
-    }
-
-    return list;
+  /**
+   * Search re-queries too, debounced so a typed word is one request rather than
+   * one per keystroke. It was a client-side `.filter()` over the loaded page,
+   * which searched only what had already been fetched.
+   */
+  let searchDebounce: ReturnType<typeof setTimeout> | undefined;
+  watch(searchQuery, () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      void fetchOrders();
+    }, 300);
   });
 
   return {
     orders,
+    fetchStatusCounts,
     selectedOrderId,
     selectedPatientId,
     viewMode,
@@ -1186,6 +1465,7 @@ export function useLaboratoryOrders() {
     patientGroups,
     filteredPatientGroups,
     isLoadingOrders,
+    loadFailed,
     isUpdatingOrder,
     isSavingResults,
     isVerifying,

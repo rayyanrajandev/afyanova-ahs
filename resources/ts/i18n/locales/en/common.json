@@ -276,7 +276,8 @@
     "search": "Search",
     "loading": "Loading...",
     "no_data": "No data available",
-    "error_generic": "Something went wrong"
+    "error_generic": "Something went wrong",
+    "just_now": "just now"
   },
   "validation": {
     "required": "This field is required",
@@ -1027,7 +1028,8 @@
   "flow_timeline": {
     "label": "Activity",
     "empty": "No recorded steps for this patient yet.",
-    "load_failed": "Could not load the activity log."
+    "load_failed": "Could not load the activity log.",
+    "loading": "Loading clinical activity timeline"
   },
   "laboratory": {
     "workspace_title": "Laboratory Workstation",
@@ -1208,6 +1210,34 @@
     "release_blocked_note": "A release note is required.",
     "release_blocked_review": "Confirm the second-review declaration first.",
     "already_released": "Released — this report is final and on the patient chart.",
-    "ready_to_release": "Ready to release to the patient chart."
+    "ready_to_release": "Ready to release to the patient chart.",
+    "dept_clinical_chemistry": "Clinical Chemistry",
+    "dept_serology_immunology": "Serology & Immunology",
+    "status_verified": "Verified",
+    "status_cancelled": "Cancelled",
+    "load_failed": "Could not load the worklist. Retry."
+  },
+  "pharmacy": {
+    "by_patient": "Patients",
+    "by_prescription": "Prescriptions",
+    "status_all": "All",
+    "status_pending": "Pending",
+    "status_in_preparation": "In Prep",
+    "status_partial": "Partial",
+    "status_partially_dispensed": "Partially dispensed",
+    "status_dispensed": "Filled",
+    "status_cancelled": "Cancelled",
+    "search_placeholder": "Search patient, MRN, medication...",
+    "loading_patient_queue": "Loading dispensing queue...",
+    "loading_prescriptions": "Loading prescriptions...",
+    "no_patients_found": "No matching patients found.",
+    "no_orders_found": "No matching prescriptions found.",
+    "unknown_patient": "Patient",
+    "item_count": "{count} item(s)",
+    "units": "units",
+    "partial_progress_hint": "Dispensed so far, of the amount prescribed",
+    "locked_dispense": "Locked until the prescription has been accepted into preparation",
+    "locked_verify": "Locked until the medicine has been dispensed",
+    "locked_cancelled": "This order was cancelled — there is nothing left to fill or sign off"
   }
 }

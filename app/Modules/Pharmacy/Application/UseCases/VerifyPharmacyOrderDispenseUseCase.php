@@ -28,6 +28,21 @@ class VerifyPharmacyOrderDispenseUseCase
 
         ClinicalOrderLifecycle::assertActiveForWorkflow($existing, 'pharmacy order');
 
+        // The second pair of eyes has to be a second pair. Laboratory and
+        // radiology have refused self-verification on their own release paths
+        // for as long as they have had one; pharmacy wrote verified_by_user_id
+        // with nothing to compare it against, so the pharmacist who handed the
+        // medicine over could sign off their own work.
+        //
+        // Checked ahead of every side effect, for the reason the laboratory
+        // path records: a precondition raised after the write leaves the caller
+        // with a rejection and the database with the change.
+        if ($this->isOwnDispense($existing, $actorId)) {
+            throw new PharmacyOrderVerificationNotAllowedException(
+                'You cannot verify a dispense you performed yourself.'
+            );
+        }
+
         if (($existing['status'] ?? null) !== PharmacyOrderStatus::DISPENSED->value) {
             throw new PharmacyOrderVerificationNotAllowedException(
                 'Only dispensed pharmacy orders can be verified.'
@@ -98,7 +113,7 @@ class VerifyPharmacyOrderDispenseUseCase
     }
 
     /**
-     * @param array<string, mixed> $order
+     * @param  array<string, mixed>  $order
      */
     private function orderIndicatesSubstitution(array $order): bool
     {
@@ -109,5 +124,31 @@ class VerifyPharmacyOrderDispenseUseCase
         $dispensingNotes = (string) ($order['dispensing_notes'] ?? '');
 
         return str_contains(strtolower($dispensingNotes), 'substitution: yes');
+    }
+
+    /**
+     * Whether the actor is the pharmacist who released this medicine.
+     *
+     * Compared as strings because the id reaches us through the repository
+     * array, where the driver may hand back an int or a numeric string — the
+     * same trap the laboratory path documents falling into, where a strict
+     * comparison silently passed whenever the types differed.
+     *
+     * A null dispenser is not a match. Orders released before
+     * dispensed_by_user_id existed carry no identity to compare, and refusing
+     * them would strand every one of them unverified without making anything
+     * safer.
+     *
+     * @param  array<string, mixed>  $order
+     */
+    private function isOwnDispense(array $order, ?int $actorId): bool
+    {
+        $dispensedBy = $order['dispensed_by_user_id'] ?? null;
+
+        if ($dispensedBy === null || $actorId === null) {
+            return false;
+        }
+
+        return (string) $dispensedBy === (string) $actorId;
     }
 }

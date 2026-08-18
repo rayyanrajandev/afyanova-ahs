@@ -43,6 +43,11 @@ class ListLaboratoryOrderStatusCountsUseCase
         $toDateTime = isset($filters['to']) ? trim((string) $filters['to']) : null;
         $toDateTime = $toDateTime === '' ? null : $toDateTime;
 
+        // Discipline is a real filter now: it reads the catalog's own category
+        // instead of the browser guessing one from the test code.
+        $department = isset($filters['department']) ? strtolower(trim((string) $filters['department'])) : null;
+        $department = ($department === '' || $department === 'all') ? null : $department;
+
         return $this->laboratoryOrderRepository->statusCounts(
             query: $query,
             patientId: $patientId,
@@ -51,6 +56,7 @@ class ListLaboratoryOrderStatusCountsUseCase
             priority: $priority,
             fromDateTime: $fromDateTime,
             toDateTime: $toDateTime,
+            department: $department,
         );
     }
 }

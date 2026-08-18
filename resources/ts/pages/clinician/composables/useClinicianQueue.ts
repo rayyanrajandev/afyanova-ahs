@@ -56,6 +56,13 @@ export interface UseClinicianQueueOptions {
 export function useClinicianQueue(options: UseClinicianQueueOptions = {}) {
   const { t, locale } = useI18n({ useScope: "global" });
 
+  /**
+   * A page of one pile, not of everything. Large enough that a real clinic list
+   * fits, and asked for explicitly so the number is visible here rather than
+   * inherited from a server default nobody was looking at.
+   */
+  const QUEUE_PAGE_SIZE = 100;
+
   const selectedStage = ref<ClinicianQueueStage>("waiting_provider");
   const encounters = ref<ClinicianEncounterItem[]>([]);
   const isLoading = ref(false);
@@ -72,7 +79,16 @@ export function useClinicianQueue(options: UseClinicianQueueOptions = {}) {
     isLoading.value = true;
     error.value = null;
     try {
-      const res = await fetch("/api/v1/clinician/encounters", {
+      // One pile, asked for by name. This used to fetch "/clinician/encounters"
+      // with no parameters at all: the server's default page is 15, so a doctor
+      // saw at most 15 visits in total and the 16th simply did not exist — the
+      // four tabs were slicing up one truncated page.
+      const params = new URLSearchParams({
+        queueStage: selectedStage.value,
+        perPage: String(QUEUE_PAGE_SIZE),
+      });
+
+      const res = await fetch(`/api/v1/clinician/encounters?${params.toString()}`, {
         headers: { "X-Requested-With": "XMLHttpRequest" },
       });
 
@@ -105,77 +121,72 @@ export function useClinicianQueue(options: UseClinicianQueueOptions = {}) {
           waitMinutes: e.waitMinutes || 5,
         }));
         error.value = null;
-        calculateStageCounts();
+        void fetchStageCounts();
       } else {
         encounters.value = [];
         error.value = null;
-        calculateStageCounts();
+        void fetchStageCounts();
       }
     } catch {
       encounters.value = [];
       error.value = null;
-      calculateStageCounts();
     } finally {
       isLoading.value = false;
     }
   }
 
+  // The stage drives the query, so every way it can change — clicking a tab,
+  // restoring the last session, following a link — loads that pile.
+  watch(selectedStage, () => { void fetchEncounters(); });
+
   void fetchEncounters();
+  void fetchStageCounts();
 
-  function calculateStageCounts() {
-    const counts: Record<ClinicianQueueStage, number> = {
-      waiting_provider: 0,
-      in_consultation: 0,
-      admitted: 0,
-      completed: 0,
-    };
+  /**
+   * Totals for the tab badges, from the server.
+   *
+   * These were counted from `encounters.value` — the page just fetched — so the
+   * badges described a truncated list rather than the queue, and every tab
+   * agreed with the same wrong picture.
+   */
+  async function fetchStageCounts() {
+    try {
+      const res = await fetch("/api/v1/clinician/encounters/queue-stage-counts", {
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!res.ok) return;
 
-    encounters.value.forEach((item) => {
-      const isAdmitted = !!item.admissionId || item.status === "admitted";
-      const isComplete = item.status === "completed" || item.status === "closed" || item.status === "resolved" || item.appointmentStatus === "completed";
-      const isInConsult = item.visitStage === "with_clinician" || item.status === "in_consultation" || item.appointmentStatus === "in_consultation";
-      const isWaitingTriage = item.appointmentStatus === "waiting_triage" && !item.isTriaged;
-      const isWaitingProvider = (item.appointmentStatus === "waiting_provider" || item.isTriaged || (!item.appointmentId && item.status === "open")) && !isAdmitted && !isComplete && !isInConsult && !isWaitingTriage;
-
-      if (isAdmitted) {
-        counts.admitted++;
-      } else if (isComplete) {
-        counts.completed++;
-      } else if (isInConsult) {
-        counts.in_consultation++;
-      } else if (isWaitingProvider) {
-        counts.waiting_provider++;
-      }
-    });
-
-    stageCounts.value = counts;
+      const body = await res.json();
+      const counts = body.data ?? {};
+      stageCounts.value = {
+        waiting_provider: counts.waiting_provider ?? 0,
+        in_consultation: counts.in_consultation ?? 0,
+        admitted: counts.admitted ?? 0,
+        completed: counts.completed ?? 0,
+      };
+    } catch {
+      // Leave the last known totals rather than blanking the tabs.
+    }
   }
 
   function setStage(stage: ClinicianQueueStage) {
     selectedStage.value = stage;
   }
 
-  const filteredEncounters = computed<ClinicianEncounterItem[]>(() => {
-    return encounters.value.filter((item) => {
-      const isAdmitted = !!item.admissionId || item.status === "admitted";
-      const isComplete = item.status === "completed" || item.status === "closed" || item.status === "resolved" || item.appointmentStatus === "completed";
-      const isInConsult = item.visitStage === "with_clinician" || item.status === "in_consultation" || item.appointmentStatus === "in_consultation";
-      const isWaitingTriage = item.appointmentStatus === "waiting_triage" && !item.isTriaged;
-      const isWaitingProvider = (item.appointmentStatus === "waiting_provider" || item.isTriaged || (!item.appointmentId && item.status === "open")) && !isAdmitted && !isComplete && !isInConsult && !isWaitingTriage;
-
-      if (selectedStage.value === "admitted") {
-        return isAdmitted;
-      }
-      if (selectedStage.value === "completed") {
-        return isComplete;
-      }
-      if (selectedStage.value === "in_consultation") {
-        return isInConsult && !isAdmitted && !isComplete;
-      }
-      // default: waiting_provider (only patients that have completed triage)
-      return isWaitingProvider;
-    });
-  });
+  /**
+   * The server already returned exactly this pile, so there is nothing left to
+   * filter here.
+   *
+   * The rule that used to live in this computed — duplicated in the counts
+   * function beside it — tested encounter statuses that do not exist
+   * ("admitted", "completed", "resolved", "in_consultation", "open"; the real
+   * set is opened / in_progress / ready_for_sign / signed / closed / amended /
+   * cancelled). Every one of those comparisons was dead, and a visit with no
+   * appointment could only qualify through `status === "open"`, so walk-ins were
+   * fetched and then belonged to no tab at all. It now lives in
+   * ClinicianQueueStage, in SQL, defined once.
+   */
+  const filteredEncounters = computed<ClinicianEncounterItem[]>(() => encounters.value);
 
   const queueItems = computed<QueueItem[]>(() => {
     void locale.value;
@@ -249,6 +260,7 @@ export function useClinicianQueue(options: UseClinicianQueueOptions = {}) {
   return {
     selectedStage,
     stageCounts,
+    fetchStageCounts,
     isLoading,
     error,
     queueItems,

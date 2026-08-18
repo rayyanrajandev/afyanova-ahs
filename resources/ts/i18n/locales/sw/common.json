@@ -883,8 +883,8 @@
     "send_to_pharmacy": "Tuma Duka la Dawa",
     "instructions": "Maelekezo kwa Mgonjwa",
     "instructions_placeholder": "mf. Tumia baada ya kula na maji mengi...",
-    "add_prescription": "Ongeza Dawa",
-    "no_prescriptions_added": "Hakuna dawa zilizoagizwa bado.",
+    "no_prescriptions_added": "Hakuna dawa zilizowekwa kwenye maandalizi. Tafuta orodha ya dawa hapo juu kuandika dawa.",
+    "no_placed_prescriptions": "Hakuna maagizo ya dawa yaliyopo kwa mgonjwa huyu.",
     "lab_panels": "Vipimo vya Maabara",
     "search_lab_test": "Tafuta kipimo cha maabara (mf. CBC, Blood Smear, Urinalysis, Creatinine)...",
     "radiology_exams": "Picha na Mionzi (Radiolojia)",
@@ -958,7 +958,12 @@
     "consultation_owned_by_other": "Daktari mwingine tayari yupo na mgonjwa huyu.",
     "stage_with_nurse": "Yupo na Muuguzi",
     "awaiting_start_title": "Haijaanza",
-    "awaiting_start_desc": "Mgonjwa huyu anakusubiri. Mwite ili kuanza uchunguzi kabla ya kuandika au kuagiza."
+    "awaiting_start_desc": "Mgonjwa huyu anakusubiri. Mwite ili kuanza uchunguzi kabla ya kuandika au kuagiza.",
+    "order_stage_awaiting_collection": "Inasubiri sampuli",
+    "order_stage_in_progress": "Inaendelea",
+    "order_stage_awaiting_release": "Inasubiri kutolewa",
+    "order_stage_resulted": "Jibu liko tayari",
+    "order_stage_cancelled": "Imefutwa"
   },
   "command_palette": {
     "placeholder": "Tafuta wagonjwa kwa Jina au MRN, fanya vitendo, au fungua eneo la kazi...",

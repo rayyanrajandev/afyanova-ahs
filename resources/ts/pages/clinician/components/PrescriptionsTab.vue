@@ -487,7 +487,7 @@ async function handleSubmitPrescriptions() {
     <!-- ============================================================
          CARD 2: PLACED ACTIVE MEDICATIONS TRACKER
          ============================================================ -->
-    <section v-if="placedMedications.length > 0" class="rounded-lg border border-border bg-surface p-3.5 shadow-2xs space-y-2.5">
+    <section class="rounded-lg border border-border bg-surface p-3.5 shadow-2xs space-y-2.5">
       <div class="flex items-center justify-between border-b border-border/80 pb-2">
         <h4 class="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
           <span>{{ t("clinician.placed_prescriptions", "Prescribed Medications") }}</span>
@@ -495,7 +495,11 @@ async function handleSubmitPrescriptions() {
         </h4>
       </div>
 
-      <div class="rounded-lg border border-border bg-surface overflow-hidden">
+      <div v-if="placedMedications.length === 0" class="p-4 text-center text-xs text-muted-foreground italic rounded-lg border border-dashed border-border/70">
+        {{ t("clinician.no_placed_prescriptions", "No active prescriptions on file for this patient.") }}
+      </div>
+
+      <div v-else class="rounded-lg border border-border bg-surface overflow-hidden">
         <table class="w-full text-left text-xs table-fixed">
           <thead class="border-b border-border/70 bg-muted/30 text-[10.5px] font-semibold text-muted-foreground uppercase tracking-wider">
             <tr>

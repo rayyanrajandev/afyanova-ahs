@@ -883,8 +883,8 @@
     "send_to_pharmacy": "Send to Pharmacy",
     "instructions": "Patient Instructions",
     "instructions_placeholder": "e.g. Take after meals with plenty of water...",
-    "add_prescription": "Add Prescription Item",
-    "no_prescriptions_added": "No prescriptions ordered yet.",
+    "no_prescriptions_added": "No medications added to staging. Search formulary above or click quick-picks to prescribe.",
+    "no_placed_prescriptions": "No active prescriptions on file for this patient.",
     "lab_panels": "Laboratory Test Panels",
     "search_lab_test": "Search lab test (e.g. CBC, Blood Smear, Urinalysis, Creatinine)...",
     "radiology_exams": "Radiology & Imaging Exams",
@@ -958,7 +958,12 @@
     "consultation_owned_by_other": "Another clinician is already with this patient.",
     "stage_with_nurse": "With Nurse",
     "awaiting_start_title": "Not started",
-    "awaiting_start_desc": "This patient is waiting for you. Call them in to open the consultation before documenting or ordering."
+    "awaiting_start_desc": "This patient is waiting for you. Call them in to open the consultation before documenting or ordering.",
+    "order_stage_awaiting_collection": "Awaiting sample",
+    "order_stage_in_progress": "In progress",
+    "order_stage_awaiting_release": "Awaiting release",
+    "order_stage_resulted": "Result ready",
+    "order_stage_cancelled": "Cancelled"
   },
   "command_palette": {
     "placeholder": "Search patients by Name or MRN, run actions, or jump to workspace...",

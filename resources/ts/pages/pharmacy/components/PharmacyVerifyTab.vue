@@ -6,24 +6,9 @@ Two-eye senior pharmacist verification banner & checklist * - Dispensing summary
 card * - Supervisor remarks & electronic chart authorization */
 
 <script setup lang="ts">
-import {
-  Award,
-  CheckCircle2,
-  Clock,
-  Download,
-  FileCheck,
-  FileText,
-  Lock,
-  Pill,
-  Printer,
-  Send,
-  ShieldCheck,
-  Sparkles,
-  UserCheck,
-} from "lucide-vue-next";
+import { Award, CheckCircle2, ShieldCheck } from "lucide-vue-next";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,10 +17,6 @@ import {
   type PharmacyOrder,
   type UsePharmacyOrders,
 } from "../composables/usePharmacyOrders";
-import {
-  printPharmacyLabel,
-  printConsolidatedPrescription,
-} from "../pharmacyLabelPrint";
 
 const props = defineProps<{
   order: PharmacyOrder;
@@ -75,85 +56,6 @@ async function handleVerify(): Promise<void> {
 
 <template>
   <div class="w-full min-w-0 p-4 space-y-4">
-    <!-- Verification Status Banner -->
-    <div
-      class="p-4 rounded-lg border flex items-center justify-between gap-4"
-      :class="
-        isAlreadyVerified
-          ? 'bg-emerald-500/10 border-emerald-500/30'
-          : isReadyToVerify
-            ? 'bg-primary/10 border-primary/30'
-            : 'bg-amber-500/10 border-amber-500/30'
-      "
-    >
-      <div class="flex items-center gap-3">
-        <div
-          class="size-10 rounded-full flex items-center justify-center shrink-0"
-          :class="
-            isAlreadyVerified
-              ? 'bg-emerald-500 text-white'
-              : isReadyToVerify
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-amber-500 text-white'
-          "
-        >
-          <ShieldCheck v-if="isAlreadyVerified" class="size-5" />
-          <UserCheck v-else-if="isReadyToVerify" class="size-5" />
-          <Clock v-else class="size-5" />
-        </div>
-        <div>
-          <div
-            class="text-sm font-bold"
-            :class="
-              isAlreadyVerified
-                ? 'text-emerald-800 dark:text-emerald-300'
-                : isReadyToVerify
-                  ? 'text-primary'
-                  : 'text-amber-800 dark:text-amber-300'
-            "
-          >
-            {{
-              isAlreadyVerified
-                ? "Dispensation Verified & Released"
-                : isReadyToVerify
-                  ? "Awaiting Final Pharmacist Verification"
-                  : "Pending Physical Preparation"
-            }}
-          </div>
-          <div class="text-xs text-muted-foreground mt-0.5">
-            {{
-              isAlreadyVerified
-                ? `Verified on ${new Date(order.verifiedAt!).toLocaleString()}`
-                : isReadyToVerify
-                  ? "Review medication accuracy, batch fulfillment, and authorize release."
-                  : "Medication must be prepared and filled in Step 2 before verification."
-            }}
-          </div>
-        </div>
-      </div>
-
-      <div class="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          class="h-7 px-2 text-[11px] gap-1 cursor-pointer"
-          @click="() => printPharmacyLabel(order)"
-        >
-          <Printer class="size-3 text-muted-foreground" />
-          <span>Label</span>
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          class="h-7 px-2 text-[11px] gap-1 cursor-pointer"
-          @click="() => printConsolidatedPrescription(patientOrders)"
-        >
-          <FileText class="size-3 text-muted-foreground" />
-          <span>Slip</span>
-        </Button>
-      </div>
-    </div>
-
     <!-- Dispensation Summary Card -->
     <div
       class="rounded-lg border border-border bg-surface p-4 space-y-3 shadow-2xs"

@@ -1,8 +1,5 @@
 <?php
 
-use App\Http\Middleware\EnforceTenantIsolationWhenEnabled;
-use App\Http\Middleware\EnsureMappedFacilitySubscriptionEntitlement;
-use App\Http\Middleware\ResolvePlatformScopeContext;
 use App\Modules\Admission\Presentation\Http\Controllers\NursingAdmissionController;
 use App\Modules\Appointment\Presentation\Http\Controllers\AppointmentController;
 use App\Modules\Billing\Presentation\Http\Controllers\PatientInsuranceController;
@@ -43,14 +40,13 @@ use Illuminate\Support\Facades\Route;
 | functionally identical — see the memory note this rule is pinned under
 | ("reception-frontend-must-use-reception-scoped-api").
 |
-| Loaded by App\Providers\WorkspaceRouteServiceProvider (mirrors how
-| routes/billing-phase1.php is loaded by BillingServiceProvider — same
-| middleware stack and 'api/v1' prefix as routes/api.php's main group,
-| replicated explicitly here since loadRoutesFrom() doesn't inherit that
-| group's context the way nesting inside the same closure would.
+| Loaded by App\Providers\WorkspaceRouteServiceProvider. Shares the
+| 'api.platform' middleware group with routes/api.php (defined once in
+| bootstrap/app.php), but spells out the 'api/v1' prefix itself since
+| loadRoutesFrom() doesn't inherit withRouting()'s automatic 'api' prefix.
 |
 */
-Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTenantIsolationWhenEnabled::class, 'session.limits', EnsureMappedFacilitySubscriptionEntitlement::class])
+Route::middleware('api.platform')
     ->prefix('api/v1')
     ->group(function (): void {
         // ============================================================
@@ -59,12 +55,12 @@ Route::middleware(['web', 'auth', ResolvePlatformScopeContext::class, EnforceTen
         // ============================================================
         // Added 2026-08-12 (Patient Registration UX direction §2, Region/
         // District) — reuses PlatformConfigurationController::countryProfile
-        // + GetCountryProfileUseCase as-is, the same route/use-case
-        // routes/api.php's own `platform/country-profile` already exposes.
-        // No new permission gate: the generic route carries none either
-        // (this is reference/config data, not patient PHI), matching the
-        // group's own baseline middleware. Region/District comboboxes read
-        // `data.profile.patientLocations` from this response.
+        // + GetCountryProfileUseCase as-is. This is now the only route
+        // exposing that use case; routes/api.php's generic
+        // `platform/country-profile` was removed in the 2026-08 API surface
+        // consolidation. No permission gate: reference/config data, not
+        // patient PHI, so the group's baseline middleware is the whole gate.
+        // Region/District comboboxes read `data.profile.patientLocations`.
         Route::get('reception/location-options', [PlatformConfigurationController::class, 'countryProfile'])
             ->name('reception.location-options');
         Route::get('reception/patients', [PatientController::class, 'index'])

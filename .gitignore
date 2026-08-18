@@ -37,14 +37,6 @@ Thumbs.db
 /.claude
 /.agents
 
-# Internal design docs / dev-only notes — excluded from this push by request
-/documents
-TEST_USERS.md
-SETUP_GUIDE.md
-
-# Only the top-level README.md is kept — all other .md files excluded per request
-tests/e2e/README.md
-tools/mailpit/README.md
 
 # Stray orphaned artifacts (truncated filenames, unused/superseded content —
 # not part of the real source tree; left untouched on disk, just untracked)

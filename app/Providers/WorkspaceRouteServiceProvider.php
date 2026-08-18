@@ -10,8 +10,7 @@ use Illuminate\Support\ServiceProvider;
  * extracted out of routes/api.php on 2026-08-10 so old (generic/shared) and
  * new (workspace-scoped) routes stop living in the same file. Not owned by
  * any single module (it spans Reception, Clinician, and Nursing today), so
- * it lives here rather than in one module's own ServiceProvider — mirrors
- * how BillingServiceProvider::boot() loads routes/billing-phase1.php.
+ * it lives here rather than in one module's own ServiceProvider.
  */
 class WorkspaceRouteServiceProvider extends ServiceProvider
 {

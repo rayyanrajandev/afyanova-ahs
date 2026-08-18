@@ -47,7 +47,7 @@ createInertiaApp({
       if (component && component.layout === undefined) {
         if (name.toLowerCase().startsWith("auth/")) {
           component.layout = AuthLayout;
-        } else if (name.toLowerCase() !== "landing") {
+        } else if (!name.toLowerCase().startsWith("landing")) {
           component.layout = AppShell;
         }
       }

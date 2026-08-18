@@ -22,16 +22,6 @@ Broadcast::channel(
     fn ($user, int $userId): bool => $user->id === $userId,
 );
 
-// Billing cashier queue live updates — one facility-scoped private channel,
-// separate from patient-flow since billing invoice/payment activity isn't
-// one of that event's triggers. Authorization logic lives in
-// BillingQueueChannelAuthorizer (directly unit-tested there) rather than
-// inline here, since the test suite forces BROADCAST_CONNECTION=null.
-Broadcast::channel(
-    'billing-queue.{facilityId}',
-    fn ($user, string $facilityId): bool => app(BillingQueueChannelAuthorizer::class)->authorize($user, $facilityId),
-);
-
 // Reception Call action (AppointmentCalled, §16 #3, 2026-08-11) — reuses
 // PatientFlowBoardChannelAuthorizer rather than a near-duplicate class: the
 // authorization rule is identical (`appointments.read` + facility_user

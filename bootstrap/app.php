@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Middleware\EnforceTenantIsolationWhenEnabled;
 use App\Http\Middleware\EnsureFacilitySubscriptionEntitlement;
 use App\Http\Middleware\EnsureFacilitySubscriptionEntitlementAny;
+use App\Http\Middleware\EnsureMappedFacilitySubscriptionEntitlement;
 use App\Http\Middleware\EnsureUserHasActiveRole;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -36,6 +38,20 @@ return Application::configure(basePath: dirname(__DIR__))
             ResolvePlatformScopeContext::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
+        ]);
+
+        // Shared stack for the authenticated api/v1 surface. Defined here, once,
+        // because routes/api.php (loaded by withRouting) and routes/api-workspaces.php
+        // (loaded by WorkspaceRouteServiceProvider) previously each declared this
+        // array verbatim — adding a middleware to one and forgetting the other
+        // silently dropped tenant isolation or entitlement checks on half the API.
+        $middleware->appendToGroup('api.platform', [
+            'web',
+            'auth',
+            ResolvePlatformScopeContext::class,
+            EnforceTenantIsolationWhenEnabled::class,
+            'session.limits',
+            EnsureMappedFacilitySubscriptionEntitlement::class,
         ]);
 
         $middleware->alias([

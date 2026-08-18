@@ -163,21 +163,6 @@ const scopeLabel = computed(() => {
   return name;
 });
 
-// ---- Notifications ----
-const unreadNotificationCount = ref(0);
-async function fetchUnreadNotificationCount() {
-  try {
-    const res = await fetch("/api/v1/notifications/unread-count", {
-      headers: { "X-Requested-With": "XMLHttpRequest" },
-    });
-    if (!res.ok) return;
-    const body = (await res.json()) as { data?: { count?: number } };
-    unreadNotificationCount.value = body.data?.count ?? 0;
-  } catch {
-    unreadNotificationCount.value = 0;
-  }
-}
-
 // ---- Profile menu / sign out ----
 function signOut() {
   router.post("/logout");
@@ -515,7 +500,6 @@ function onGlobalCommandShortcut(event: KeyboardEvent) {
 onMounted(() => {
   window.addEventListener("keydown", onWorkspaceShortcut);
   window.addEventListener("keydown", onGlobalCommandShortcut);
-  void fetchUnreadNotificationCount();
   updateClock();
   clockTimer = setInterval(updateClock, 30000);
 });
@@ -834,38 +818,16 @@ if (typeof window !== "undefined") {
                 <button
                   type="button"
                   class="relative inline-flex size-7 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-                  :aria-label="
-                    unreadNotificationCount > 0
-                      ? t('shell.notifications_unread', { count: unreadNotificationCount })
-                      : t('shell.notifications_title')
-                  "
+                  :aria-label="t('shell.notifications_title')"
                 >
                   <Bell class="size-4" aria-hidden="true" />
-                  <span
-                    v-if="unreadNotificationCount > 0"
-                    class="absolute right-1 top-1 size-1.5 rounded-full bg-critical ring-2 ring-surface"
-                    aria-hidden="true"
-                  />
                 </button>
               </PopoverTrigger>
               <PopoverContent class="w-80 p-0 shadow-lg" align="end">
                 <div class="flex items-center justify-between border-b border-border px-3 py-2">
-                  <div class="flex items-center gap-1.5">
-                    <span class="text-xs font-semibold text-foreground">
-                      {{ t("shell.notifications_title") }}
-                    </span>
-                    <Badge v-if="unreadNotificationCount > 0" variant="critical" class="px-1 py-0 text-[10px] font-mono">
-                      {{ unreadNotificationCount }}
-                    </Badge>
-                  </div>
-                  <button
-                    v-if="unreadNotificationCount > 0"
-                    type="button"
-                    class="text-[11px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                    @click="unreadNotificationCount = 0"
-                  >
-                    {{ t("shell.mark_all_read") }}
-                  </button>
+                  <span class="text-xs font-semibold text-foreground">
+                    {{ t("shell.notifications_title") }}
+                  </span>
                 </div>
                 <div class="py-6 px-4 text-center text-xs text-muted-foreground">
                   {{ t("shell.notifications_empty") }}

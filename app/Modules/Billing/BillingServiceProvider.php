@@ -19,8 +19,6 @@ class BillingServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        $this->loadRoutesFrom(base_path('routes/billing-phase1.php'));
-
         // billing-financial-state-remediation-plan.md, Phase 2 -- keeps
         // billing_source_status current for any future shared "is this billed"
         // resolver, without any of the three write use cases needing to know

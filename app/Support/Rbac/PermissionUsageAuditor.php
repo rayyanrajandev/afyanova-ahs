@@ -30,8 +30,6 @@ class PermissionUsageAuditor
         // `can:` middleware check in that file would silently stop being
         // counted as "used" by this auditor.
         'routes/api-workspaces.php',
-        'routes/billing-phase1.php',
-        'routes/settings.php',
     ];
 
     /**

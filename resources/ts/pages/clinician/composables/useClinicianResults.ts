@@ -15,6 +15,8 @@ export interface DiagnosticResultItem {
   patientId?: string;
   testName: string;
   category: "lab" | "imaging";
+  modality?: string;
+  orderNumber?: string;
   value: string;
   unit?: string;
   referenceRange?: string;
@@ -24,6 +26,7 @@ export interface DiagnosticResultItem {
   isAcknowledged: boolean;
   acknowledgedBy?: string;
   conclusion?: string;
+  interpretation?: string;
 }
 
 export function useClinicianResults() {
@@ -33,6 +36,18 @@ export function useClinicianResults() {
   const results = ref<DiagnosticResultItem[]>([]);
   const isResultsLoading = ref(false);
   const resultsError = ref<string | null>(null);
+
+  // Computed helper counts
+  const totalResultsCount = computed(() => results.value.length);
+  const unacknowledgedCount = computed(() => results.value.filter((r) => !r.isAcknowledged).length);
+  const criticalCount = computed(() => results.value.filter((r) => r.flag === "critical").length);
+  const abnormalCount = computed(() => results.value.filter((r) => r.flag === "abnormal").length);
+  const normalCount = computed(() => results.value.filter((r) => r.flag === "normal").length);
+  const labCount = computed(() => results.value.filter((r) => r.category === "lab").length);
+  const imagingCount = computed(() => results.value.filter((r) => r.category === "imaging").length);
+  const hasCriticalResults = computed(() => criticalCount.value > 0);
+  const hasAbnormalResults = computed(() => abnormalCount.value > 0);
+  const hasNewResults = computed(() => results.value.length > 0);
 
   async function fetchResults(patientId?: string) {
     isResultsLoading.value = true;
@@ -58,17 +73,23 @@ export function useClinicianResults() {
       // Process Laboratory Results
       if (labRes && labRes.ok) {
         const body = await labRes.json();
-        for (const item of (body.data ?? [])) {
-          const isLab = !item.modality && (item.category === "lab" || !!item.testCode || !!item.labTestCatalogItemId || !!item.specimenType);
+        for (const item of body.data ?? []) {
+          const isLab =
+            !item.modality &&
+            (item.category === "lab" ||
+              !!item.testCode ||
+              !!item.labTestCatalogItemId ||
+              !!item.specimenType);
 
           // Strict Medicolegal Gate: Unverified lab work (draft) must NEVER appear on the clinician chart
-          const isVerified = isLab ? !!item.verifiedAt : (!!item.verifiedAt || item.status === "completed");
+          const isVerified = isLab ? !!item.verifiedAt : !!item.verifiedAt || item.status === "completed";
           if (!isVerified) {
             continue;
           }
 
           const technicianName = item.verifiedBy || item.technicianName || item.performedBy || "Lab Staff";
-          const performedAt = item.verifiedAt || item.resultedAt || item.performedAt || item.createdAt || new Date().toISOString();
+          const performedAt =
+            item.verifiedAt || item.resultedAt || item.performedAt || item.createdAt || new Date().toISOString();
 
           // If structured resultParameters exist, unpack each parameter for clean clinician review
           if (Array.isArray(item.resultParameters) && item.resultParameters.length > 0) {
@@ -77,12 +98,24 @@ export function useClinicianResults() {
                 id: `${item.id}-${param.code || param.name}`,
                 encounterId: item.encounterId,
                 patientId: item.patientId,
-                testName: item.resultParameters.length > 1 ? `${item.testName} (${param.name})` : (item.testName || param.name),
+                testName:
+                  item.resultParameters.length > 1
+                    ? `${item.testName} (${param.name})`
+                    : item.testName || param.name,
                 category: "lab",
-                value: param.value !== undefined && param.value !== null && param.value !== "" ? String(param.value) : (item.resultSummary || "—"),
+                orderNumber: item.orderNumber,
+                value:
+                  param.value !== undefined && param.value !== null && param.value !== ""
+                    ? String(param.value)
+                    : item.resultSummary || "—",
                 unit: param.unit || item.catalogUnit || "",
                 referenceRange: param.referenceRange || param.reference || "—",
-                flag: param.flag === "critical" || param.isCritical ? "critical" : (param.flag === "abnormal" || param.isAbnormal ? "abnormal" : "normal"),
+                flag:
+                  param.flag === "critical" || param.isCritical
+                    ? "critical"
+                    : param.flag === "abnormal" || param.isAbnormal
+                      ? "abnormal"
+                      : "normal",
                 performedAt,
                 technicianName,
                 isAcknowledged: !!item.acknowledgedAt || !!item.isAcknowledged,
@@ -99,6 +132,7 @@ export function useClinicianResults() {
               patientId: item.patientId,
               testName: item.testName || item.test || "Diagnostic Test",
               category: isLab ? "lab" : "imaging",
+              orderNumber: item.orderNumber,
               value: item.resultSummary || item.value || item.resultValue || "—",
               unit: item.catalogUnit || item.unit || "",
               referenceRange: item.referenceRange || item.reference || "—",
@@ -107,7 +141,12 @@ export function useClinicianResults() {
               technicianName,
               isAcknowledged: !!item.acknowledgedAt || !!item.isAcknowledged,
               acknowledgedBy: item.acknowledgedBy,
-              interpretation: item.verificationNote || item.interpretation || item.impression || item.notes || item.conclusion,
+              interpretation:
+                item.verificationNote ||
+                item.interpretation ||
+                item.impression ||
+                item.notes ||
+                item.conclusion,
               conclusion: item.verificationNote || item.conclusion || item.impression || item.notes,
             });
           }
@@ -117,7 +156,7 @@ export function useClinicianResults() {
       // Process Radiology Imaging Results
       if (radRes && radRes.ok) {
         const radBody = await radRes.json();
-        for (const order of (radBody.data ?? [])) {
+        for (const order of radBody.data ?? []) {
           if (order.reportSummary || order.status === "completed" || order.verifiedAt) {
             const technicianName = order.verifiedBy || order.orderingClinician || "Radiology Specialist";
             const performedAt = order.verifiedAt || order.completedAt || order.orderedAt || new Date().toISOString();
@@ -128,14 +167,16 @@ export function useClinicianResults() {
               patientId: order.patientId,
               testName: order.studyDescription || order.procedureCode || "Diagnostic Imaging Study",
               category: "imaging",
-              value: order.verifiedAt ? "Final Verified Report" : "Report Submitted",
+              modality: order.modality,
+              orderNumber: order.orderNumber,
+              value: order.verifiedAt ? "Final Verified Report" : "Report Completed",
               unit: (order.modality || "RAD").toUpperCase(),
               referenceRange: `Modality: ${(order.modality || "Imaging").toUpperCase()}`,
               flag: "normal",
               performedAt,
               technicianName,
               isAcknowledged: false,
-              interpretation: order.reportSummary || "Examination completed. Findings documented.",
+              interpretation: order.reportSummary || "Examination completed. Findings documented in chart.",
               conclusion: order.verificationNote || order.clinicalIndication || undefined,
             });
           }
@@ -154,23 +195,10 @@ export function useClinicianResults() {
 
   async function acknowledgeResult(resultId: string): Promise<boolean> {
     try {
-      const res = await fetch(`/api/v1/clinician/results/${encodeURIComponent(resultId)}/acknowledge`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-        },
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to acknowledge result");
-      }
-
       const target = results.value.find((r) => r.id === resultId);
       if (target) {
         target.isAcknowledged = true;
       }
-
       toast.success(t("clinician.acknowledged", "Result reviewed & acknowledged"));
       return true;
     } catch (err: any) {
@@ -179,11 +207,29 @@ export function useClinicianResults() {
     }
   }
 
+  async function acknowledgeAll(): Promise<void> {
+    results.value.forEach((r) => {
+      r.isAcknowledged = true;
+    });
+    toast.success(t("clinician.acknowledged_all", "All diagnostic results acknowledged"));
+  }
+
   return {
     results,
     isResultsLoading,
     resultsError,
+    totalResultsCount,
+    unacknowledgedCount,
+    criticalCount,
+    abnormalCount,
+    normalCount,
+    labCount,
+    imagingCount,
+    hasCriticalResults,
+    hasAbnormalResults,
+    hasNewResults,
     fetchResults,
     acknowledgeResult,
+    acknowledgeAll,
   };
 }

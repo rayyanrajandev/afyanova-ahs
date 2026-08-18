@@ -727,6 +727,12 @@ usePatientFlowLiveSync({
                   >
                     <Radio class="size-3.5 text-amber-600 dark:text-amber-400" />
                     <span>{{ t("clinician.results_review") }}</span>
+                    <span
+                      v-if="resultsManager.totalResultsCount.value > 0"
+                      class="rounded-full bg-amber-500/15 px-1.5 py-0 text-[10px] font-bold text-amber-600 dark:text-amber-400 font-mono"
+                    >
+                      {{ resultsManager.totalResultsCount.value }}
+                    </span>
                   </TabsTrigger>
 
                   <!-- 6. Activity log — the recorded sequence of this visit -->

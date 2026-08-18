@@ -1,9 +1,7 @@
-/**
- * ConsultationQueuePanel — Clinician Work Queue (Volume 2.2 §4.1)
- * ================================================================
- * Context-pane Queue tab content for the Clinician workstation.
- * Features 4 clinical stages: Waiting Doctor -> In Consult -> Admitted Review -> Completed.
- */
+/** * ConsultationQueuePanel — Clinician Work Queue (Volume 2.2 §4.1) *
+================================================================ * Context-pane
+Queue tab content for the Clinician workstation. * Features 4 clinical stages:
+Waiting Doctor -> In Consult -> Admitted -> Completed. */
 
 <script setup lang="ts">
 import {
@@ -18,7 +16,12 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import Queue, { type QueueItem } from "@/components/common/Queue.vue";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { useClinicianQueue } from "../composables/useClinicianQueue";
 
 const props = defineProps<{
@@ -72,7 +75,9 @@ const emptyStateConfig = computed(() => {
   <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
     <!-- Stage Switcher Segmented Toolbar -->
     <div class="border-b border-border/80 bg-surface px-2 py-1.5 shrink-0">
-      <div class="grid grid-cols-4 gap-1 rounded-lg bg-muted/70 p-0.5 text-xs font-medium">
+      <div
+        class="grid grid-cols-4 gap-1 rounded-lg bg-muted/70 p-0.5 text-xs font-medium"
+      >
         <!-- 1. Waiting Doctor -->
         <button
           type="button"
@@ -84,8 +89,12 @@ const emptyStateConfig = computed(() => {
           "
           @click="queueActions.setStage('waiting_provider')"
         >
-          <UserCheck class="size-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-          <span class="truncate text-[10.5px]">{{ t("clinician.stage_waiting_doctor") }}</span>
+          <UserCheck
+            class="size-3 text-emerald-600 dark:text-emerald-400 shrink-0"
+          />
+          <span class="truncate text-[10.5px]">{{
+            t("clinician.stage_waiting_doctor")
+          }}</span>
           <span
             class="rounded-full px-1.5 py-0 text-[9.5px]"
             :class="
@@ -109,8 +118,12 @@ const emptyStateConfig = computed(() => {
           "
           @click="queueActions.setStage('in_consultation')"
         >
-          <Stethoscope class="size-3 text-blue-600 dark:text-blue-400 shrink-0" />
-          <span class="truncate text-[10.5px]">{{ t("clinician.stage_in_consult") }}</span>
+          <Stethoscope
+            class="size-3 text-blue-600 dark:text-blue-400 shrink-0"
+          />
+          <span class="truncate text-[10.5px]">{{
+            t("clinician.stage_in_consult")
+          }}</span>
           <span
             class="rounded-full px-1.5 py-0 text-[9.5px]"
             :class="
@@ -123,7 +136,7 @@ const emptyStateConfig = computed(() => {
           </span>
         </button>
 
-        <!-- 3. Admitted Review -->
+        <!-- 3. Admitted -->
         <button
           type="button"
           class="flex items-center justify-center gap-1 rounded-md py-1 px-1 transition-all cursor-pointer"
@@ -134,8 +147,12 @@ const emptyStateConfig = computed(() => {
           "
           @click="queueActions.setStage('admitted')"
         >
-          <BedDouble class="size-3 text-indigo-600 dark:text-indigo-400 shrink-0" />
-          <span class="truncate text-[10.5px]">{{ t("clinician.stage_admitted_review") }}</span>
+          <BedDouble
+            class="size-3 text-indigo-600 dark:text-indigo-400 shrink-0"
+          />
+          <span class="truncate text-[10.5px]">{{
+            t("clinician.stage_admitted_review")
+          }}</span>
           <span
             class="rounded-full px-1.5 py-0 text-[9.5px]"
             :class="
@@ -160,7 +177,9 @@ const emptyStateConfig = computed(() => {
           @click="queueActions.setStage('completed')"
         >
           <CheckCircle2 class="size-3 text-muted-foreground shrink-0" />
-          <span class="truncate text-[10.5px]">{{ t("clinician.stage_completed") }}</span>
+          <span class="truncate text-[10.5px]">{{
+            t("clinician.stage_completed")
+          }}</span>
           <span
             class="rounded-full px-1.5 py-0 text-[9.5px]"
             :class="
@@ -176,11 +195,14 @@ const emptyStateConfig = computed(() => {
     </div>
 
     <!-- Quick Refresh Bar -->
-    <div class="flex items-center justify-between border-b border-border/60 bg-surface/50 px-3 py-1.5 text-xs text-muted-foreground">
+    <div
+      class="flex items-center justify-between border-b border-border/60 bg-surface/50 px-3 py-1.5 text-xs text-muted-foreground"
+    >
       <div class="flex items-center gap-1.5">
         <Clock class="size-3" />
         <span class="font-mono text-[11px]">
-          {{ queueActions.queueItems.value.length }} {{ t("clinician.patients") }}
+          {{ queueActions.queueItems.value.length }}
+          {{ t("clinician.patients") }}
         </span>
       </div>
       <TooltipProvider :delay-duration="200">
@@ -192,7 +214,10 @@ const emptyStateConfig = computed(() => {
               class="h-6 w-6 p-0 cursor-pointer text-muted-foreground hover:text-foreground"
               @click="queueActions.refreshQueue"
             >
-              <RefreshCw class="size-3" :class="{ 'animate-spin': queueActions.isLoading.value }" />
+              <RefreshCw
+                class="size-3"
+                :class="{ 'animate-spin': queueActions.isLoading.value }"
+              />
             </Button>
           </TooltipTrigger>
           <TooltipContent>{{ t("common.retry") }}</TooltipContent>

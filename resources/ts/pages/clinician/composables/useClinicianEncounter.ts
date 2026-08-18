@@ -170,7 +170,8 @@ export function useClinicianEncounter() {
         plan.value = record.plan || "";
         lastSavedAt.value = record.updatedAt || record.createdAt || null;
       } else {
-        resetNoteFields();
+        clearNoteFields();
+        lastSavedAt.value = null;
       }
 
       // 2. Hydrate server diagnoses
@@ -223,7 +224,12 @@ export function useClinicianEncounter() {
     }
   }
 
-  function resetNoteFields() {
+  /**
+   * Blank the SOAP fields only. Callers that stay bound to the current
+   * encounter use this; it relies on `isHydrating` to keep the field watchers
+   * from writing the emptied state back over the encounter's stored draft.
+   */
+  function clearNoteFields() {
     chiefComplaint.value = "";
     historyOfPresentIllness.value = "";
     reviewOfSystems.value = "";
@@ -231,6 +237,22 @@ export function useClinicianEncounter() {
     assessment.value = "";
     plan.value = "";
     diagnoses.value = [];
+  }
+
+  /**
+   * Close the note entirely: no encounter is open any more.
+   *
+   * `activeEncounterId` has to be released here. It used to be write-once, so
+   * blanking the fields for "no patient selected" left the previous encounter
+   * id in place; the field watchers then fired (outside hydration) and
+   * persisted the *empty* fields over that encounter's saved draft, and
+   * scheduled a server save of the blank note two seconds later.
+   */
+  function resetNoteFields() {
+    clearNoteFields();
+    activeEncounterId.value = null;
+    primaryMedicalRecordId.value = null;
+    encounterWorkspace.value = null;
     isDraftDirty.value = false;
     draftRestored.value = false;
   }
@@ -371,7 +393,7 @@ export function useClinicianEncounter() {
             patientId,
             encounterId: activeEncounterId.value,
             encounterAt: new Date().toISOString(),
-            recordType: "outpatient_consultation",
+            recordType: "consultation_note",
             subjective: combinedSubjective,
             objective: physicalExam.value,
             assessment: assessment.value,
@@ -380,18 +402,27 @@ export function useClinicianEncounter() {
           }),
         });
       } else {
-        // Fallback to local draft persistence only if patient context not loaded yet
+        // Patient context has not loaded yet, so there is nothing to write the
+        // note against. Keep the local draft, but leave the note dirty: it is
+        // not on the server, and the header must not say it is.
         persistLocalDraft();
-        isDraftDirty.value = false;
-        lastSavedAt.value = new Date().toISOString();
-        return true;
+        return false;
       }
 
-      if (res.ok) {
-        const body = await res.json();
-        if (body.data?.id) {
-          primaryMedicalRecordId.value = body.data.id;
-        }
+      // fetch() resolves for 4xx/5xx instead of throwing, so the status has to
+      // be inspected here. Falling through on a rejected write is what let a
+      // 422 on `recordType` show a green "Draft saved" for weeks while nothing
+      // ever reached medical_records.
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(
+          errBody?.message || `Failed to save draft note (HTTP ${res.status})`
+        );
+      }
+
+      const body = await res.json().catch(() => null);
+      if (body?.data?.id) {
+        primaryMedicalRecordId.value = body.data.id;
       }
 
       persistLocalDraft();
@@ -403,8 +434,11 @@ export function useClinicianEncounter() {
       }
       return true;
     } catch (err: any) {
-      // Local draft is safely preserved in localStorage
+      // Local draft is safely preserved in localStorage, but the note is not on
+      // the server — hold it dirty so the header keeps showing "unsaved" rather
+      // than a reassuring timestamp.
       persistLocalDraft();
+      isDraftDirty.value = true;
       if (!silent) {
         toast.error(err.message || "Failed to save draft note");
       }
@@ -423,8 +457,19 @@ export function useClinicianEncounter() {
 
     isSigningNote.value = true;
     try {
-      // 1. Save note content
-      await saveDraftNote(true);
+      // 1. Save note content. Signing a consultation whose note never reached
+      // the server would finalise an encounter with no documentation behind it,
+      // so a failed save aborts the signature rather than being swallowed.
+      const noteSaved = await saveDraftNote(true);
+      if (!noteSaved) {
+        toast.error(
+          t(
+            "clinician.sign_blocked_note_unsaved",
+            "The consultation note could not be saved. Nothing has been signed — resolve the save error before completing."
+          )
+        );
+        return false;
+      }
 
       if (primaryMedicalRecordId.value) {
         try {

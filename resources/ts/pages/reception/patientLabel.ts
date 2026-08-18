@@ -1,3 +1,4 @@
+import { pageRule, printHtmlDocument } from "@/services/print/printDelivery";
 /**
  * Patient wristband/label markup (Volume 2.1 §5.2 W5, §6.3 step 4, Volume 3.7 T2.7)
  * =================================================================================
@@ -34,22 +35,32 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-/** Opens a print-only window with the label and triggers the print dialog. */
+/**
+ * Print the patient wristband label.
+ *
+ * This carried no `@page` rule at all, so a 54x25mm label was laid out on
+ * whatever the printer defaulted to — in practice a sheet of A4 with the label
+ * in one corner and the browser's header above it. It now declares its own
+ * stock, and prints through the shared delivery like every other document.
+ */
 export function printPatientLabel(patient: Patient): void {
-  const markup = patientLabelMarkup(patient);
-  if (typeof window === "undefined") return;
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Patient Label</title>
+  <style>
+    ${pageRule("54mm 25mm", "2mm")}
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #000;
+    }
+  </style>
+</head>
+<body>${patientLabelMarkup(patient)}</body>
+</html>`;
 
-  const printWindow = window.open("", "_blank", "width=300,height=150");
-  if (!printWindow) return;
-
-  printWindow.document.write(
-    `<!doctype html><html><head><title>Patient Label</title></head><body style="margin:0;">${markup}</body></html>`,
-  );
-  printWindow.document.close();
-  printWindow.focus();
-  // Delay lets the document paint before the print dialog opens.
-  setTimeout(() => {
-    printWindow.print();
-    printWindow.close();
-  }, 50);
+  void printHtmlDocument(html, {
+    title: `Label — ${patient.identifier[0]?.value ?? "Patient"}`,
+  });
 }

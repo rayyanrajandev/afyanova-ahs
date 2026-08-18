@@ -113,7 +113,6 @@ export function useRadiologyOrders() {
 
   const searchQuery = ref("");
   const selectedStatusFilter = ref<RadiologyOrderStatus | "all">("all");
-  const selectedModalityFilter = ref<RadiologyModality | "all">("all");
 
   const selectedOrder = computed<RadiologyOrder | null>(() =>
     selectedOrderId.value
@@ -217,12 +216,9 @@ export function useRadiologyOrders() {
 
   async function fetchStatusCounts(): Promise<void> {
     try {
-      // Modality and search narrow the population being counted; status does
+      // Search narrows the population being counted; status does
       // not, because the counts are the breakdown by status.
       const params = new URLSearchParams();
-      if (selectedModalityFilter.value !== "all") {
-        params.set("modality", selectedModalityFilter.value);
-      }
       const search = searchQuery.value.trim();
       if (search !== "") params.set("q", search);
 
@@ -280,9 +276,6 @@ export function useRadiologyOrders() {
       });
       if (selectedStatusFilter.value !== "all") {
         params.set("status", selectedStatusFilter.value);
-      }
-      if (selectedModalityFilter.value !== "all") {
-        params.set("modality", selectedModalityFilter.value);
       }
       const search = searchQuery.value.trim();
       if (search !== "") params.set("q", search);
@@ -604,7 +597,7 @@ export function useRadiologyOrders() {
 
   // A selection that changes what is shown has to change what is fetched --
   // the same rule laboratory and reception already follow.
-  watch([selectedStatusFilter, selectedModalityFilter], () => {
+  watch(selectedStatusFilter, () => {
     void fetchOrders();
   });
 
@@ -631,7 +624,6 @@ export function useRadiologyOrders() {
     isVerifying,
     searchQuery,
     selectedStatusFilter,
-    selectedModalityFilter,
     statusCounts,
     filteredOrders,
     worklistOrders,

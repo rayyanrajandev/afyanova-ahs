@@ -74,15 +74,6 @@ describe("radiology worklist query", () => {
     expect(spy.worklistUrl()).toContain("status=completed");
   });
 
-  it("sends the modality filter to the server", async () => {
-    const spy = stubFetch();
-    radiology.selectedModalityFilter.value = "ct";
-
-    await radiology.fetchOrders();
-
-    expect(spy.worklistUrl()).toContain("modality=ct");
-  });
-
   it("sends the search box to the server", async () => {
     const spy = stubFetch();
     radiology.searchQuery.value = "chest";
@@ -103,16 +94,14 @@ describe("radiology worklist query", () => {
     expect(radiology.statusCounts.value.ordered).toBe(88);
   });
 
-  it("narrows the counts by modality and search, but never by status", async () => {
+  it("narrows the counts by search, but never by status", async () => {
     const spy = stubFetch();
-    radiology.selectedModalityFilter.value = "ct";
     radiology.selectedStatusFilter.value = "completed";
     radiology.searchQuery.value = "chest";
 
     await radiology.fetchOrders();
 
     const counts = spy.countsUrl();
-    expect(counts).toContain("modality=ct");
     expect(counts).toContain("q=chest");
     // The counts *are* the breakdown by status; scoping them to one would
     // zero out every other tab.

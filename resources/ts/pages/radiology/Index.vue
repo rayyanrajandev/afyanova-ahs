@@ -53,14 +53,6 @@ const RAD_STATUS_FILTERS = [
   "in_progress",
   "completed",
 ] as const;
-const RAD_MODALITIES = [
-  "all",
-  "ultrasound",
-  "xray",
-  "ct",
-  "mri",
-  "mammography",
-] as const;
 
 attachPersistence(
   radiology.viewMode,
@@ -71,11 +63,6 @@ attachPersistence(
   radiology.selectedStatusFilter,
   "afyanova:radiology:status-filter",
   makeValidator(RAD_STATUS_FILTERS),
-);
-attachPersistence(
-  radiology.selectedModalityFilter,
-  "afyanova:radiology:modality-filter",
-  makeValidator(RAD_MODALITIES),
 );
 
 useWorkspaceUrlSync({

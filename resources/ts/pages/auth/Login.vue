@@ -42,7 +42,8 @@ const stagingAccounts = [
   { label: "Lab Supervisor", email: "lab.supervisor@local.test" },
   { label: "Radiology Tech", email: "radiology@local.test" },
   { label: "Radiologist", email: "radiology.supervisor@local.test" },
-  { label: "Pharmacy", email: "pharmacy@local.test" },
+  { label: "Pharmacy Tech", email: "pharmacy@local.test" },
+  { label: "Pharmacy Supervisor", email: "pharmacy.supervisor@local.test" },
   { label: "Cashier", email: "cashier@local.test" },
   { label: "Admin", email: "admin@local.test" },
 ];

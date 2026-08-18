@@ -1,3 +1,4 @@
+import { pageRule, printHtmlDocument } from "@/services/print/printDelivery";
 /**
  * pharmacyLabelPrint — Thermal Label & Dispensing Receipt Print Engine (Volume 2.6)
  * =================================================================================
@@ -28,12 +29,6 @@ export function printPharmacyLabel(
   const dispenserName =
     options.dispenserName || order.verifiedBy || "Pharmacy Dept";
 
-  const printWindow = window.open("", "_blank", "width=600,height=700");
-  if (!printWindow) {
-    alert("Please allow popups to print medication labels.");
-    return;
-  }
-
   const html = `
     <!DOCTYPE html>
     <html lang="en">
@@ -41,10 +36,7 @@ export function printPharmacyLabel(
       <meta charset="UTF-8">
       <title>Medication Label - ${order.orderNumber || order.medicationName}</title>
       <style>
-        @page {
-          size: 70mm 50mm;
-          margin: 3mm;
-        }
+        ${pageRule("70mm 50mm", "3mm")}
         * {
           box-sizing: border-box;
           margin: 0;
@@ -168,18 +160,11 @@ export function printPharmacyLabel(
           <span>Printed: ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
         </div>
       </div>
-      <script>
-        window.onload = function() {
-          window.print();
-          setTimeout(function() { window.close(); }, 750);
-        };
-      </script>
     </body>
     </html>
   `;
 
-  printWindow.document.write(html);
-  printWindow.document.close();
+  void printHtmlDocument(html, { title: `Label — ${order.medicationName}` });
 }
 
 export function printConsolidatedPrescription(
@@ -190,11 +175,6 @@ export function printConsolidatedPrescription(
 
   const first = orders[0];
   const facilityName = options.facilityName || "AFYANOVA HEALTH SYSTEM";
-  const printWindow = window.open("", "_blank", "width=800,height=900");
-  if (!printWindow) {
-    alert("Please allow popups to print prescription.");
-    return;
-  }
 
   const itemsHtml = orders
     .map(
@@ -223,7 +203,7 @@ export function printConsolidatedPrescription(
       <meta charset="UTF-8">
       <title>Pharmacy Dispensation - ${first.patientName}</title>
       <style>
-        @page { size: A4; margin: 15mm; }
+        ${pageRule("A4", "15mm")}
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 10pt; color: #111; padding: 20px; }
         .header-table { width: 100%; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
         .patient-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; margin-bottom: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 9.5pt; }
@@ -291,16 +271,11 @@ export function printConsolidatedPrescription(
         </div>
       </div>
 
-      <script>
-        window.onload = function() {
-          window.print();
-          setTimeout(function() { window.close(); }, 750);
-        };
-      </script>
     </body>
     </html>
   `;
 
-  printWindow.document.write(html);
-  printWindow.document.close();
+  void printHtmlDocument(html, {
+    title: `Prescription — ${first.patientName ?? "Patient"}`,
+  });
 }

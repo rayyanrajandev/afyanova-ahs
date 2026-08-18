@@ -81,10 +81,17 @@ class WorkspaceTestUsersSeeder extends Seeder
                 'is_platform_admin' => false,
             ],
             [
-                'name' => 'Pharmacist Test',
+                'name' => 'Pharmacy Dispenser Test',
                 'email' => 'pharmacy@local.test',
                 'role_code' => 'PHARMACY.STAFF',
                 'facility_role' => 'dispenser',
+                'is_platform_admin' => false,
+            ],
+            [
+                'name' => 'Pharmacy Supervisor Test',
+                'email' => 'pharmacy.supervisor@local.test',
+                'role_code' => 'PHARMACY.SUPERVISOR',
+                'facility_role' => 'pharmacist',
                 'is_platform_admin' => false,
             ],
             [

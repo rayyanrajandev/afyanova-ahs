@@ -45,25 +45,6 @@ const props = defineProps<{
 
 const { t } = useI18n({ useScope: "global" });
 
-const MODALITIES = computed<
-  Array<{ id: RadiologyModality | "all"; label: string; short: string }>
->(() => [
-  { id: "all", label: t("radiology.modality_all", "All"), short: "ALL" },
-  {
-    id: "ultrasound",
-    label: t("radiology.modality_us", "Ultrasound"),
-    short: "US",
-  },
-  { id: "xray", label: t("radiology.modality_xr", "X-Ray"), short: "XR" },
-  { id: "ct", label: t("radiology.modality_ct", "CT Scan"), short: "CT" },
-  { id: "mri", label: t("radiology.modality_mr", "MRI"), short: "MRI" },
-  {
-    id: "mammography",
-    label: t("radiology.modality_mammo", "Mammography"),
-    short: "MAMMO",
-  },
-]);
-
 const STATUS_TABS: Array<{
   value: RadiologyOrderStatus | "all";
   labelKey: string;
@@ -324,27 +305,7 @@ function getRelativeTime(dateStr: string | null | undefined): string {
         </button>
       </div>
 
-      <!-- 2. Modality Quick Discipline Pills -->
-      <div
-        class="flex items-center gap-1 overflow-x-auto pb-0.5 text-[10.5px] no-scrollbar"
-      >
-        <button
-          v-for="mod in MODALITIES"
-          :key="mod.id"
-          type="button"
-          class="px-2 py-0.5 rounded-full border transition-all shrink-0 cursor-pointer text-[10px] font-semibold"
-          :class="
-            radiology.selectedModalityFilter.value === mod.id
-              ? 'bg-primary text-primary-foreground border-primary shadow-2xs'
-              : 'border-border/80 bg-surface text-muted-foreground hover:border-primary/40 hover:text-foreground'
-          "
-          @click="radiology.selectedModalityFilter.value = mod.id"
-        >
-          {{ mod.label }}
-        </button>
-      </div>
-
-      <!-- 3. Search Bar with Instant Clear -->
+      <!-- 2. Search Bar with Instant Clear -->
       <div class="relative">
         <Search
           class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none"

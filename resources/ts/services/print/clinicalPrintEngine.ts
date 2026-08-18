@@ -11,6 +11,8 @@
  * - Cashier: Official Revenue Receipts, Billing Settlement Statements
  */
 
+import { pageRule, printHtmlDocument } from "./printDelivery";
+
 export interface FacilityPrintInfo {
   name?: string;
   subtitle?: string;
@@ -84,11 +86,17 @@ export function formatPrintDate(dateStr: string | null | undefined): string {
 /**
  * Compiles a complete, standard A4 clinical document HTML string.
  */
-export function compileClinicalDocumentHtml(opts: ClinicalDocumentOptions): string {
+export function compileClinicalDocumentHtml(
+  opts: ClinicalDocumentOptions,
+): string {
   const facility: FacilityPrintInfo = {
     name: opts.facility?.name || "AfyaNova Automated Clinical Laboratories",
-    subtitle: opts.facility?.subtitle || "Specialized Diagnostic Pathology & Molecular Medicine",
-    accreditation: opts.facility?.accreditation || "ISO 15189:2022 Medical Laboratories Standard • CLSI Compliant",
+    subtitle:
+      opts.facility?.subtitle ||
+      "Specialized Diagnostic Pathology & Molecular Medicine",
+    accreditation:
+      opts.facility?.accreditation ||
+      "ISO 15189:2022 Medical Laboratories Standard • CLSI Compliant",
     phone: opts.facility?.phone || "+255 22 212 9000",
     email: opts.facility?.email || "clinical-director@afyanova.health",
     location: opts.facility?.location || "Dar es Salaam, Tanzania",
@@ -96,7 +104,8 @@ export function compileClinicalDocumentHtml(opts: ClinicalDocumentOptions): stri
 
   const badgeColor = opts.documentBadgeColor || "#059669";
   const badgeText = opts.documentBadge || "FINAL VERIFIED";
-  const issuedDate = opts.patient.issuedDate || formatPrintDate(new Date().toISOString());
+  const issuedDate =
+    opts.patient.issuedDate || formatPrintDate(new Date().toISOString());
 
   // Render Signatures block
   let signaturesHtml = "";
@@ -145,10 +154,7 @@ export function compileClinicalDocumentHtml(opts: ClinicalDocumentOptions): stri
   <meta charset="UTF-8">
   <title>${escapeHtml(opts.documentTitle)} — ${escapeHtml(opts.patient.name)} (${escapeHtml(opts.patient.mrn)})</title>
   <style>
-    @page {
-      size: A4 portrait;
-      margin: 12mm 14mm 12mm 14mm;
-    }
+    ${pageRule("A4 portrait", "12mm 14mm")}
     *, *::before, *::after {
       box-sizing: border-box;
       margin: 0;
@@ -363,23 +369,12 @@ export function compileClinicalDocumentHtml(opts: ClinicalDocumentOptions): stri
 }
 
 /**
- * Spawns a clean print window with the compiled document and invokes window.print().
+ * Send a compiled clinical document to the printer.
+ *
+ * Delegates to the shared delivery, which prints from a hidden iframe. The
+ * popup this used to open was blockable, flashed on screen, and printed its own
+ * `about:blank` address in the footer of every report.
  */
 export function executeClinicalPrint(documentHtml: string): void {
-  if (typeof window === "undefined") return;
-
-  const printWindow = window.open("", "_blank", "width=880,height=720");
-  if (!printWindow) {
-    alert("Please allow popups in your browser to print clinical documents.");
-    return;
-  }
-
-  printWindow.document.open();
-  printWindow.document.write(documentHtml);
-  printWindow.document.close();
-  printWindow.focus();
-
-  setTimeout(() => {
-    printWindow.print();
-  }, 120);
+  void printHtmlDocument(documentHtml);
 }

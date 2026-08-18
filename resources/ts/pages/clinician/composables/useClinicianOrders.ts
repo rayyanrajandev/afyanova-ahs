@@ -51,15 +51,70 @@ export interface ActivePrescriptionOrder {
   unitPrice?: number;
 }
 
+/**
+ * The statuses an order can actually carry, taken from the backend enums rather
+ * than invented here.
+ *
+ * This used to read `"pending" | "in_progress" | "complete" | "cancelled"`, none
+ * of which a laboratory or radiology order ever holds — hydration lowercases
+ * whatever the API sent and casts it through `as any`, so the real values are
+ * LaboratoryOrderStatus / RadiologyOrderStatus / PharmacyOrderStatus. The type
+ * being wrong is not cosmetic: `status !== "complete"` silently never matched a
+ * finished order, because the backend spells it `completed`.
+ */
+export type ClinicalOrderStatus =
+  // LaboratoryOrderStatus + RadiologyOrderStatus
+  | "ordered"
+  | "collected"
+  | "scheduled"
+  | "in_progress"
+  | "completed"
+  | "cancelled"
+  // PharmacyOrderStatus
+  | "pending"
+  | "in_preparation"
+  | "partially_dispensed"
+  | "dispensed";
+
 export interface PlacedClinicalOrder {
   id: string;
   type: "lab" | "imaging" | "medication" | "referral";
   name: string;
   priority: "routine" | "urgent" | "stat";
-  status: "pending" | "in_progress" | "complete" | "cancelled";
+  status: ClinicalOrderStatus;
   createdAt: string;
   details?: string;
   price?: number;
+}
+
+/**
+ * Statuses that mean a diagnostic order is finished, mirroring
+ * LaboratoryOrderStatus::terminalValues() and
+ * RadiologyOrderStatus::terminalValues() — the same definition the server uses
+ * for `laboratoryOrdersPendingCount` / `radiologyOrdersPendingCount`.
+ *
+ * `complete` is tolerated alongside `completed` only because hydration casts
+ * through `as any`, so a stale or hand-built value can still reach here. It is
+ * not a status the API produces.
+ */
+const DIAGNOSTIC_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+  "completed",
+  "complete",
+  "cancelled",
+]);
+
+/**
+ * Whether a diagnostic order is still owed back to the clinician.
+ *
+ * Prescriptions are never outstanding in this sense: a patient collecting
+ * medication is leaving, not coming back for the doctor to read a result.
+ */
+export function isDiagnosticOrderOutstanding(order: PlacedClinicalOrder): boolean {
+  if (order.type !== "lab" && order.type !== "imaging") {
+    return false;
+  }
+
+  return !DIAGNOSTIC_TERMINAL_STATUSES.has(order.status);
 }
 export const STANDARD_LAB_CATALOG: LabCatalogItem[] = [
   { id: "lab-mrdt", code: "LAB-PAR-MRDT", name: "Malaria Rapid Diagnostic Test (mRDT)", department: "Parasitology", sampleType: "Capillary / Whole Blood", price: 5000 },
@@ -364,11 +419,11 @@ export function useClinicianOrders() {
         activeOrders.value.unshift(order);
       });
 
-      toast.success(t("clinician.order_placed_success", "Prescriptions submitted to Pharmacy successfully"));
+      toast.success(t("clinician.medicine_prescribed_success", "Medicine prescribed successfully"));
       prescriptionDrafts.value = [];
       return true;
     } catch (err: any) {
-      toast.error(err.message || "Failed to submit prescriptions");
+      toast.error(err.message || "Failed to prescribe medication");
       return false;
     } finally {
       isPlacingOrder.value = false;

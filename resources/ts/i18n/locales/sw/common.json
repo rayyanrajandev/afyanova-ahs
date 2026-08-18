@@ -933,6 +933,8 @@
     "indication_placeholder": "Sababu ya kuagiza kipimo hiki cha uchunguzi...",
     "order_placed_lab": "Kipimo cha maabara kimeagizwa kikamilifu",
     "order_placed_imaging": "Kipimo cha mionzi kimeagizwa kikamilifu",
+    "order_placed_medication": "Dawa zimeandikwa kikamilifu",
+    "medicine_prescribed_success": "Dawa zimeandikwa kikamilifu",
     "chart_review_mode": "Hali ya Uhakiki wa Rekodi",
     "bypass_triage_action": "Ruka Upimaji & Anzisha Ushauri",
     "triage_in_progress": "Upimaji Unaendelea",

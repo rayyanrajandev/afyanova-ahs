@@ -933,6 +933,8 @@
     "indication_placeholder": "Reason for ordering this diagnostic test or exam...",
     "order_placed_lab": "Laboratory order placed successfully",
     "order_placed_imaging": "Radiology order placed successfully",
+    "order_placed_medication": "Medicine prescribed successfully",
+    "medicine_prescribed_success": "Medicine prescribed successfully",
     "chart_review_mode": "Chart Review Mode",
     "bypass_triage_action": "Bypass Triage & Start Consultation",
     "triage_in_progress": "Triage In Progress",

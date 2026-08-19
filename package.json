@@ -9,11 +9,12 @@
         "dev": "vite",
         "guard:reference": "node scripts/check-reference-boundaries.mjs",
         "guard:i18n-sync": "node scripts/i18n-key-sync-check.mjs",
-        "guard:codex-reference": "node scripts/codex-reference-check.mjs",
         "hooks:enable": "git config core.hooksPath .githooks",
         "format": "prettier --write resources/",
         "format:check": "prettier --check resources/",
         "lint": "eslint . --fix",
+        "test": "vitest run",
+        "test:watch": "vitest",
         "ship": "node scripts/ship.mjs",
         "story:dev": "histoire dev",
         "story:build": "histoire build"

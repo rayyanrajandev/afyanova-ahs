@@ -4,11 +4,13 @@ namespace App\Modules\Revenue\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Revenue\Application\UseCases\ApproveRefundUseCase;
+use App\Modules\Revenue\Application\UseCases\RejectRefundUseCase;
 use App\Modules\Revenue\Application\UseCases\RequestRefundUseCase;
 use App\Modules\Revenue\Domain\ValueObjects\RefundStatus;
 use App\Modules\Revenue\Infrastructure\Models\RefundModel;
 use App\Modules\Revenue\Presentation\Http\Controllers\Concerns\RendersRevenueErrors;
 use App\Modules\Revenue\Presentation\Http\Requests\ApproveRefundRequest;
+use App\Modules\Revenue\Presentation\Http\Requests\ReasonedActionRequest;
 use App\Modules\Revenue\Presentation\Http\Requests\RequestRefundRequest;
 use App\Modules\Revenue\Presentation\Http\Transformers\RefundResponseTransformer;
 use Illuminate\Http\JsonResponse;
@@ -46,6 +48,20 @@ class CashierRefundController extends Controller
                 serviceChargeId: $request->input('serviceChargeId'),
             )),
         ], 201));
+    }
+
+    public function reject(
+        string $id,
+        ReasonedActionRequest $request,
+        RejectRefundUseCase $useCase,
+    ): JsonResponse {
+        return $this->renderingRevenueErrors(fn (): JsonResponse => response()->json([
+            'data' => RefundResponseTransformer::transform($useCase->execute(
+                refundId: $id,
+                rejectedByUserId: (int) $request->user()?->id,
+                reason: $request->string('reason')->toString(),
+            )),
+        ]));
     }
 
     public function approve(

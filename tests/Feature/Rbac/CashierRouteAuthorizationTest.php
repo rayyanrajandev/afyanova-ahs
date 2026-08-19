@@ -19,6 +19,7 @@ const CASHIER_ROUTE_ABILITIES = [
     'cashier.patients' => 'patients.read',
     'cashier.patients.show' => 'patients.read',
     'cashier.patients.charges' => 'cashier.charges.read',
+    'cashier.patients.payments' => 'cashier.payments.read',
     'cashier.patients.flow-timeline' => 'cashier.charges.read',
     'cashier.charges.show' => 'cashier.charges.read',
     'cashier.catalog' => 'cashier.charges.create',
@@ -40,6 +41,7 @@ const CASHIER_ROUTE_ABILITIES = [
     'cashier.refunds.index' => 'cashier.refunds.request',
     'cashier.refunds.store' => 'cashier.refunds.request',
     'cashier.refunds.approve' => 'cashier.refunds.approve',
+    'cashier.refunds.reject' => 'cashier.refunds.approve',
     'cashier.day.summary' => 'cashier.reports.read',
 ];
 

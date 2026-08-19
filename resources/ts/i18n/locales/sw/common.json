@@ -1571,6 +1571,24 @@
         "no_sessions_today": "Hakuna kasha lililofunguliwa leo.",
         "cash_taken": "Fedha zilizopokelewa",
         "session_number": "Kasha",
-        "status": "Hali"
+        "status": "Hali",
+        "refunds": "Marejesho",
+        "refund_request": "Omba marejesho",
+        "refund_requested": "Ombi la marejesho limewasilishwa",
+        "refund_approved": "Marejesho yameidhinishwa na kulipwa",
+        "refund_rejected": "Marejesho yamekataliwa",
+        "refund_amount": "Kiasi cha kurejesha",
+        "refund_pick_payment": "Malipo yapi?",
+        "refund_no_payments": "Mgonjwa huyu hana malipo yanayoweza kurejeshwa.",
+        "refund_already_refunded": "{amount} tayari yamerejeshwa",
+        "refund_reversed": "Yametenguliwa",
+        "refund_pending_none": "Hakuna marejesho yanayosubiri",
+        "refund_pending_none_desc": "Maombi yataonekana hapa ili msimamizi aidhinishe au akatae.",
+        "refund_requested_by": "Imeombwa na mtumiaji {id}",
+        "refund_approve": "Idhinisha na ulipe",
+        "refund_reject": "Kataa",
+        "refund_decision_reason": "Kwa nini?",
+        "refund_needs_open_drawer": "Fedha hutoka kwenye kasha lililo wazi, hivyo fungua moja kabla ya kuidhinisha.",
+        "refund_over_refundable": "Ni zaidi ya kiasi kinachoweza kurejeshwa."
     }
 }

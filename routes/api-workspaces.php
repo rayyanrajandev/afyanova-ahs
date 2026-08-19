@@ -622,6 +622,9 @@ Route::middleware('api.platform')
         Route::get('cashier/patients/{patientId}/charges', [CashierQueueController::class, 'patientCharges'])
             ->middleware('can:cashier.charges.read')
             ->name('cashier.patients.charges');
+        Route::get('cashier/patients/{patientId}/payments', [CashierQueueController::class, 'patientPayments'])
+            ->middleware('can:cashier.payments.read')
+            ->name('cashier.patients.payments');
         Route::get('cashier/patients/{patientId}/flow-timeline', [PatientFlowController::class, 'patientTimeline'])
             ->middleware('can:cashier.charges.read')
             ->name('cashier.patients.flow-timeline');
@@ -695,6 +698,11 @@ Route::middleware('api.platform')
         Route::post('cashier/refunds/{id}/approve', [CashierRefundController::class, 'approve'])
             ->middleware('can:cashier.refunds.approve')
             ->name('cashier.refunds.approve');
+        // Declining is the same authority as approving: a queue a supervisor
+        // can only say yes to is not a review.
+        Route::post('cashier/refunds/{id}/reject', [CashierRefundController::class, 'reject'])
+            ->middleware('can:cashier.refunds.approve')
+            ->name('cashier.refunds.reject');
 
         Route::get('cashier/day/summary', [CashierQueueController::class, 'daySummary'])
             ->middleware('can:cashier.reports.read')

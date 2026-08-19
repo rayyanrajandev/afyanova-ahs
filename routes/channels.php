@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\PatientFlow\Application\Services\PatientFlowBoardChannelAuthorizer;
+use App\Modules\Revenue\Application\Services\CashierQueueChannelAuthorizer;
 use Illuminate\Support\Facades\Broadcast;
 
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
@@ -31,4 +32,13 @@ Broadcast::channel(
 Broadcast::channel(
     'reception-queue.{facilityId}',
     fn ($user, string $facilityId): bool => app(PatientFlowBoardChannelAuthorizer::class)->authorize($user, $facilityId),
+);
+
+// Cashier queue (Cashier Phase 8). Its own channel rather than
+// patient-flow.{facilityId}: a charge being raised or settled is of no
+// interest to nursing, laboratory or radiology, and the cashier has no reason
+// to be woken by every clinical transition in the building.
+Broadcast::channel(
+    'cashier-queue.{facilityId}',
+    fn ($user, string $facilityId): bool => app(CashierQueueChannelAuthorizer::class)->authorize($user, $facilityId),
 );

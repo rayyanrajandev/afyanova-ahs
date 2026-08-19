@@ -8,6 +8,7 @@
   Built on the same SplitPane shell as Laboratory, Radiology and Pharmacy.
 -->
 <script setup lang="ts">
+import { usePage } from "@inertiajs/vue3";
 import { computed, onMounted, ref } from "vue";
 import SplitPane from "@/components/common/SplitPane.vue";
 import { useI18nSafe } from "@/composables/useI18nSafe";
@@ -21,13 +22,17 @@ import ChargeBasketPanel from "./components/ChargeBasketPanel.vue";
 import CloseDrawerDialog from "./components/CloseDrawerDialog.vue";
 import DaySummaryDialog from "./components/DaySummaryDialog.vue";
 import OpenDrawerDialog from "./components/OpenDrawerDialog.vue";
+import RefundRequestDialog from "./components/RefundRequestDialog.vue";
+import RefundReviewDialog from "./components/RefundReviewDialog.vue";
 import TakePaymentDialog from "./components/TakePaymentDialog.vue";
+import { useCashierLiveSync } from "./composables/useCashierLiveSync";
 import { useCashierPayment } from "./composables/useCashierPayment";
 import {
   useCashierQueue,
   type CashierCharge,
   type CashierQueueTab,
 } from "./composables/useCashierQueue";
+import { useCashierRefunds } from "./composables/useCashierRefunds";
 import {
   useCashierSession,
   type CashierSession,
@@ -40,6 +45,7 @@ const toast = useToast();
 const queue = useCashierQueue();
 const drawer = useCashierSession();
 const payment = useCashierPayment();
+const refunds = useCashierRefunds();
 
 const showOpenDrawer = ref(false);
 const showCloseDrawer = ref(false);
@@ -47,6 +53,20 @@ const showPayment = ref(false);
 const showAdHocCharge = ref(false);
 const showMovement = ref(false);
 const showDaySummary = ref(false);
+const showRefundRequest = ref(false);
+const showRefundReview = ref(false);
+
+/**
+ * Actions are rendered from what the signed-in user actually holds, not merely
+ * disabled. A cashier who can see an approve button they may never press
+ * learns to ignore disabled controls, which is the opposite of what a
+ * second-person check is for.
+ */
+const permissions = computed<string[]>(
+  () => (usePage().props.auth as { permissions?: string[] } | undefined)?.permissions ?? [],
+);
+const canRequestRefund = computed(() => permissions.value.includes("cashier.refunds.request"));
+const canApproveRefund = computed(() => permissions.value.includes("cashier.refunds.approve"));
 const closeResult = ref<{
   session: CashierSession;
   requiresApproval: boolean;
@@ -57,8 +77,27 @@ const currencyCode = computed(
     queue.basketCurrency.value ?? drawer.session.value?.currencyCode ?? "TZS",
 );
 
+/**
+ * Another till taking a payment must show up here without anyone pressing
+ * anything — a refetch, not a payload, so the counter reads the ledger rather
+ * than a copy of it that arrived over a wire.
+ */
+useCashierLiveSync({
+  onQueueUpdated: () => {
+    void queue.refresh();
+
+    if (canApproveRefund.value) {
+      void refunds.fetchPending();
+    }
+  },
+});
+
 onMounted(async () => {
   await Promise.all([drawer.fetchCurrent(), queue.fetchQueue()]);
+
+  if (canApproveRefund.value) {
+    await refunds.fetchPending();
+  }
 });
 
 async function selectPatient(patientId: string): Promise<void> {
@@ -154,6 +193,40 @@ async function recordMovement(payload: {
   }
 }
 
+async function openRefundRequest(): Promise<void> {
+  const patientId = queue.selectedPatientId.value;
+  if (patientId === null) return;
+
+  await refunds.fetchPaymentsFor(patientId);
+  showRefundRequest.value = true;
+}
+
+async function submitRefundRequest(payload: {
+  paymentId: string;
+  amountMinor: number;
+  reason: string;
+}): Promise<void> {
+  if (await refunds.request(payload.paymentId, payload.amountMinor, payload.reason)) {
+    showRefundRequest.value = false;
+  }
+}
+
+async function ruleOnRefund(payload: {
+  refundId: string;
+  decision: "approve" | "reject";
+  reason: string;
+}): Promise<void> {
+  await refunds.rule(payload.refundId, payload.decision, {
+    // Approval pays out of the reviewer's own open drawer, so the money shows
+    // up in that session's expected cash.
+    paidFromSessionId: drawer.session.value?.id,
+    reason: payload.reason,
+    note: payload.reason,
+  });
+
+  await queue.refresh();
+}
+
 async function openDrawer(openingFloatMinor: number): Promise<void> {
   if (await drawer.open(openingFloatMinor)) {
     showOpenDrawer.value = false;
@@ -182,10 +255,13 @@ function dismissCloseDialog(open: boolean): void {
     <CashierSessionBar
       :session="drawer.session.value"
       :is-loading="drawer.isLoading.value"
+      :can-review-refunds="canApproveRefund"
+      :pending-refund-count="refunds.pendingCount.value"
       @open="showOpenDrawer = true"
       @close="showCloseDrawer = true"
       @move-cash="showMovement = true"
       @day-summary="showDaySummary = true"
+      @refunds="showRefundReview = true"
     />
 
     <div class="min-h-0 flex-1">
@@ -228,9 +304,11 @@ function dismissCloseDialog(open: boolean): void {
               :is-loading="queue.isLoadingCharges.value"
               :can-take-payment="true"
               :can-add-charge="true"
+              :can-request-refund="canRequestRefund"
               @toggle="toggleCharge"
               @take-payment="openPaymentDialog"
               @add-charge="showAdHocCharge = true"
+              @request-refund="openRefundRequest"
             />
           </section>
         </template>
@@ -268,6 +346,24 @@ function dismissCloseDialog(open: boolean): void {
     />
 
     <DaySummaryDialog :open="showDaySummary" @update:open="showDaySummary = $event" />
+
+    <RefundRequestDialog
+      :open="showRefundRequest"
+      :payments="refunds.payments.value"
+      :is-loading="refunds.isLoading.value"
+      :is-submitting="refunds.isSubmitting.value"
+      @update:open="showRefundRequest = $event"
+      @confirm="submitRefundRequest"
+    />
+
+    <RefundReviewDialog
+      :open="showRefundReview"
+      :refunds="refunds.pending.value"
+      :is-submitting="refunds.isSubmitting.value"
+      :open-session-id="drawer.session.value?.id ?? null"
+      @update:open="showRefundReview = $event"
+      @rule="ruleOnRefund"
+    />
 
     <TakePaymentDialog
       :open="showPayment"

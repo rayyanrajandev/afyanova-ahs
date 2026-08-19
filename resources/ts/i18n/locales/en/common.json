@@ -1571,6 +1571,24 @@
         "no_sessions_today": "No drawers have been opened today.",
         "cash_taken": "Cash taken",
         "session_number": "Drawer",
-        "status": "Status"
+        "status": "Status",
+        "refunds": "Refunds",
+        "refund_request": "Request a refund",
+        "refund_requested": "Refund requested",
+        "refund_approved": "Refund approved and paid",
+        "refund_rejected": "Refund declined",
+        "refund_amount": "Amount to refund",
+        "refund_pick_payment": "Which payment?",
+        "refund_no_payments": "This patient has no refundable payments.",
+        "refund_already_refunded": "{amount} already refunded",
+        "refund_reversed": "Reversed",
+        "refund_pending_none": "No refunds are waiting",
+        "refund_pending_none_desc": "Requests appear here for a supervisor to approve or decline.",
+        "refund_requested_by": "Requested by user {id}",
+        "refund_approve": "Approve & pay",
+        "refund_reject": "Decline",
+        "refund_decision_reason": "Why?",
+        "refund_needs_open_drawer": "Money leaves an open drawer, so open one before approving.",
+        "refund_over_refundable": "More than this payment can refund."
     }
 }

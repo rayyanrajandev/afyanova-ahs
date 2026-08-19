@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Revenue\Application\UseCases\GetCashierDaySummaryUseCase;
 use App\Modules\Revenue\Application\UseCases\ListCashierQueueUseCase;
 use App\Modules\Revenue\Application\UseCases\ListPatientChargesUseCase;
+use App\Modules\Revenue\Application\UseCases\ListPatientPaymentsUseCase;
 use App\Modules\Revenue\Application\UseCases\SearchChargeableItemsUseCase;
 use App\Modules\Revenue\Infrastructure\Models\ServiceChargeModel;
 use App\Modules\Revenue\Presentation\Http\Transformers\ServiceChargeResponseTransformer;
@@ -43,6 +44,14 @@ class CashierQueueController extends Controller
             ),
             'meta' => $result['meta'],
         ]);
+    }
+
+    /**
+     * What the patient has paid — the list a refund is raised against.
+     */
+    public function patientPayments(string $patientId, ListPatientPaymentsUseCase $useCase): JsonResponse
+    {
+        return response()->json($useCase->execute($patientId));
     }
 
     /**

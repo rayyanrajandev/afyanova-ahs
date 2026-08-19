@@ -3,6 +3,7 @@
 namespace App\Modules\Revenue;
 
 use App\Modules\Appointment\Application\Listeners\PromoteAppointmentOnChargeAuthorized;
+use App\Modules\Revenue\Application\Services\CashierQueueAnnouncer;
 use App\Modules\Revenue\Domain\Events\ServiceChargeAuthorized;
 use App\Modules\Revenue\Domain\Services\ChargeAuthorizationPolicyResolverInterface;
 use App\Modules\Revenue\Domain\Services\ChargeResolverInterface;
@@ -10,6 +11,10 @@ use App\Modules\Revenue\Domain\Services\DocumentNumberAllocatorInterface;
 use App\Modules\Revenue\Domain\Services\OutstandingBalanceReaderInterface;
 use App\Modules\Revenue\Domain\Services\RevenueAuditRecorderInterface;
 use App\Modules\Revenue\Domain\Services\ServiceAuthorizationReaderInterface;
+use App\Modules\Revenue\Infrastructure\Models\PaymentModel;
+use App\Modules\Revenue\Infrastructure\Models\ServiceChargeModel;
+use App\Modules\Revenue\Infrastructure\Observers\PaymentObserver;
+use App\Modules\Revenue\Infrastructure\Observers\ServiceChargeObserver;
 use App\Modules\Revenue\Infrastructure\Policies\ChargeAuthorizationPolicyResolver;
 use App\Modules\Revenue\Infrastructure\Services\ChargeResolver;
 use App\Modules\Revenue\Infrastructure\Services\DocumentNumberAllocator;
@@ -61,6 +66,9 @@ class RevenueServiceProvider extends ServiceProvider
             ServiceAuthorizationReader::class,
         );
 
+        // Scoped, not singleton: the dedupe window is one request.
+        $this->app->scoped(CashierQueueAnnouncer::class);
+
         $this->app->bindIf(ConnectionInterface::class, fn () => DB::connection());
     }
 
@@ -74,5 +82,10 @@ class RevenueServiceProvider extends ServiceProvider
             ServiceChargeAuthorized::class,
             [PromoteAppointmentOnChargeAuthorized::class, 'handle'],
         );
+
+        // The queue announces itself from the tables it is derived from, so a
+        // new use case that moves money cannot forget to tell the other tills.
+        ServiceChargeModel::observe(ServiceChargeObserver::class);
+        PaymentModel::observe(PaymentObserver::class);
     }
 }

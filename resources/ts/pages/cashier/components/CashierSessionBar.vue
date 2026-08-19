@@ -6,7 +6,7 @@
   before the cashier discovers it by being refused.
 -->
 <script setup lang="ts">
-import { ArrowDownUp, ChartColumn, LockKeyhole, Wallet } from "lucide-vue-next";
+import { ArrowDownUp, ChartColumn, LockKeyhole, Undo2, Wallet } from "lucide-vue-next";
 import { computed } from "vue";
 import { Button } from "@/components/ui/button";
 import { useI18nSafe } from "@/composables/useI18nSafe";
@@ -16,6 +16,8 @@ import type { CashierSession } from "../composables/useCashierSession";
 const props = defineProps<{
   session: CashierSession | null;
   isLoading: boolean;
+  canReviewRefunds?: boolean;
+  pendingRefundCount?: number;
 }>();
 
 const emit = defineEmits<{
@@ -23,6 +25,7 @@ const emit = defineEmits<{
   (e: "close"): void;
   (e: "move-cash"): void;
   (e: "day-summary"): void;
+  (e: "refunds"): void;
 }>();
 
 const { t } = useI18nSafe();
@@ -54,6 +57,23 @@ const isOpen = computed(() => props.session?.status === "open");
     </span>
 
     <div class="ml-auto flex items-center gap-2">
+      <Button
+        v-if="canReviewRefunds"
+        variant="ghost"
+        size="sm"
+        class="cursor-pointer"
+        @click="emit('refunds')"
+      >
+        <Undo2 class="mr-1.5 size-3.5" aria-hidden="true" />
+        {{ t("cashier.refunds") }}
+        <span
+          v-if="(pendingRefundCount ?? 0) > 0"
+          class="ml-1.5 rounded-full bg-warning/15 px-1.5 text-xs font-bold text-warning"
+        >
+          {{ pendingRefundCount }}
+        </span>
+      </Button>
+
       <Button
         variant="ghost"
         size="sm"

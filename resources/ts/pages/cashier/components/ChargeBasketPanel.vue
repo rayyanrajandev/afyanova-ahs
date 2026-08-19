@@ -10,7 +10,7 @@
   the cashier arguing with a total that does not add up.
 -->
 <script setup lang="ts">
-import { AlertTriangle, Plus, Receipt } from "lucide-vue-next";
+import { AlertTriangle, Plus, Receipt, Undo2 } from "lucide-vue-next";
 import { computed } from "vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import { Button } from "@/components/ui/button";
@@ -31,12 +31,14 @@ const props = defineProps<{
   isLoading: boolean;
   canTakePayment: boolean;
   canAddCharge: boolean;
+  canRequestRefund?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: "toggle", charge: CashierCharge): void;
   (e: "take-payment"): void;
   (e: "add-charge"): void;
+  (e: "request-refund"): void;
 }>();
 
 const { t } = useI18nSafe();
@@ -72,16 +74,29 @@ const hasSelection = computed(() => props.selectedChargeIds.length > 0);
           </p>
         </div>
 
-        <Button
-          v-if="canAddCharge"
-          variant="outline"
-          size="sm"
-          class="shrink-0 cursor-pointer"
-          @click="emit('add-charge')"
-        >
-          <Plus class="mr-1.5 size-3.5" aria-hidden="true" />
-          {{ t("cashier.add_charge") }}
-        </Button>
+        <div class="flex shrink-0 items-center gap-2">
+          <Button
+            v-if="canRequestRefund"
+            variant="ghost"
+            size="sm"
+            class="cursor-pointer"
+            @click="emit('request-refund')"
+          >
+            <Undo2 class="mr-1.5 size-3.5" aria-hidden="true" />
+            {{ t("cashier.refund_request") }}
+          </Button>
+
+          <Button
+            v-if="canAddCharge"
+            variant="outline"
+            size="sm"
+            class="cursor-pointer"
+            @click="emit('add-charge')"
+          >
+            <Plus class="mr-1.5 size-3.5" aria-hidden="true" />
+            {{ t("cashier.add_charge") }}
+          </Button>
+        </div>
       </header>
 
       <div

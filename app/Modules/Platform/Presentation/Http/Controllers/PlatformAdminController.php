@@ -5,7 +5,6 @@ namespace App\Modules\Platform\Presentation\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Admission\Presentation\Http\Transformers\AdmissionResponseTransformer;
 use App\Modules\Appointment\Presentation\Http\Transformers\AppointmentResponseTransformer;
-use App\Modules\Billing\Presentation\Http\Transformers\BillingInvoiceResponseTransformer;
 use App\Modules\Laboratory\Presentation\Http\Transformers\LaboratoryOrderResponseTransformer;
 use App\Modules\MedicalRecord\Presentation\Http\Transformers\MedicalRecordResponseTransformer;
 use App\Modules\Pharmacy\Presentation\Http\Transformers\PharmacyOrderResponseTransformer;
@@ -18,7 +17,6 @@ use App\Modules\Platform\Application\UseCases\CreateCrossTenantAdminAuditLogHold
 use App\Modules\Platform\Application\UseCases\ReleaseCrossTenantAdminAuditLogHoldUseCase;
 use App\Modules\Platform\Application\UseCases\SearchCrossTenantAdminAdmissionsUseCase;
 use App\Modules\Platform\Application\UseCases\SearchCrossTenantAdminAppointmentsUseCase;
-use App\Modules\Platform\Application\UseCases\SearchCrossTenantAdminBillingInvoicesUseCase;
 use App\Modules\Platform\Application\UseCases\SearchCrossTenantAdminLaboratoryOrdersUseCase;
 use App\Modules\Platform\Application\UseCases\SearchCrossTenantAdminMedicalRecordsUseCase;
 use App\Modules\Platform\Application\UseCases\SearchCrossTenantAdminPharmacyOrdersUseCase;
@@ -235,32 +233,6 @@ class PlatformAdminController extends Controller
 
         return response()->json([
             'data' => array_map([PatientResponseTransformer::class, 'transform'], $result['data']),
-            'meta' => $result['meta'],
-        ]);
-    }
-
-    public function billingInvoices(Request $request, SearchCrossTenantAdminBillingInvoicesUseCase $useCase): JsonResponse
-    {
-        $validated = $request->validate([
-            'targetTenantCode' => ['required', 'string', 'max:32'],
-            'reason' => ['required', 'string', 'max:255'],
-            'q' => ['nullable', 'string', 'max:255'],
-            'patientId' => ['nullable', 'string', 'max:64'],
-            'status' => ['nullable', 'string', 'in:draft,issued,partially_paid,paid,cancelled,voided'],
-            'currencyCode' => ['nullable', 'string', 'max:3'],
-            'from' => ['nullable', 'date'],
-            'to' => ['nullable', 'date'],
-            'page' => ['nullable', 'integer', 'min:1'],
-            'perPage' => ['nullable', 'integer', 'min:1', 'max:100'],
-            'sortBy' => ['nullable', 'string', 'in:invoiceNumber,invoiceDate,totalAmount,status,createdAt,updatedAt'],
-            'sortDir' => ['nullable', 'string', 'in:asc,desc'],
-        ]);
-
-        $result = $useCase->execute($validated, $request->user()?->id);
-        abort_if($result === null, 404, 'Target tenant not found.');
-
-        return response()->json([
-            'data' => array_map([BillingInvoiceResponseTransformer::class, 'transform'], $result['data']),
             'meta' => $result['meta'],
         ]);
     }

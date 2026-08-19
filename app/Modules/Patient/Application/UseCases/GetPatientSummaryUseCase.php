@@ -7,9 +7,8 @@ use App\Modules\Admission\Infrastructure\Models\AdmissionModel;
 use App\Modules\Appointment\Domain\Repositories\AppointmentRepositoryInterface;
 use App\Modules\Appointment\Domain\ValueObjects\AppointmentStatus;
 use App\Modules\Appointment\Infrastructure\Models\AppointmentModel;
-use App\Modules\Billing\Domain\Repositories\PatientInsuranceRepositoryInterface;
-use App\Modules\Billing\Domain\ValueObjects\BillingInvoiceStatus;
-use App\Modules\Billing\Infrastructure\Models\BillingInvoiceModel;
+use App\Modules\Payer\Domain\Repositories\PatientInsuranceRepositoryInterface;
+use App\Modules\Revenue\Domain\Services\OutstandingBalanceReaderInterface;
 use App\Modules\Encounter\Application\UseCases\ListEncountersUseCase;
 use App\Modules\Encounter\Infrastructure\Models\EncounterModel;
 use App\Modules\Laboratory\Domain\ValueObjects\LaboratoryOrderStatus;
@@ -88,6 +87,7 @@ class GetPatientSummaryUseCase
         private readonly PatientRepositoryInterface $patientRepository,
         private readonly PatientAllergyRepositoryInterface $allergyRepository,
         private readonly PatientInsuranceRepositoryInterface $insuranceRepository,
+        private readonly OutstandingBalanceReaderInterface $outstandingBalanceReader,
         private readonly ListEncountersUseCase $listEncountersUseCase,
         private readonly GetActiveVisitJourneyUseCase $activeVisitJourneyUseCase,
         private readonly AppointmentRepositoryInterface $appointmentRepository,
@@ -177,10 +177,7 @@ class GetPatientSummaryUseCase
         return [
             'totalVisits' => AppointmentModel::query()->where('patient_id', $patientId)->count(),
             'totalEncounters' => EncounterModel::query()->where('patient_id', $patientId)->count(),
-            'outstandingInvoices' => BillingInvoiceModel::query()
-                ->where('patient_id', $patientId)
-                ->whereIn('status', [BillingInvoiceStatus::ISSUED->value, BillingInvoiceStatus::PARTIALLY_PAID->value])
-                ->count(),
+            'outstandingInvoices' => $this->outstandingBalanceReader->outstandingCountForPatient($patientId),
         ];
     }
 
@@ -233,12 +230,12 @@ class GetPatientSummaryUseCase
             ];
         }
 
-        $latestInvoice = BillingInvoiceModel::query()->where('patient_id', $patientId)->latest('created_at')->first();
-        if ($latestInvoice !== null) {
+        $latestRevenueDocument = $this->outstandingBalanceReader->latestDocumentForPatient($patientId);
+        if ($latestRevenueDocument !== null) {
             $entries[] = [
                 'type' => 'billing',
-                'label' => 'Invoice '.($latestInvoice->invoice_number ?? ''),
-                'occurredAt' => $latestInvoice->created_at,
+                'label' => $latestRevenueDocument->title,
+                'occurredAt' => $latestRevenueDocument->occurredAt,
             ];
         }
 

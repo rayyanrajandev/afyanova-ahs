@@ -3,7 +3,6 @@
 use App\Models\Permission;
 use App\Models\User;
 use App\Modules\Appointment\Infrastructure\Models\AppointmentModel;
-use App\Modules\Billing\Infrastructure\Models\BillingInvoiceModel;
 use App\Modules\InventoryProcurement\Infrastructure\Models\InventoryItemModel;
 use App\Modules\InventoryProcurement\Infrastructure\Models\InventoryStockMovementModel;
 use App\Modules\Laboratory\Infrastructure\Models\LaboratoryOrderModel;
@@ -137,26 +136,6 @@ Schedule::command('inventory:revoke-expired-access-roles')
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/inventory-access-expiry.log'));
 
-if (! function_exists('billingPermissionProfile')) {
-    /**
-     * @return array<int, string>
-     */
-    function billingPermissionProfile(string $profile): array
-    {
-        $profiles = (array) config('billing_permissions.profiles', []);
-        $resolved = $profiles[$profile] ?? null;
-
-        if (! is_array($resolved)) {
-            return [];
-        }
-
-        return array_values(array_unique(array_filter(array_map(
-            static fn ($value): string => is_string($value) ? trim($value) : '',
-            $resolved
-        ))));
-    }
-}
-
 if (! function_exists('defaultHospitalRoleDisplayNames')) {
     /**
      * @return array<string, string>
@@ -271,22 +250,11 @@ if (! function_exists('defaultHospitalRolePermissionProfiles')) {
                 'radiology.orders.read',
                 'clinical-procedure.orders.read',
                 'theatre.procedures.read',
-                'claims.insurance.read',
-                'billing.invoices.read',
-                'billing.payments.view-history',
-                'billing.financial-controls.read',
                 'service.requests.create',
                 'service.requests.read',
                 'service.requests.update-status',
                 'service.requests.export',
                 'service.requests.audit-logs.read',
-                'pos.registers.read',
-                'pos.sessions.read',
-                'pos.sales.read',
-                'pos.lab-quick.read',
-                'pos.frontdesk-quick.read',
-                'pos.cafeteria.read',
-                'pos.pharmacy-otc.read',
                 'inventory.procurement.read',
                 'inventory.procurement.create-movement',
                 'inventory.procurement.create-request',
@@ -331,10 +299,6 @@ if (! function_exists('defaultHospitalRolePermissionProfiles')) {
                 'platform.clinical-catalog.manage-clinical-procedures',
                 'platform.clinical-catalog.manage-formulary',
                 'platform.clinical-catalog.view-audit-logs',
-                'billing.service-catalog.read',
-                'billing.service-catalog.manage-identity',
-                'billing.service-catalog.manage-pricing',
-                'billing.service-catalog.view-audit-logs',
                 'platform.users.read',
                 'platform.users.create',
                 'platform.users.update',
@@ -577,13 +541,6 @@ if (! function_exists('defaultHospitalRolePermissionProfiles')) {
                 'laboratory-orders.view-audit-logs',
                 'inventory.procurement.read',
                 'inventory.procurement.create-request',
-                'pos.registers.read',
-                'pos.sessions.read',
-                'pos.sessions.manage',
-                'pos.sales.read',
-                'pos.sales.create',
-                'pos.lab-quick.read',
-                'pos.lab-quick.create',
             ],
             'LAB.SUPERVISOR' => [
                 'laboratory.orders.read',
@@ -597,13 +554,6 @@ if (! function_exists('defaultHospitalRolePermissionProfiles')) {
                 'inventory.procurement.update-request-status',
                 'inventory.procurement.reconcile-stock',
                 'inventory.procurement.create-movement',
-                'pos.registers.read',
-                'pos.sessions.read',
-                'pos.sessions.manage',
-                'pos.sales.read',
-                'pos.sales.create',
-                'pos.lab-quick.read',
-                'pos.lab-quick.create',
             ],
             'LAB.MANAGER' => [
                 'laboratory.orders.read',
@@ -619,13 +569,6 @@ if (! function_exists('defaultHospitalRolePermissionProfiles')) {
                 'inventory.procurement.create-movement',
                 'inventory.procurement.manage-items',
                 'inventory.procurement.view-audit-logs',
-                'pos.registers.read',
-                'pos.sessions.read',
-                'pos.sessions.manage',
-                'pos.sales.read',
-                'pos.sales.create',
-                'pos.lab-quick.read',
-                'pos.lab-quick.create',
             ],
             'RADIOLOGY.STAFF' => [
                 'radiology.orders.read',
@@ -685,13 +628,6 @@ if (! function_exists('defaultHospitalRolePermissionProfiles')) {
                 'inventory.procurement.read',
                 'inventory.procurement.create-request',
                 'pharmacy-orders.view-audit-logs',
-                'pos.registers.read',
-                'pos.sessions.read',
-                'pos.sessions.manage',
-                'pos.sales.read',
-                'pos.sales.create',
-                'pos.pharmacy-otc.read',
-                'pos.pharmacy-otc.create',
             ],
             'PHARMACY.SUPERVISOR' => [
                 'patients.read',
@@ -708,13 +644,6 @@ if (! function_exists('defaultHospitalRolePermissionProfiles')) {
                 'inventory.procurement.reconcile-stock',
                 'inventory.procurement.view-audit-logs',
                 'pharmacy-orders.view-audit-logs',
-                'pos.registers.read',
-                'pos.sessions.read',
-                'pos.sessions.manage',
-                'pos.sales.read',
-                'pos.sales.create',
-                'pos.pharmacy-otc.read',
-                'pos.pharmacy-otc.create',
             ],
             'PHARMACY.MANAGER' => [
                 'patients.read',
@@ -734,13 +663,6 @@ if (! function_exists('defaultHospitalRolePermissionProfiles')) {
                 'inventory.procurement.manage-suppliers',
                 'inventory.procurement.view-audit-logs',
                 'pharmacy-orders.view-audit-logs',
-                'pos.registers.read',
-                'pos.sessions.read',
-                'pos.sessions.manage',
-                'pos.sales.read',
-                'pos.sales.create',
-                'pos.pharmacy-otc.read',
-                'pos.pharmacy-otc.create',
             ],
             'THEATRE.STAFF' => [
                 'theatre.procedures.read',
@@ -811,93 +733,17 @@ if (! function_exists('defaultHospitalRolePermissionProfiles')) {
             ],
             'FINANCE.CASHIER' => [
                 'patients.read',
-                'billing.invoices.read',
-                'billing.payments.record',
-                'billing.payments.view-history',
-                'billing.cash-accounts.read',
-                'billing.cash-accounts.manage',
-                'billing.refunds.create',
-                'billing.refunds.read',
-                'pos.registers.read',
-                'pos.sessions.read',
-                'pos.sessions.manage',
-                'pos.sales.read',
-                'pos.sales.create',
-                'pos.lab-quick.read',
-                'pos.lab-quick.create',
-                'pos.frontdesk-quick.read',
-                'pos.frontdesk-quick.create',
-                'pos.cafeteria.read',
-                'pos.cafeteria.create',
-                'pos.pharmacy-otc.read',
-                'pos.pharmacy-otc.create',
             ],
             'FINANCE.OFFICER' => [
                 'patients.read',
                 'departments.read',
-                'billing.invoices.create',
-                'billing.invoices.read',
-                'billing.invoices.issue',
-                'billing.invoices.update-draft',
-                'billing.invoices.cancel',
-                'billing.payments.view-history',
-                'billing.service-catalog.read',
-                'billing.service-catalog.manage-identity',
-                'billing.payer-contracts.read',
-                'billing.routing.read',
-                'billing.discounts.read',
-                'billing.refunds.read',
-                'billing.refunds.create',
-                'pos.registers.read',
-                'pos.registers.manage',
-                'pos.sessions.read',
-                'pos.sales.read',
-                'pos.lab-quick.read',
-                'pos.frontdesk-quick.read',
-                'pos.cafeteria.read',
-                'pos.cafeteria.manage-catalog',
-                'pos.pharmacy-otc.read',
             ],
             'FINANCE.CONTROLLER' => [
                 'patients.read',
                 'departments.read',
-                'billing.invoices.read',
-                'billing.financial-controls.read',
-                'billing.invoices.void',
-                'billing-invoices.view-audit-logs',
-                'billing.payments.reverse',
-                'billing.payments.view-history',
-                'billing.service-catalog.read',
-                'billing.service-catalog.manage-pricing',
-                'billing.service-catalog.view-audit-logs',
-                'billing.payer-contracts.read',
-                'billing.payer-contracts.view-audit-logs',
-                'billing.payer-contracts.manage-price-overrides',
-                'billing.payer-contracts.view-price-override-audit-logs',
-                'billing.routing.read',
-                'billing.discounts.read',
-                'billing.discounts.manage',
-                'billing.refunds.read',
-                'billing.refunds.approve',
-                'billing.refunds.process',
-                'pos.registers.read',
-                'pos.registers.manage',
-                'pos.sessions.read',
-                'pos.sales.read',
-                'pos.sales.void',
-                'pos.sales.refund',
-                'pos.lab-quick.read',
-                'pos.cafeteria.read',
-                'pos.cafeteria.manage-catalog',
-                'pos.pharmacy-otc.read',
             ],
             'FINANCE.CLAIMS' => [
                 'patients.read',
-                'claims.insurance.read',
-                'claims.insurance.create',
-                'claims.insurance.update',
-                'claims.insurance.update-status',
-                'claims.insurance.view-audit-logs',
             ],
         ];
     }
@@ -964,11 +810,6 @@ Artisan::command('app:bootstrap-super-admin {--email=admin@local.test} {--name=}
         'emergency.triage.view-audit-logs',
         'emergency.triage.manage-transfers',
         'emergency.triage.view-transfer-audit-logs',
-        'claims.insurance.read',
-        'claims.insurance.create',
-        'claims.insurance.update',
-        'claims.insurance.update-status',
-        'claims.insurance.view-audit-logs',
         'inventory.procurement.read',
         'inventory.procurement.manage-items',
         'inventory.procurement.create-movement',
@@ -999,53 +840,6 @@ Artisan::command('app:bootstrap-super-admin {--email=admin@local.test} {--name=}
         'inpatient.ward.update-care-plan-status',
         'inpatient.ward.manage-discharge-checklist',
         'inpatient.ward.view-audit-logs',
-        'billing-invoices.view-audit-logs',
-        'billing.invoices.create',
-        'billing.invoices.read',
-        'billing.invoices.issue',
-        'billing.invoices.update-draft',
-        'billing.invoices.cancel',
-        'billing.invoices.void',
-        'billing.payments.record',
-        'billing.payments.view-history',
-        'billing.payments.reverse',
-        'billing.cash-accounts.read',
-        'billing.cash-accounts.manage',
-        'billing.routing.read',
-        'billing.discounts.read',
-        'billing.discounts.manage',
-        'billing.refunds.read',
-        'billing.refunds.create',
-        'billing.refunds.approve',
-        'billing.refunds.process',
-        'billing.financial-controls.read',
-        'billing.service-catalog.read',
-        'billing.service-catalog.manage',
-        'billing.service-catalog.view-audit-logs',
-        'billing.payer-contracts.read',
-        'billing.payer-contracts.manage',
-        'billing.payer-contracts.view-audit-logs',
-        'billing.payer-contracts.manage-price-overrides',
-        'billing.payer-contracts.view-price-override-audit-logs',
-        'billing.payer-contracts.manage-authorization-rules',
-        'billing.payer-contracts.view-authorization-audit-logs',
-        'pos.registers.read',
-        'pos.registers.manage',
-        'pos.sessions.read',
-        'pos.sessions.manage',
-        'pos.sales.read',
-        'pos.sales.create',
-        'pos.sales.void',
-        'pos.sales.refund',
-        'pos.lab-quick.read',
-        'pos.lab-quick.create',
-        'pos.cafeteria.read',
-        'pos.cafeteria.create',
-        'pos.cafeteria.manage-catalog',
-        'pos.pharmacy-otc.read',
-        'pos.pharmacy-otc.create',
-        'pos.frontdesk-quick.read',
-        'pos.frontdesk-quick.create',
         'pharmacy-orders.view-audit-logs',
         'pharmacy.orders.create',
         'pharmacy.orders.read',
@@ -1315,65 +1109,6 @@ Artisan::command('app:grant-system-super-admin {email}', function (string $email
     return self::SUCCESS;
 })->purpose('Grant true system super admin access to an existing user without changing the password');
 
-Artisan::command('app:sync-billing-permissions {--profile=implemented} {--grant-user-email=} {--list}', function (): int {
-    $profile = trim((string) $this->option('profile'));
-    $profile = $profile !== '' ? $profile : 'implemented';
-
-    /** @var array<string, mixed> $profiles */
-    $profiles = (array) config('billing_permissions.profiles', []);
-    $permissions = billingPermissionProfile($profile);
-
-    if ($permissions === []) {
-        $this->error('Unknown or empty Billing permission profile: '.$profile);
-        $this->line('Available profiles: '.implode(', ', array_keys($profiles)));
-
-        return 1;
-    }
-
-    if ((bool) $this->option('list')) {
-        $this->info('Billing permission profile: '.$profile);
-        foreach ($permissions as $permission) {
-            $this->line('- '.$permission);
-        }
-
-        return 0;
-    }
-
-    $createdCount = 0;
-    foreach ($permissions as $permissionName) {
-        $permission = Permission::query()->firstOrCreate(['name' => $permissionName]);
-        if ($permission->wasRecentlyCreated) {
-            $createdCount++;
-        }
-    }
-
-    $grantUserEmail = trim((string) $this->option('grant-user-email'));
-    $grantedCount = 0;
-    if ($grantUserEmail !== '') {
-        $user = User::query()->where('email', $grantUserEmail)->first();
-        if (! $user) {
-            $this->error('User not found for --grant-user-email: '.$grantUserEmail);
-            $this->line('Permissions were still synced.');
-
-            return 1;
-        }
-
-        foreach ($permissions as $permissionName) {
-            $user->givePermissionTo($permissionName);
-            $grantedCount++;
-        }
-    }
-
-    $this->info('Billing permissions synced.');
-    $this->line('Profile: '.$profile);
-    $this->line('Total in profile: '.count($permissions));
-    $this->line('Newly created permissions: '.$createdCount);
-    if ($grantUserEmail !== '') {
-        $this->line('Granted to user: '.$grantUserEmail.' ('.$grantedCount.' permissions)');
-    }
-
-    return 0;
-})->purpose('Create Billing permission IDs from a named profile and optionally grant them to a user');
 
 Artisan::command('app:sync-default-role-permissions {--code=*} {--list}', function (): int {
     $profiles = defaultHospitalRolePermissionProfiles();
@@ -2038,55 +1773,6 @@ Artisan::command('app:seed-demo-opd-data {--user-email=admin@local.test} {--tena
                 $order->save();
             }
 
-            $billingSeed = [
-                [
-                    'invoice_number' => 'INV-DEMO-0001',
-                    'patient_index' => 0,
-                    'appointment_index' => 0,
-                    'total_amount' => 25000,
-                    'paid_amount' => 0,
-                    'status' => 'draft',
-                    'notes' => 'OPD consultation + lab request',
-                ],
-                [
-                    'invoice_number' => 'INV-DEMO-0002',
-                    'patient_index' => 1,
-                    'appointment_index' => 1,
-                    'total_amount' => 18000,
-                    'paid_amount' => 0,
-                    'status' => 'draft',
-                    'notes' => 'ANC review visit',
-                ],
-            ];
-
-            foreach ($billingSeed as $seed) {
-                $invoice = BillingInvoiceModel::query()->firstOrNew([
-                    'invoice_number' => $seed['invoice_number'],
-                ]);
-
-                $invoice->fill([
-                    'invoice_number' => $seed['invoice_number'],
-                    'tenant_id' => $tenant->id,
-                    'facility_id' => $facility->id,
-                    'patient_id' => $patientModels[$seed['patient_index']]->id,
-                    'admission_id' => null,
-                    'appointment_id' => $appointmentModels[$seed['appointment_index']]->id,
-                    'issued_by_user_id' => $user->id,
-                    'invoice_date' => now(),
-                    'currency_code' => 'TZS',
-                    'subtotal_amount' => $seed['total_amount'],
-                    'discount_amount' => 0,
-                    'tax_amount' => 0,
-                    'total_amount' => $seed['total_amount'],
-                    'paid_amount' => $seed['paid_amount'],
-                    'balance_amount' => max($seed['total_amount'] - $seed['paid_amount'], 0),
-                    'payment_due_at' => now()->addDay(),
-                    'notes' => $seed['notes'],
-                    'status' => $seed['status'],
-                    'status_reason' => null,
-                ]);
-                $invoice->save();
-            }
         });
     } catch (QueryException $exception) {
         $this->error('Unable to seed demo OPD data.');

@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Modules\Billing\Infrastructure\Models\PriceBookEntryModel;
+use App\Modules\Revenue\Infrastructure\Models\PriceBookEntryModel;
 use App\Modules\Platform\Infrastructure\Models\ChargeableItemModel;
 use App\Modules\Platform\Infrastructure\Models\ClinicalCatalogItemModel;
 use App\Modules\Platform\Infrastructure\Models\FacilityModel;

@@ -2,7 +2,7 @@
 
 use App\Modules\Admission\Presentation\Http\Controllers\NursingAdmissionController;
 use App\Modules\Appointment\Presentation\Http\Controllers\AppointmentController;
-use App\Modules\Billing\Presentation\Http\Controllers\PatientInsuranceController;
+use App\Modules\Payer\Presentation\Http\Controllers\PatientInsuranceController;
 use App\Modules\Encounter\Presentation\Http\Controllers\EncounterClinicalAttachmentController;
 use App\Modules\Encounter\Presentation\Http\Controllers\EncounterController;
 use App\Modules\Encounter\Presentation\Http\Controllers\EncounterDiagnosisController;

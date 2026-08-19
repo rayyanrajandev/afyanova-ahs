@@ -37,10 +37,7 @@ class EncounterCloseReadinessResponseTransformer
                 $items,
             ),
             'billingSummary' => [
-                'pendingCandidates' => (int) ($billingSummary['pendingCandidates'] ?? 0),
-                'alreadyInvoiced' => (int) ($billingSummary['alreadyInvoiced'] ?? 0),
-                'totalCandidates' => (int) ($billingSummary['totalCandidates'] ?? 0),
-                'currencyCode' => $billingSummary['currencyCode'] ?? null,
+                'outstandingCharges' => (int) ($billingSummary['outstandingCharges'] ?? 0),
             ],
         ];
     }

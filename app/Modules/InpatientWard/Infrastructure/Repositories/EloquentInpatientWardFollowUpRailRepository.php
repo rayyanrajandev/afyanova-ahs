@@ -2,13 +2,14 @@
 
 namespace App\Modules\InpatientWard\Infrastructure\Repositories;
 
-use App\Modules\Billing\Infrastructure\Models\BillingInvoiceModel;
 use App\Modules\InpatientWard\Domain\Repositories\InpatientWardFollowUpRailRepositoryInterface;
 use App\Modules\Laboratory\Infrastructure\Models\LaboratoryOrderModel;
 use App\Modules\Pharmacy\Infrastructure\Models\PharmacyOrderModel;
 use App\Modules\Platform\Domain\Services\FeatureFlagResolverInterface;
 use App\Modules\Platform\Infrastructure\Support\PlatformScopeQueryApplier;
 use App\Modules\Radiology\Infrastructure\Models\RadiologyOrderModel;
+use App\Modules\Revenue\Domain\Services\OutstandingBalanceReaderInterface;
+use App\Modules\Revenue\Domain\ValueObjects\RevenueDocumentSummary;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
@@ -17,6 +18,7 @@ class EloquentInpatientWardFollowUpRailRepository implements InpatientWardFollow
     public function __construct(
         private readonly PlatformScopeQueryApplier $platformScopeQueryApplier,
         private readonly FeatureFlagResolverInterface $featureFlagResolver,
+        private readonly OutstandingBalanceReaderInterface $outstandingBalanceReader,
     ) {}
 
     public function summarizeForAdmission(string $admissionId, int $itemLimit = 3): array
@@ -35,15 +37,13 @@ class EloquentInpatientWardFollowUpRailRepository implements InpatientWardFollow
             ->orderByDesc('ordered_at')
             ->get();
 
-        $billingRows = $this->admissionScopedQuery(BillingInvoiceModel::query(), $admissionId)
-            ->orderByDesc('invoice_date')
-            ->get();
+        $revenueDocuments = $this->outstandingBalanceReader->outstandingDocumentsForAdmission($admissionId);
 
         return [
             'laboratory' => $this->summarizeLaboratory($laboratoryRows, $itemLimit),
             'pharmacy' => $this->summarizePharmacy($pharmacyRows, $itemLimit),
             'radiology' => $this->summarizeRadiology($radiologyRows, $itemLimit),
-            'billing' => $this->summarizeBilling($billingRows, $itemLimit),
+            'billing' => $this->summarizeBilling($revenueDocuments, $itemLimit),
         ];
     }
 
@@ -128,27 +128,39 @@ class EloquentInpatientWardFollowUpRailRepository implements InpatientWardFollow
         ];
     }
 
-    private function summarizeBilling(Collection $rows, int $itemLimit): array
+    /**
+     * Unlike the three clinical rails above, this one no longer filters rows
+     * by status: the revenue ledger decides what "outstanding" means and
+     * returns only those documents (OutstandingBalanceReaderInterface). The
+     * rail's job is to render them, not to re-derive the definition — that
+     * split is what previously let this rail and the patient-flow board
+     * disagree about the same patient.
+     *
+     * @param  list<RevenueDocumentSummary>  $documents
+     * @return array<string, mixed>
+     */
+    private function summarizeBilling(array $documents, int $itemLimit): array
     {
-        $counts = $this->countStatuses($rows, ['draft', 'issued', 'partially_paid', 'paid', 'cancelled', 'voided']);
-        $followUpStatuses = ['draft', 'issued', 'partially_paid'];
+        $counts = [];
+        foreach ($documents as $document) {
+            $status = $this->normalizeStatus($document->status);
+            $counts[$status] = ($counts[$status] ?? 0) + 1;
+        }
 
         return [
-            'follow_up_count' => $this->countKnownStatuses($counts, $followUpStatuses),
+            'follow_up_count' => count($documents),
             'status_counts' => $counts,
-            'items' => $rows
-                ->filter(fn (BillingInvoiceModel $row): bool => in_array($this->normalizeStatus($row->status), $followUpStatuses, true))
-                ->take($itemLimit)
-                ->map(fn (BillingInvoiceModel $row): array => [
-                    'id' => $row->id,
-                    'number' => $row->invoice_number,
-                    'title' => 'Billing invoice',
-                    'status' => $row->status,
-                    'timestamp' => ($row->payment_due_at ?? $row->invoice_date)?->toIso8601String(),
-                    'detail' => $row->payment_due_at ? 'Due '.($row->payment_due_at?->toDateString() ?? '') : 'Outstanding balance pending',
-                ])
-                ->values()
-                ->all(),
+            'items' => array_map(
+                static fn (RevenueDocumentSummary $document): array => [
+                    'id' => $document->id,
+                    'number' => $document->number,
+                    'title' => $document->title,
+                    'status' => $document->status,
+                    'timestamp' => $document->dueAt ?? $document->occurredAt,
+                    'detail' => $document->detail ?? 'Outstanding balance pending',
+                ],
+                array_slice($documents, 0, $itemLimit),
+            ),
         ];
     }
 

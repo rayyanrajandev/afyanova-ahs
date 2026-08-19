@@ -108,8 +108,13 @@ final class DashboardWorkflowRegistry
             }
 
             // Permission-based eligibility for specific workflows
+            // Cashier Phase 2: billing.invoices.read and claims.insurance.read
+            // were deleted with the Billing module, so eligibility now keys off
+            // the finance role codes — the same set Gate::define('cashier.access')
+            // falls back to. Phase 6 adds a cashier.* permission check here once
+            // that catalogue is seeded.
             if ($key === self::WORKFLOW_CASHIER) {
-                if ($context->hasPermission('billing.invoices.read') || $context->hasPermission('claims.insurance.read')) {
+                if ($context->matchesAnyRole(['FINANCE.CASHIER', 'FINANCE.OFFICER', 'FINANCE.CONTROLLER'])) {
                     $allow[$key] = true;
                 }
             }

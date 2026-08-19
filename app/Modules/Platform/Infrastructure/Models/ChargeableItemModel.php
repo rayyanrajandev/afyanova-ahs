@@ -2,7 +2,7 @@
 
 namespace App\Modules\Platform\Infrastructure\Models;
 
-use App\Modules\Billing\Infrastructure\Models\PriceBookEntryModel;
+use App\Modules\Revenue\Infrastructure\Models\PriceBookEntryModel;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

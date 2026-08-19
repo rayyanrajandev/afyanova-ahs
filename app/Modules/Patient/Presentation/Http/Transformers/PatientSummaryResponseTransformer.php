@@ -2,7 +2,7 @@
 
 namespace App\Modules\Patient\Presentation\Http\Transformers;
 
-use App\Modules\Billing\Presentation\Http\Transformers\PatientInsuranceRecordResponseTransformer;
+use App\Modules\Payer\Presentation\Http\Transformers\PatientInsuranceRecordResponseTransformer;
 use App\Modules\Encounter\Presentation\Http\Transformers\EncounterListItemResponseTransformer;
 use App\Modules\PatientFlow\Application\UseCases\ResolveVisitStagesUseCase;
 

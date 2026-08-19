@@ -2,7 +2,7 @@
 
 namespace App\Modules\Platform\Application\Services;
 
-use App\Modules\Billing\Infrastructure\Models\PriceBookEntryModel;
+use App\Modules\Revenue\Infrastructure\Models\PriceBookEntryModel;
 use App\Modules\InventoryProcurement\Domain\Services\CatalogIdentityResolver;
 use App\Modules\InventoryProcurement\Domain\ValueObjects\InventoryItemCategory;
 use App\Modules\Platform\Domain\Services\CurrentPlatformScopeContextInterface;

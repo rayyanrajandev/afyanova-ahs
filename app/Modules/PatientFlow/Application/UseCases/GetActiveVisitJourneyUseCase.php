@@ -4,10 +4,10 @@ namespace App\Modules\PatientFlow\Application\UseCases;
 
 use App\Modules\Appointment\Domain\ValueObjects\AppointmentStatus;
 use App\Modules\Appointment\Infrastructure\Models\AppointmentModel;
-use App\Modules\Billing\Infrastructure\Models\BillingInvoiceModel;
 use App\Modules\Patient\Infrastructure\Models\PatientAllergyModel;
 use App\Modules\Patient\Infrastructure\Models\PatientModel;
 use App\Modules\PatientFlow\Domain\Repositories\PatientFlowEventRepositoryInterface;
+use App\Modules\Revenue\Domain\Services\OutstandingBalanceReaderInterface;
 use App\Modules\ServiceRequest\Domain\ValueObjects\ServiceRequestStatus;
 use App\Modules\ServiceRequest\Infrastructure\Models\ServiceRequestModel;
 use Illuminate\Support\Collection;
@@ -84,6 +84,7 @@ class GetActiveVisitJourneyUseCase
     public function __construct(
         private readonly ResolveConsultationDiagnosticStepsUseCase $consultationStepResolver,
         private readonly PatientFlowEventRepositoryInterface $flowEventRepository,
+        private readonly OutstandingBalanceReaderInterface $outstandingBalanceReader,
     ) {}
 
     /**
@@ -111,14 +112,6 @@ class GetActiveVisitJourneyUseCase
         'clinical_procedure' => 'Clinical procedure',
         'theatre_procedure' => 'Theatre procedure',
     ];
-
-    /**
-     * Invoice statuses that count as "billing pending" on a card — a glance
-     * signal, not a mini billing view. draft/paid/cancelled/voided don't
-     * count: draft isn't a real outstanding bill yet, the other three are
-     * resolved.
-     */
-    private const PENDING_INVOICE_STATUSES = ['issued', 'partially_paid'];
 
     /**
      * @param  string|null  $patientId  Scopes the board to one patient — pushed into the
@@ -194,12 +187,9 @@ class GetActiveVisitJourneyUseCase
             ->get(['patient_id', 'substance_name', 'severity'])
             ->groupBy('patient_id');
 
-        $pendingInvoicePatientIds = BillingInvoiceModel::query()
-            ->whereIn('patient_id', $patientIds)
-            ->whereIn('status', self::PENDING_INVOICE_STATUSES)
-            ->distinct()
-            ->pluck('patient_id')
-            ->flip();
+        $patientsWithOutstanding = $this->outstandingBalanceReader->patientsWithOutstanding(
+            $patientIds->map(static fn (mixed $id): string => (string) $id)->values()->all(),
+        );
 
         $appointmentEntries = $appointments
             ->filter(fn (AppointmentModel $appointment) => $patientIds->contains($appointment->patient_id))
@@ -207,7 +197,7 @@ class GetActiveVisitJourneyUseCase
                 $consultationStepsByAppointmentId,
                 $patientsById,
                 $allergiesByPatientId,
-                $pendingInvoicePatientIds,
+                $patientsWithOutstanding,
             ): array {
                 $consultationStep = $consultationStepsByAppointmentId[$appointment->id] ?? null;
                 [$step, $stepEnteredAt] = $this->deriveAppointmentStep($appointment, $consultationStep);
@@ -236,7 +226,7 @@ class GetActiveVisitJourneyUseCase
                     'priority' => $appointment->triage_category,
                     'openOrders' => $consultationStep['openOrders'] ?? [],
                     'allergies' => $this->allergiesFor($allergiesByPatientId, $appointment->patient_id),
-                    'billingStatus' => $pendingInvoicePatientIds->has($appointment->patient_id) ? 'pending' : null,
+                    'billingStatus' => ($patientsWithOutstanding[$appointment->patient_id] ?? false) ? 'pending' : null,
                 ];
             });
 
@@ -245,7 +235,7 @@ class GetActiveVisitJourneyUseCase
             ->map(function (ServiceRequestModel $serviceRequest) use (
                 $patientsById,
                 $allergiesByPatientId,
-                $pendingInvoicePatientIds,
+                $patientsWithOutstanding,
             ): array {
                 $isInProgress = $serviceRequest->status === ServiceRequestStatus::IN_PROGRESS->value;
 
@@ -271,7 +261,7 @@ class GetActiveVisitJourneyUseCase
                     'priority' => null,
                     'openOrders' => [],
                     'allergies' => $this->allergiesFor($allergiesByPatientId, $serviceRequest->patient_id),
-                    'billingStatus' => $pendingInvoicePatientIds->has($serviceRequest->patient_id) ? 'pending' : null,
+                    'billingStatus' => ($patientsWithOutstanding[$serviceRequest->patient_id] ?? false) ? 'pending' : null,
                 ];
             });
 

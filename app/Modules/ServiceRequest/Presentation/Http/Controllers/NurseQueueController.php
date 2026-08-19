@@ -2,7 +2,7 @@
 
 namespace App\Modules\ServiceRequest\Presentation\Http\Controllers;
 
-use App\Modules\Billing\Infrastructure\Models\PatientInsuranceModel;
+use App\Modules\Payer\Infrastructure\Models\PatientInsuranceModel;
 use App\Http\Controllers\Controller;
 use App\Modules\Appointment\Infrastructure\Models\AppointmentModel;
 use App\Modules\Encounter\Infrastructure\Models\EncounterModel;

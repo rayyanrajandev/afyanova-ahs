@@ -2,8 +2,9 @@
 
 namespace App\Modules\Encounter\Application\UseCases;
 
-use App\Modules\Billing\Application\UseCases\ListBillingChargeCaptureCandidatesUseCase;
 use App\Modules\Encounter\Application\Services\EncounterResolverService;
+use App\Modules\Revenue\Domain\Services\OutstandingBalanceReaderInterface;
+use App\Modules\Revenue\Domain\ValueObjects\RevenueDocumentSummary;
 use App\Modules\Encounter\Application\Services\PrimaryMedicalRecordResolverService;
 use App\Modules\Encounter\Infrastructure\Models\EncounterModel;
 use App\Modules\Laboratory\Domain\ValueObjects\LaboratoryOrderStatus;
@@ -79,7 +80,7 @@ class GetEncounterCloseReadinessUseCase
         private readonly EncounterResolverService $encounterResolverService,
         private readonly MedicalRecordRepositoryInterface $medicalRecordRepository,
         private readonly PrimaryMedicalRecordResolverService $primaryMedicalRecordResolverService,
-        private readonly ListBillingChargeCaptureCandidatesUseCase $chargeCaptureCandidatesUseCase,
+        private readonly OutstandingBalanceReaderInterface $outstandingBalanceReader,
     ) {}
 
     /**
@@ -167,21 +168,28 @@ class GetEncounterCloseReadinessUseCase
                 // way to see which 3 orders they were leaving outstanding.
                 details: $pendingOrderDetails,
             ),
+            // Under the prepaid model this is no longer "did we remember to
+            // bill for what we delivered" — services are paid for before they
+            // are provided, so an outstanding charge at close means something
+            // was delivered without clearance, or a charge was raised and
+            // never settled. Both are worth surfacing before the encounter is
+            // shut, and neither blocks: reconciling money is not the
+            // clinician's job.
             $this->buildItem(
-                id: 'unbilled_services',
-                label: 'Charge capture',
+                id: 'unpaid_charges',
+                label: 'Outstanding charges',
                 severity: 'warn',
-                passed: (int) ($billingSummary['pendingCandidates'] ?? 0) === 0,
-                count: (int) ($billingSummary['pendingCandidates'] ?? 0),
-                message: (int) ($billingSummary['pendingCandidates'] ?? 0) === 0
-                    ? 'No uninvoiced completed services were detected for this encounter.'
+                passed: (int) ($billingSummary['outstandingCharges'] ?? 0) === 0,
+                count: (int) ($billingSummary['outstandingCharges'] ?? 0),
+                message: (int) ($billingSummary['outstandingCharges'] ?? 0) === 0
+                    ? 'This patient has no outstanding charges.'
                     : sprintf(
-                        '%d completed service%s still need billing capture.',
-                        (int) $billingSummary['pendingCandidates'],
-                        (int) $billingSummary['pendingCandidates'] === 1 ? '' : 's',
+                        '%d charge%s still unpaid — send the patient to the cashier before closing.',
+                        (int) $billingSummary['outstandingCharges'],
+                        (int) $billingSummary['outstandingCharges'] === 1 ? '' : 's',
                     ),
-                details: is_array($billingSummary['pendingCandidateDetails'] ?? null)
-                    ? $billingSummary['pendingCandidateDetails']
+                details: is_array($billingSummary['outstandingChargeDetails'] ?? null)
+                    ? $billingSummary['outstandingChargeDetails']
                     : [],
             ),
             $this->buildItem(
@@ -213,10 +221,7 @@ class GetEncounterCloseReadinessUseCase
             // Unchanged shape — pendingCandidateDetails lives on the
             // unbilled_services item's `details` instead of duplicating it here.
             'billingSummary' => [
-                'pendingCandidates' => (int) ($billingSummary['pendingCandidates'] ?? 0),
-                'alreadyInvoiced' => (int) ($billingSummary['alreadyInvoiced'] ?? 0),
-                'totalCandidates' => (int) ($billingSummary['totalCandidates'] ?? 0),
-                'currencyCode' => $billingSummary['currencyCode'] ?? null,
+                'outstandingCharges' => (int) ($billingSummary['outstandingCharges'] ?? 0),
             ],
         ];
     }
@@ -408,45 +413,28 @@ class GetEncounterCloseReadinessUseCase
     private function resolveBillingSummary(EncounterModel $encounter, string $patientId): array
     {
         if ($patientId === '') {
-            return [
-                'pendingCandidates' => 0,
-                'alreadyInvoiced' => 0,
-                'totalCandidates' => 0,
-                'currencyCode' => null,
-                'pendingCandidateDetails' => [],
-            ];
+            return ['outstandingCharges' => 0, 'outstandingChargeDetails' => []];
         }
 
-        $result = $this->chargeCaptureCandidatesUseCase->execute([
-            'patientId' => $patientId,
-            'encounterId' => (string) $encounter->id,
-            'appointmentId' => $encounter->appointment_id,
-            'admissionId' => $encounter->admission_id,
-            'includeInvoiced' => false,
-            'limit' => 200,
-        ]);
+        $count = $this->outstandingBalanceReader->outstandingCountForPatient($patientId);
+        if ($count === 0) {
+            return ['outstandingCharges' => 0, 'outstandingChargeDetails' => []];
+        }
 
-        $meta = is_array($result['meta'] ?? null) ? $result['meta'] : [];
-        // includeInvoiced: false above means $result['data'] already contains
-        // only the pending (not-yet-invoiced) candidates — no extra query, no
-        // extra filtering, just surfacing what was already fetched instead of
-        // discarding everything but the count (C-5 acknowledgement-quality fix).
-        $candidates = is_array($result['data'] ?? null) ? $result['data'] : [];
+        $admissionId = trim((string) ($encounter->admission_id ?? ''));
+        $documents = $admissionId === ''
+            ? []
+            : $this->outstandingBalanceReader->outstandingDocumentsForAdmission($admissionId);
 
         return [
-            'pendingCandidates' => (int) ($meta['pending'] ?? 0),
-            'alreadyInvoiced' => (int) ($meta['alreadyInvoiced'] ?? 0),
-            'totalCandidates' => (int) ($meta['total'] ?? 0),
-            'currencyCode' => $meta['currencyCode'] ?? null,
-            'pendingCandidateDetails' => array_map(
-                static fn (array $candidate): array => [
-                    'id' => $candidate['id'] ?? null,
-                    'label' => $candidate['serviceName'] ?? $candidate['sourceNumber'] ?? 'Uninvoiced service',
-                    'meta' => isset($candidate['lineTotal'], $candidate['currencyCode'])
-                        ? sprintf('%s %s', $candidate['currencyCode'], number_format((float) $candidate['lineTotal'], 2))
-                        : null,
+            'outstandingCharges' => $count,
+            'outstandingChargeDetails' => array_map(
+                static fn (RevenueDocumentSummary $document): array => [
+                    'id' => $document->id,
+                    'label' => $document->title,
+                    'meta' => $document->detail,
                 ],
-                array_slice($candidates, 0, self::ITEM_DETAIL_LIMIT),
+                array_slice($documents, 0, self::ITEM_DETAIL_LIMIT),
             ),
         ];
     }

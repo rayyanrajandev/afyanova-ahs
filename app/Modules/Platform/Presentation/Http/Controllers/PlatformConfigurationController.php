@@ -103,11 +103,6 @@ class PlatformConfigurationController extends Controller
         $userId = $user?->id;
 
         $moduleRegistry = [
-            'billing' => [
-                'module' => GenerateAuditExportCsvJob::MODULE_BILLING,
-                'permission' => 'billing-invoices.view-audit-logs',
-                'label' => 'Billing',
-            ],
             'laboratory' => [
                 'module' => GenerateAuditExportCsvJob::MODULE_LABORATORY,
                 'permission' => 'laboratory-orders.view-audit-logs',
@@ -316,12 +311,6 @@ class PlatformConfigurationController extends Controller
         $generatedAt = now();
 
         $moduleRegistry = [
-            'billing' => [
-                'module' => GenerateAuditExportCsvJob::MODULE_BILLING,
-                'permission' => 'billing-invoices.view-audit-logs',
-                'label' => 'Billing',
-                'routePrefix' => 'billing-invoices',
-            ],
             'laboratory' => [
                 'module' => GenerateAuditExportCsvJob::MODULE_LABORATORY,
                 'permission' => 'laboratory-orders.view-audit-logs',
@@ -500,9 +489,6 @@ class PlatformConfigurationController extends Controller
             : null;
 
         $moduleRegistry = [
-            'billing' => [
-                'permission' => 'billing-invoices.view-audit-logs',
-            ],
             'laboratory' => [
                 'permission' => 'laboratory-orders.view-audit-logs',
             ],
@@ -560,11 +546,6 @@ class PlatformConfigurationController extends Controller
         $userId = $user?->id;
 
         $moduleRegistry = [
-            'billing' => [
-                'permission' => 'billing-invoices.view-audit-logs',
-                'label' => 'Billing',
-                'routePrefix' => 'billing-invoices',
-            ],
             'laboratory' => [
                 'permission' => 'laboratory-orders.view-audit-logs',
                 'label' => 'Laboratory',
@@ -946,11 +927,6 @@ class PlatformConfigurationController extends Controller
         $generatedAt = now();
 
         $moduleRegistry = [
-            'billing' => [
-                'permission' => 'billing-invoices.view-audit-logs',
-                'label' => 'Billing',
-                'routePrefix' => 'billing-invoices',
-            ],
             'laboratory' => [
                 'permission' => 'laboratory-orders.view-audit-logs',
                 'label' => 'Laboratory',
@@ -1118,11 +1094,6 @@ class PlatformConfigurationController extends Controller
         }
 
         $moduleRegistry = [
-            'billing' => [
-                'permission' => 'billing-invoices.view-audit-logs',
-                'label' => 'Billing',
-                'routePrefix' => 'billing-invoices',
-            ],
             'laboratory' => [
                 'permission' => 'laboratory-orders.view-audit-logs',
                 'label' => 'Laboratory',

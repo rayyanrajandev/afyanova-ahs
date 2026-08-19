@@ -415,12 +415,9 @@ class AppointmentController extends Controller
 
         Gate::authorize('checkIn', $appointment);
 
-        $billingCapture = $useCase->getLastAutoCaptureResult();
-
-        return response()->json(array_merge(
-            ['data' => AppointmentResponseTransformer::transform($appointment)],
-            $billingCapture !== null ? ['billing_capture' => $billingCapture] : [],
-        ));
+        return response()->json([
+            'data' => AppointmentResponseTransformer::transform($appointment),
+        ]);
     }
 
     private function invalidStatusTransitionResponse(InvalidAppointmentStatusTransitionException $exception): JsonResponse
@@ -825,12 +822,9 @@ class AppointmentController extends Controller
 
         abort_if($appointment === null, 404, 'Appointment not found.');
 
-        $billingCapture = $updateStatus->getLastAutoCaptureResult();
-
-        return response()->json(array_merge(
-            ['data' => AppointmentResponseTransformer::transform($appointment)],
-            $billingCapture !== null ? ['billing_capture' => $billingCapture] : [],
-        ));
+        return response()->json([
+            'data' => AppointmentResponseTransformer::transform($appointment),
+        ]);
     }
 
     public function referrals(

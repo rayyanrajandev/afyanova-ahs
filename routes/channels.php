@@ -1,6 +1,5 @@
 <?php
 
-use App\Modules\Billing\Application\Services\BillingQueueChannelAuthorizer;
 use App\Modules\PatientFlow\Application\Services\PatientFlowBoardChannelAuthorizer;
 use Illuminate\Support\Facades\Broadcast;
 

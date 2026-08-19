@@ -1,9 +1,9 @@
 <?php
 
-use App\Modules\Billing\Infrastructure\Models\BillingServiceCatalogItemModel;
-use App\Modules\Billing\Infrastructure\Models\PriceBookEntryModel;
-use App\Modules\Platform\Infrastructure\Models\ChargeableItemModel;
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 /**
  * PricingEngine_Migration_Plan.md Phase 5: the legacy consultation catalog
@@ -21,6 +21,14 @@ use Illuminate\Database\Migrations\Migration;
  * rows' code/name/price into chargeable_items + price_book_entries.
  * Idempotent (skips any code that already exists) so it's safe to run
  * more than once.
+ *
+ * Rewritten 2026-08-18 (Cashier Phase 2) to use the query builder instead of
+ * BillingServiceCatalogItemModel / PriceBookEntryModel / ChargeableItemModel.
+ * Two of those classes were deleted with the Billing module and the third
+ * moved, which would have made this historical migration fatal on any fresh
+ * `migrate` — including every test run. Behaviour is unchanged; only the
+ * access path is. The source table is also dropped later in the same phase,
+ * so the guard below makes the migration a no-op once that happens.
  */
 return new class extends Migration
 {
@@ -36,36 +44,50 @@ return new class extends Migration
             'CONSULT-SPECIALIST-TZ-ANESTH', 'DC',
         ];
 
-        $legacyRows = BillingServiceCatalogItemModel::query()
+        if (! Schema::hasTable('billing_service_catalog_items')) {
+            return;
+        }
+
+        $legacyRows = DB::table('billing_service_catalog_items')
             ->whereIn('service_code', $missingCodes)
             ->get();
 
         foreach ($legacyRows as $legacyRow) {
             $code = strtoupper(trim((string) $legacyRow->service_code));
 
-            $alreadyExists = ChargeableItemModel::query()
+            $alreadyExists = DB::table('chargeable_items')
                 ->whereRaw('UPPER(code) = ?', [$code])
                 ->exists();
             if ($alreadyExists) {
                 continue;
             }
 
-            $chargeableItem = new ChargeableItemModel();
-            $chargeableItem->fill([
+            $chargeableItemId = (string) Str::uuid();
+
+            DB::table('chargeable_items')->insert([
+                'id' => $chargeableItemId,
                 'catalog_type' => 'consultation',
                 'charge_model' => 'flat',
                 'code' => $code,
                 'name' => $legacyRow->service_name,
                 'default_unit' => $legacyRow->unit,
                 'status' => 'active',
+                'is_taxable' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
-            $chargeableItem->save();
 
-            PriceBookEntryModel::query()->create([
-                'chargeable_item_id' => $chargeableItem->id,
+            DB::table('price_book_entries')->insert([
+                'id' => (string) Str::uuid(),
+                'chargeable_item_id' => $chargeableItemId,
                 'currency_code' => strtoupper((string) $legacyRow->currency_code),
                 'unit_price' => $legacyRow->base_price,
+                'tax_rate_percent' => 0,
+                'is_taxable' => false,
+                'tariff_version' => 1,
                 'status' => 'active',
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
         }
     }

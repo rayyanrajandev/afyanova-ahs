@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Modules\Billing\Application\UseCases\ListBillingInvoiceAuditLogsUseCase;
 use App\Modules\Laboratory\Application\UseCases\ListLaboratoryOrderAuditLogsUseCase;
 use App\Modules\Pharmacy\Application\UseCases\ListPharmacyOrderAuditLogsUseCase;
 use App\Modules\Platform\Infrastructure\Models\AuditExportJobModel;
@@ -13,8 +12,6 @@ use Illuminate\Foundation\Queue\Queueable;
 class GenerateAuditExportCsvJob implements ShouldQueue
 {
     use Queueable;
-
-    public const MODULE_BILLING = 'billing-invoice-audit';
 
     public const MODULE_LABORATORY = 'laboratory-order-audit';
 
@@ -30,7 +27,6 @@ class GenerateAuditExportCsvJob implements ShouldQueue
     ) {}
 
     public function handle(
-        ListBillingInvoiceAuditLogsUseCase $billingUseCase,
         ListLaboratoryOrderAuditLogsUseCase $laboratoryUseCase,
         ListPharmacyOrderAuditLogsUseCase $pharmacyUseCase,
         BrandedCsvExportManager $csvExports,
@@ -59,10 +55,6 @@ class GenerateAuditExportCsvJob implements ShouldQueue
 
         try {
             $fetchPage = match ($auditExportJob->module) {
-                self::MODULE_BILLING => fn (int $page): ?array => $billingUseCase->execute(
-                    billingInvoiceId: $auditExportJob->target_resource_id,
-                    filters: array_merge($filters, ['page' => $page, 'perPage' => self::PER_PAGE]),
-                ),
                 self::MODULE_LABORATORY => fn (int $page): ?array => $laboratoryUseCase->execute(
                     laboratoryOrderId: $auditExportJob->target_resource_id,
                     filters: array_merge($filters, ['page' => $page, 'perPage' => self::PER_PAGE]),
@@ -84,7 +76,6 @@ class GenerateAuditExportCsvJob implements ShouldQueue
             }
 
             $prefix = match ($auditExportJob->module) {
-                self::MODULE_BILLING => 'billing',
                 self::MODULE_LABORATORY => 'laboratory',
                 self::MODULE_PHARMACY => 'pharmacy',
                 default => 'audit',

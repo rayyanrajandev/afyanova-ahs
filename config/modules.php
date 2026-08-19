@@ -28,8 +28,6 @@ return [
             'records' => ['label' => 'Records', 'icon' => 'folder'],
         ],
         'billing' => [
-            'invoicing' => ['label' => 'Invoicing', 'icon' => 'receipt'],
-            'point_of_sale' => ['label' => 'Point of sale', 'icon' => 'shopping-cart'],
             'rates' => ['label' => 'Coverage & rates', 'icon' => 'shield-check'],
             'reports' => ['label' => 'Reporting', 'icon' => 'file-text'],
         ],
@@ -221,43 +219,7 @@ return [
             ],
         ],
 
-        'billing_invoices' => [
-            'enabled' => true,
-            'label' => 'Billing Invoices',
-            'nav' => [
-                'title' => 'Invoices & billing',
-                'href' => '/billing',
-                'icon' => 'receipt',
-                'section' => 'billing',
-                'sub_group' => 'invoicing',
-                'permission_prefixes' => ['billing.invoices.', 'billing-invoices.'],
-                'help_note' => 'Invoice queue, board, and create invoices',
-            ],
-            'entitlement_key' => 'billing.invoices',
-            'route_prefixes' => ['billing-invoices.'],
-            'facility_path_rules' => [
-                ['path_prefix' => '/billing', 'required_all' => ['billing.invoices']],
-            ],
-        ],
 
-        'claims_insurance' => [
-            'enabled' => true,
-            'label' => 'Claims & Insurance',
-            'nav' => [
-                'title' => 'NHIF & insurance',
-                'href' => '/claims-insurance',
-                'icon' => 'shield-check',
-                'section' => 'billing',
-                'sub_group' => 'rates',
-                'permission_prefixes' => ['claims.insurance.'],
-                'help_note' => 'NHIF, private payers, pre-auth, and claim adjudication',
-            ],
-            'entitlement_key' => 'claims.insurance',
-            'route_prefixes' => ['claims-insurance.'],
-            'facility_path_rules' => [
-                ['path_prefix' => '/claims-insurance', 'required_all' => ['claims.insurance']],
-            ],
-        ],
 
         'inventory_procurement' => [
             'enabled' => true,
@@ -415,18 +377,18 @@ return [
             ],
         ],
 
+        // Cashier Phase 2: the invoice-follow-up and claim-exception widgets
+        // described a post-paid workspace that no longer exists. Left with no
+        // widgets and no entitlement gate until Phase 6 defines the cashier.*
+        // catalogue and Phase 7 builds the surfaces they would point at —
+        // an empty widget list is honest, a widget keyed on a deleted
+        // permission silently never renders.
         'cashier' => [
             'label' => 'Cashier',
-            'description' => 'Prioritize invoice follow-up and payer exception handling from a single landing view.',
-            'modules' => ['Billing', 'Claims', 'Pharmacy'],
+            'description' => 'Take payment for services before they are provided, and reconcile the drawer.',
+            'modules' => ['Revenue'],
             'role_codes' => ['FINANCE.CASHIER', 'FINANCE.OFFICER', 'FINANCE.CONTROLLER'],
-            'widgets' => [
-                ['id' => 'billing', 'label' => 'Billing drafts', 'permission' => 'billing.invoices.read'],
-                ['id' => 'claims', 'label' => 'Claim exceptions', 'permission' => 'claims.insurance.read'],
-            ],
-            'facility_entitlements' => [
-                'any' => ['billing.invoices', 'claims.insurance'],
-            ],
+            'widgets' => [],
         ],
 
         'operations' => [

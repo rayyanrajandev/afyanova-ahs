@@ -183,10 +183,15 @@ class AppServiceProvider extends ServiceProvider
             if ($this->isFacilitySuperAdmin($user)) return true;
             if (method_exists($user, 'hasPermissionTo') && $user->hasPermissionTo('cashier.access')) return true;
             $roles = method_exists($user, 'roleCodes') ? $user->roleCodes() : [];
+            // The `billing.payments.record` fallback was dropped with the
+            // Billing module (Cashier Phase 2) — the permission no longer
+            // exists. Phase 6 reintroduces an equivalent fallback on
+            // `cashier.payments.record` once that catalogue is seeded; until
+            // then the gate is satisfied by the `cashier.access` permission
+            // above or by holding one of these role codes.
             return in_array('cashier', $roles, true)
                 || in_array('finance.cashier', $roles, true)
-                || in_array('accountant', $roles, true)
-                || (method_exists($user, 'hasPermissionTo') && (bool) $user->hasPermissionTo('billing.payments.record'));
+                || in_array('accountant', $roles, true);
         });
 
         Gate::define('inventory.access', function ($user): bool {
@@ -261,7 +266,6 @@ class AppServiceProvider extends ServiceProvider
                     || (bool) $user->hasPermissionTo('emergency.triage.create')
                     || (bool) $user->hasPermissionTo('emergency.triage.update')
                     || (bool) $user->hasPermissionTo('emergency.triage.update-status')
-                    || (bool) $user->hasPermissionTo('billing.consultation-mappings.manage')
                 );
         });
 

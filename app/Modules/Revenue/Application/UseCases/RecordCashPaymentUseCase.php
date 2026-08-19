@@ -3,6 +3,7 @@
 namespace App\Modules\Revenue\Application\UseCases;
 
 use App\Modules\Platform\Domain\Services\CurrentPlatformScopeContextInterface;
+use App\Modules\Revenue\Domain\Events\ServiceChargeAuthorized;
 use App\Modules\Revenue\Domain\Exceptions\CashierSessionRequiredException;
 use App\Modules\Revenue\Domain\Exceptions\InsufficientTenderException;
 use App\Modules\Revenue\Domain\Services\ChargeAuthorizationPolicyResolverInterface;
@@ -175,6 +176,21 @@ class RecordCashPaymentUseCase
                     $charge->authorized_at = now();
                     $charge->authorized_by_user_id = $cashierUserId;
                     $charge->authorization_reference = (string) $payment->payment_number;
+
+                    // After commit: a listener must never act on a clearance
+                    // that ultimately rolled back and let an unpaid patient
+                    // through the gate.
+                    $cleared = clone $charge;
+                    DB::afterCommit(function () use ($cleared, $cashierUserId): void {
+                        event(new ServiceChargeAuthorized(
+                            serviceChargeId: (string) $cleared->id,
+                            patientId: (string) $cleared->patient_id,
+                            sourceKind: $cleared->source_workflow_kind,
+                            sourceId: $cleared->source_workflow_id,
+                            basis: AuthorizationBasis::PAYMENT,
+                            actorUserId: $cashierUserId,
+                        ));
+                    });
                 }
 
                 $charge->save();

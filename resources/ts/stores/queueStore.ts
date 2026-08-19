@@ -95,6 +95,12 @@ export interface QueueTask {
      * nursing task list, which has no arrival concept.
      */
     arrivalMode?: 'scheduled_checkin' | 'walk_in' | 'emergency' | 'returned' | null;
+    /**
+     * Reception-only (Cashier Phase 5): set only while the prepaid gate is
+     * shut for this visit, i.e. the consultation is still unpaid. Null once
+     * it clears, and for any visit that carries no charge.
+     */
+    paymentStatus?: QueuePaymentStatus | null;
     /** Nursing-only (2026-08-14): the patient's visit journey context. */
     visit?: VisitContext | null;
     /** Nursing-only (2026-08-14): reception administrative readiness context. */
@@ -108,7 +114,22 @@ export interface QueueTask {
  * patientName, department, waitMinutes, status, etc. We map that into the
  * QueueTask shape the workspaces consume.
  */
-export type ReceptionQueueStage = 'waiting_triage' | 'waiting_provider' | 'in_consultation' | 'admitted';
+export type ReceptionQueueStage =
+    | 'awaiting_payment'
+    | 'waiting_triage'
+    | 'waiting_provider'
+    | 'in_consultation'
+    | 'admitted';
+
+/** The prepaid gate's answer for one visit, as the queue endpoint reports it. */
+export interface QueuePaymentStatus {
+    authorized: boolean;
+    status: string;
+    basis: string | null;
+    amountDue: string | null;
+    currencyCode: string | null;
+    requirement: string;
+}
 
 export interface ReceptionQueueEntry {
     appointmentId: string;
@@ -121,6 +142,7 @@ export interface ReceptionQueueEntry {
     department: string | null;
     arrivalMode?: 'scheduled_checkin' | 'walk_in' | 'emergency' | null;
     waitMinutes: number | null;
+    paymentStatus?: QueuePaymentStatus | null;
 }
 
 /** Exported for unit testing (see `__tests__/queueStore.test.ts`) — not used outside this module otherwise. */
@@ -143,6 +165,11 @@ export function toTask(entry: ReceptionQueueEntry): QueueTask {
         status: entry.status === 'in_consultation' ? 'in_progress' : 'pending',
         stage: entry.stage ?? entry.status ?? null,
         source: 'scheduled',
+        // Only surfaced when the gate is actually shut — a paid or uncharged
+        // visit needs no chip, and a badge on every row would stop meaning
+        // anything.
+        paymentStatus:
+            entry.paymentStatus && !entry.paymentStatus.authorized ? entry.paymentStatus : null,
     };
 }
 

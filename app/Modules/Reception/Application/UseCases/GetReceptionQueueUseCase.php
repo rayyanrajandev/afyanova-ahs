@@ -7,6 +7,8 @@ use App\Modules\Appointment\Infrastructure\Models\AppointmentModel;
 use App\Modules\MedicalRecord\Domain\Repositories\MedicalRecordRepositoryInterface;
 use App\Modules\Patient\Infrastructure\Models\PatientModel;
 use App\Modules\PatientFlow\Application\UseCases\ResolveConsultationDiagnosticStepsUseCase;
+use App\Modules\Revenue\Domain\Services\ServiceAuthorizationReaderInterface;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Modules\Reception\Domain\ValueObjects\ArrivalMode;
 use App\Modules\Reception\Infrastructure\Models\ArrivalEventModel;
 use Illuminate\Database\Eloquent\Builder;
@@ -42,6 +44,11 @@ use InvalidArgumentException;
 class GetReceptionQueueUseCase
 {
     private const STAGES = [
+        // Arrived and standing at the cashier. First in the list because it is
+        // now the first thing that happens to a patient after they walk in,
+        // and because omitting it would make the prepaid gate invisible to the
+        // very desk that has to send people to pay.
+        AppointmentStatus::AWAITING_PAYMENT->value,
         AppointmentStatus::WAITING_TRIAGE->value,
         AppointmentStatus::WAITING_PROVIDER->value,
         AppointmentStatus::IN_CONSULTATION->value,
@@ -69,6 +76,7 @@ class GetReceptionQueueUseCase
     public function __construct(
         private readonly MedicalRecordRepositoryInterface $medicalRecordRepository,
         private readonly ResolveConsultationDiagnosticStepsUseCase $consultationStepResolver,
+        private readonly ServiceAuthorizationReaderInterface $serviceAuthorizationReader,
     ) {}
 
     /**
@@ -256,12 +264,21 @@ class GetReceptionQueueUseCase
             ? $this->consultationStepResolver->resolveForAppointmentIds($appointmentIds)
             : [];
 
+        // One query for the whole page. Reception needs to see, at a glance,
+        // who is waiting on the cashier — asking per row would be an N+1 on
+        // the busiest screen in the building.
+        $authorizationByAppointmentId = $this->serviceAuthorizationReader->describeMany(
+            ChargeSourceKind::CONSULTATION,
+            array_map(static fn (mixed $id): string => (string) $id, $appointmentIds),
+        );
+
         return $appointments->map(function (AppointmentModel $appointment) use (
             $stage,
             $latestArrivalEventsByAppointmentId,
             $patientsById,
             $signedNoteByAppointmentId,
             $consultationStepByAppointmentId,
+            $authorizationByAppointmentId,
         ): array {
             $arrivalEvent = $latestArrivalEventsByAppointmentId->get($appointment->id);
             $arrivalMode = $arrivalEvent?->arrival_mode;
@@ -288,10 +305,20 @@ class GetReceptionQueueUseCase
                 ], static fn (?string $part): bool => $part !== null && trim($part) !== ''))
                 : null;
 
+            $authorization = $authorizationByAppointmentId[(string) $appointment->id] ?? null;
+
             return [
                 'appointmentId' => $appointment->id,
                 'appointmentNumber' => $appointment->appointment_number,
                 'status' => $appointment->status,
+                'paymentStatus' => $authorization === null ? null : [
+                    'authorized' => $authorization->authorized,
+                    'status' => $authorization->status,
+                    'basis' => $authorization->basis?->value,
+                    'amountDue' => $authorization->amountDue?->toDecimalString(),
+                    'currencyCode' => $authorization->amountDue?->currencyCode,
+                    'requirement' => $authorization->requirement,
+                ],
                 'patientId' => $appointment->patient_id,
                 'patientName' => $patientName !== '' ? $patientName : null,
                 'patientNumber' => $patient?->patient_number,

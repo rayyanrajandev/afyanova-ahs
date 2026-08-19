@@ -23,6 +23,14 @@ use App\Modules\Appointment\Domain\ValueObjects\AppointmentStatus;
  */
 enum PatientFlowStep: string
 {
+    // --- Reception / cashier ------------------------------------------------
+    /**
+     * Arrived and standing at the cashier. New with the prepaid model: a visit
+     * is no longer clinical the moment it arrives, because the service has to
+     * be paid for before it is provided.
+     */
+    case AWAITING_PAYMENT = 'awaiting_payment';
+
     // --- Reception / triage -------------------------------------------------
     case WAITING_TRIAGE = 'waiting_triage';
     case IN_TRIAGE = 'in_triage';
@@ -163,6 +171,9 @@ enum PatientFlowStep: string
         // Terminal and in-consultation states are never overridden by a
         // nursing claim — see the precedence note above.
         $resolved = match ($appointmentStatus) {
+            // Outranks a nursing claim for the same reason the terminal states
+            // do: nothing clinical may start until the charge clears.
+            AppointmentStatus::AWAITING_PAYMENT => self::AWAITING_PAYMENT,
             AppointmentStatus::IN_CONSULTATION => self::WITH_CLINICIAN,
             AppointmentStatus::COMPLETED => self::COMPLETED,
             AppointmentStatus::CANCELLED => self::CANCELLED,

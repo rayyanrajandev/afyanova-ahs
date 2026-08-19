@@ -3,6 +3,8 @@
 namespace App\Modules\Appointment\Presentation\Http\Transformers;
 
 use App\Modules\PatientFlow\Application\UseCases\ResolveVisitStagesUseCase;
+use App\Modules\Revenue\Domain\Services\ServiceAuthorizationReaderInterface;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Support\FinancialCoverage;
 
 class AppointmentResponseTransformer
@@ -59,8 +61,38 @@ class AppointmentResponseTransformer
             'consultationOwnerUserId' => self::consultationOwnerUserId($appointment),
             'consultationOwnerAssignedAt' => $appointment['consultation_owner_assigned_at'] ?? null,
             'consultationTakeoverCount' => $appointment['consultation_takeover_count'] ?? 0,
+            // Every action that changes a visit returns this shape, so the
+            // desk always knows whether the patient still owes for the
+            // consultation — including right after check-in, which is exactly
+            // when it decides whether to send them to the cashier.
+            'paymentStatus' => self::paymentStatus($appointment),
             'createdAt' => $appointment['created_at'] ?? null,
             'updatedAt' => $appointment['updated_at'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $appointment
+     * @return array<string, mixed>|null
+     */
+    private static function paymentStatus(array $appointment): ?array
+    {
+        $appointmentId = trim((string) ($appointment['id'] ?? ''));
+
+        if ($appointmentId === '') {
+            return null;
+        }
+
+        $authorization = app(ServiceAuthorizationReaderInterface::class)
+            ->describe(ChargeSourceKind::CONSULTATION, $appointmentId);
+
+        return [
+            'authorized' => $authorization->authorized,
+            'status' => $authorization->status,
+            'basis' => $authorization->basis?->value,
+            'amountDue' => $authorization->amountDue?->toDecimalString(),
+            'currencyCode' => $authorization->amountDue?->currencyCode,
+            'requirement' => $authorization->requirement,
         ];
     }
 

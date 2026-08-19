@@ -9,6 +9,8 @@ use App\Modules\Patient\Domain\Repositories\PatientAuditLogRepositoryInterface;
 use App\Modules\Platform\Domain\Services\CurrentPlatformScopeContextInterface;
 use App\Modules\Reception\Domain\Events\AppointmentCheckedIn;
 use App\Modules\Reception\Domain\Repositories\ArrivalEventRepositoryInterface;
+use App\Modules\Revenue\Domain\Services\ServiceAuthorizationReaderInterface;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -50,6 +52,18 @@ use Illuminate\Support\Facades\DB;
  * Profile's "Audit trail" card only ever showed "Patient Registered" no
  * matter how many visits followed. See CancelQueueItemUseCase for the
  * mirror-image fix on the cancel side.
+ *
+ * Prepaid gate (Cashier Phase 5): arrival is always recorded, but a visit whose
+ * consultation charge has not cleared goes to AWAITING_PAYMENT instead of
+ * WAITING_TRIAGE. Refusing check-in outright was the obvious alternative and is
+ * worse — reception's queue starts at WAITING_TRIAGE, so a patient standing at
+ * the cashier would be invisible to the desk that just sent them there. They
+ * are promoted automatically when the charge clears
+ * (Appointment\Application\Listeners\PromoteAppointmentOnChargeAuthorized).
+ *
+ * The gate is enforced here rather than in middleware because it is a business
+ * invariant, not an HTTP concern: it has to hold for a console command, a
+ * future kiosk and a bulk import too.
  */
 class CheckInUseCase
 {
@@ -59,6 +73,7 @@ class CheckInUseCase
         private readonly EncounterResolverService $encounterResolverService,
         private readonly CurrentPlatformScopeContextInterface $platformScopeContext,
         private readonly PatientAuditLogRepositoryInterface $patientAuditLogRepository,
+        private readonly ServiceAuthorizationReaderInterface $serviceAuthorizationReader,
     ) {}
 
     /**
@@ -70,10 +85,21 @@ class CheckInUseCase
         ?string $verificationNotes,
         ?int $actorId,
     ): ?array {
-        return DB::transaction(function () use ($appointmentId, $arrivalMode, $verificationNotes, $actorId): ?array {
+        $authorization = $this->serviceAuthorizationReader->describe(
+            ChargeSourceKind::CONSULTATION,
+            $appointmentId,
+        );
+
+        $targetStatus = $authorization->authorized
+            ? AppointmentStatus::WAITING_TRIAGE
+            : AppointmentStatus::AWAITING_PAYMENT;
+
+        return DB::transaction(function () use (
+            $appointmentId, $arrivalMode, $verificationNotes, $actorId, $targetStatus
+        ): ?array {
             $appointment = $this->updateAppointmentStatusUseCase->execute(
                 id: $appointmentId,
-                status: AppointmentStatus::WAITING_TRIAGE->value,
+                status: $targetStatus->value,
                 reason: null,
                 actorId: $actorId,
             );
@@ -107,6 +133,7 @@ class CheckInUseCase
                 metadata: [
                     'appointmentId' => $appointmentId,
                     'arrivalMode' => $arrivalMode,
+                    'checkedInTo' => $targetStatus->value,
                 ],
             );
 

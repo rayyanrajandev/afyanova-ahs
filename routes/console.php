@@ -21,6 +21,7 @@ use Database\Seeders\Support\BaselineDepartmentCatalog;
 use Database\Seeders\Support\FacilitySubscriptionBootstrap;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Inspiring;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1109,7 +1110,6 @@ Artisan::command('app:grant-system-super-admin {email}', function (string $email
     return self::SUCCESS;
 })->purpose('Grant true system super admin access to an existing user without changing the password');
 
-
 Artisan::command('app:sync-default-role-permissions {--code=*} {--list}', function (): int {
     $profiles = defaultHospitalRolePermissionProfiles();
     $requestedCodes = array_values(array_filter(array_map(
@@ -1175,7 +1175,7 @@ Artisan::command('app:sync-default-role-permissions {--code=*} {--list}', functi
             ->groupBy(static fn (RoleModel $role): string => Str::upper((string) $role->code));
 
         foreach ($profiles as $roleCode => $permissionNames) {
-            /** @var \Illuminate\Support\Collection<int, RoleModel> $roles */
+            /** @var Collection<int, RoleModel> $roles */
             $roles = $rolesByCode->get($roleCode) ?? collect();
 
             if ($roles->isEmpty()) {
@@ -1785,7 +1785,7 @@ Artisan::command('app:seed-demo-opd-data {--user-email=admin@local.test} {--tena
     $this->line('User: '.$userEmail);
     $this->line('Tenant: '.$tenantCode);
     $this->line('Facility: '.$facilityCode);
-    $this->line('Created/updated: tenant, facility, facility assignment, departments, sample patients/appointments/lab/pharmacy/billing records');
+    $this->line('Created/updated: tenant, facility, facility assignment, departments, sample patients/appointments/lab/pharmacy records');
     $this->line('Next: log in and open /dashboard');
 
     return 0;
@@ -2406,7 +2406,7 @@ Artisan::command('platform:audit-export-retry-resume-telemetry:cleanup {--days=}
                 $lastReportPath,
                 json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
             );
-        } catch (\Throwable) {
+        } catch (Throwable) {
             // Ignore observability persistence errors; cleanup should still proceed.
         }
     };

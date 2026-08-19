@@ -233,110 +233,60 @@ return [
             'limits' => [],
         ],
 
+        // Cashier Phase 6: rewritten around the prepaid ledger. The previous
+        // definition sold invoicing, cash accounts, payment plans, corporate
+        // billing and claims — every one of which was deleted in Phase 2, so
+        // it described capabilities the product no longer has.
         'billing_revenue' => [
-            'label' => 'Billing & Revenue',
+            'label' => 'Cashier & Revenue',
             'icon' => 'receipt',
-            'description' => 'Invoicing, payments, cash accounts, discounts, refunds, financial controls, payer contracts, and claims.',
+            'description' => 'Prepaid service charges, cash payments, receipts, drawer sessions and daily reconciliation.',
             'features' => [
-                'billing.cashier' => [
-                    'label' => 'Cashier billing',
-                    'permissions' => ['billing.payments.record', 'billing.payments.view-history'],
+                'cashier.counter' => [
+                    'label' => 'Cashier counter',
+                    'permissions' => [
+                        'cashier.access',
+                        'cashier.charges.read',
+                        'cashier.charges.create',
+                        'cashier.charges.cancel',
+                        'cashier.payments.record',
+                        'cashier.payments.read',
+                        'cashier.receipts.read',
+                    ],
                 ],
-                'billing.receipts' => [
-                    'label' => 'Receipts and payment history',
-                    'permissions' => ['billing.payments.view-history'],
+                'cashier.drawer' => [
+                    'label' => 'Drawer sessions and reconciliation',
+                    'permissions' => [
+                        'cashier.sessions.read',
+                        'cashier.sessions.open',
+                        'cashier.sessions.close',
+                        'cashier.sessions.move-cash',
+                    ],
                 ],
-                'billing.invoices' => [
-                    'label' => 'Invoices, charge capture, and invoice documents',
-                    'permissions' => ['billing.invoices.read', 'billing.invoices.create', 'billing.invoices.issue', 'billing.invoices.update-draft', 'billing.invoices.cancel'],
+                'cashier.controls' => [
+                    'label' => 'Financial controls',
+                    'permissions' => [
+                        'cashier.payments.reverse',
+                        'cashier.receipts.reprint',
+                        'cashier.refunds.request',
+                        'cashier.refunds.approve',
+                        'cashier.waivers.approve',
+                        'cashier.sessions.approve-variance',
+                    ],
                 ],
-                'billing.payments' => [
-                    'label' => 'Payment collection, reversals, and history',
-                    'permissions' => ['billing.payments.record', 'billing.payments.reverse', 'billing.payments.view-history'],
-                ],
-                'billing.cash_accounts' => [
-                    'label' => 'Cash accounts and till controls',
-                    'permissions' => ['billing.cash-accounts.read', 'billing.cash-accounts.manage'],
-                ],
-                'billing.payment_plans' => [
-                    'label' => 'Patient payment plans',
-                    'permissions' => ['billing.invoices.read', 'billing.payments.record'],
-                ],
-                'billing.discounts_refunds' => [
-                    'label' => 'Discounts, refunds, approvals, and processing',
-                    'permissions' => ['billing.discounts.read', 'billing.discounts.manage', 'billing.refunds.read', 'billing.refunds.create', 'billing.refunds.approve', 'billing.refunds.process'],
-                ],
-                'billing.financial_controls' => [
-                    'label' => 'Financial controls, voids, audit, and finance reporting',
-                    'permissions' => ['billing.financial-controls.read', 'billing.invoices.void', 'billing-invoices.view-audit-logs'],
-                ],
-                'billing.service_catalog' => [
-                    'label' => 'Billing service catalog and pricing',
-                    'permissions' => ['billing.service-catalog.read', 'billing.service-catalog.manage-identity', 'billing.service-catalog.manage-pricing', 'billing.service-catalog.view-audit-logs'],
-                ],
-                'billing.payer_contracts' => [
-                    'label' => 'Corporate payer contracts, tariffs, and authorization rules',
-                    'permissions' => ['billing.payer-contracts.read', 'billing.payer-contracts.manage', 'billing.payer-contracts.view-audit-logs', 'billing.payer-contracts.manage-price-overrides', 'billing.payer-contracts.view-price-override-audit-logs', 'billing.payer-contracts.manage-authorization-rules', 'billing.payer-contracts.view-authorization-audit-logs'],
-                ],
-                'billing.revenue_cycle' => [
-                    'label' => 'Revenue cycle management',
-                    'permissions' => ['billing.routing.read', 'billing.financial-controls.read'],
-                ],
-                'claims.insurance' => [
-                    'label' => 'Insurance and NHIF-style claims workflow',
-                    'permissions' => ['claims.insurance.read', 'claims.insurance.create', 'claims.insurance.update', 'claims.insurance.update-status', 'claims.insurance.view-audit-logs'],
+                'cashier.reporting' => [
+                    'label' => 'Revenue reporting',
+                    'permissions' => ['cashier.reports.read'],
                 ],
             ],
             'dependencies' => [
-                'billing.receipts' => ['billing.cashier'],
-                'billing.payments' => ['billing.invoices'],
-                'billing.cash_accounts' => ['billing.payments'],
-                'billing.payment_plans' => ['billing.invoices'],
-                'billing.discounts_refunds' => ['billing.invoices'],
-                'billing.financial_controls' => ['billing.invoices'],
-                'billing.service_catalog' => ['billing.invoices'],
-                'billing.payer_contracts' => ['billing.invoices'],
-                'billing.revenue_cycle' => ['billing.financial_controls'],
-                'claims.insurance' => ['billing.invoices'],
+                'cashier.drawer' => ['cashier.counter'],
+                'cashier.controls' => ['cashier.drawer'],
+                'cashier.reporting' => ['cashier.counter'],
             ],
             'limits' => [
-                'billing.transactions.monthly' => ['label' => 'Monthly billing transactions', 'unit' => 'transactions', 'default' => null],
+                'cashier.payments.monthly' => ['label' => 'Monthly cash transactions', 'unit' => 'transactions', 'default' => null],
             ],
-        ],
-
-        'point_of_sale' => [
-            'label' => 'Point of Sale',
-            'icon' => 'shopping-cart',
-            'description' => 'POS registers, sessions, sales, cafeteria, laboratory quick-sale, and pharmacy OTC.',
-            'features' => [
-                'pos.registers_sessions' => [
-                    'label' => 'POS registers and cashier sessions',
-                    'permissions' => ['pos.registers.read', 'pos.registers.manage', 'pos.sessions.read', 'pos.sessions.manage'],
-                ],
-                'pos.sales' => [
-                    'label' => 'POS sales, voids, refunds, and sale documents',
-                    'permissions' => ['pos.sales.read', 'pos.sales.create', 'pos.sales.void', 'pos.sales.refund'],
-                ],
-                'pos.lab_quick' => [
-                    'label' => 'POS laboratory quick sale',
-                    'permissions' => ['pos.lab-quick.read', 'pos.lab-quick.create'],
-                ],
-                'pos.cafeteria' => [
-                    'label' => 'POS cafeteria sales and catalog',
-                    'permissions' => ['pos.cafeteria.read', 'pos.cafeteria.create', 'pos.cafeteria.manage-catalog'],
-                ],
-                'pos.pharmacy_otc' => [
-                    'label' => 'POS pharmacy OTC sales',
-                    'permissions' => ['pos.pharmacy-otc.read', 'pos.pharmacy-otc.create'],
-                ],
-            ],
-            'dependencies' => [
-                'pos.sales' => ['pos.registers_sessions'],
-                'pos.lab_quick' => ['pos.registers_sessions'],
-                'pos.cafeteria' => ['pos.registers_sessions'],
-                'pos.pharmacy_otc' => ['pos.registers_sessions'],
-            ],
-            'limits' => [],
         ],
 
         'fiscal_receipts' => [
@@ -346,7 +296,7 @@ return [
             'features' => [
                 'fiscal_receipts.tra' => [
                     'label' => 'TRA fiscal receipt readiness controls',
-                    'permissions' => ['billing.payments.record', 'pos.sales.read'],
+                    'permissions' => ['cashier.payments.record', 'cashier.receipts.read'],
                 ],
             ],
             'dependencies' => [],
@@ -550,7 +500,7 @@ return [
                 ],
                 'integrations.health_insurance' => [
                     'label' => 'Insurance and payer integration readiness',
-                    'permissions' => ['claims.insurance.read', 'billing.payer-contracts.read'],
+                    'permissions' => ['patients.insurance.read', 'patients.insurance.manage'],
                 ],
                 'integrations.national_reporting' => [
                     'label' => 'National reporting interoperability readiness',
@@ -558,7 +508,6 @@ return [
                 ],
             ],
             'dependencies' => [
-                'integrations.health_insurance' => ['claims.insurance'],
                 'integrations.national_reporting' => ['reports.operational'],
             ],
             'limits' => [],
@@ -571,11 +520,11 @@ return [
             'features' => [
                 'reports.daily_cash' => [
                     'label' => 'Daily cash reports',
-                    'permissions' => ['billing.cash-accounts.read', 'pos.sessions.read'],
+                    'permissions' => ['cashier.reports.read', 'cashier.sessions.read'],
                 ],
                 'reports.revenue_cycle' => [
                     'label' => 'Revenue cycle reports',
-                    'permissions' => ['billing.financial-controls.read', 'claims.insurance.read'],
+                    'permissions' => ['cashier.reports.read'],
                 ],
                 'reports.operational' => [
                     'label' => 'Operational reports',
@@ -583,12 +532,12 @@ return [
                 ],
                 'reports.executive' => [
                     'label' => 'Executive reporting',
-                    'permissions' => ['platform.cross-tenant.read', 'billing.financial-controls.read'],
+                    'permissions' => ['platform.cross-tenant.read', 'cashier.reports.read'],
                 ],
             ],
             'dependencies' => [
-                'reports.revenue_cycle' => ['billing.financial_controls'],
-                'reports.executive' => ['billing.financial_controls'],
+                'reports.revenue_cycle' => ['cashier.reporting'],
+                'reports.executive' => ['cashier.reporting'],
             ],
             'limits' => [],
         ],
@@ -699,16 +648,6 @@ return [
             'appointments.provider_sessions',
             'appointments.referrals',
             'admissions.management',
-            'billing.payment_plans',
-            'billing.discounts_refunds',
-            'billing.financial_controls',
-            'billing.service_catalog',
-            'billing.payer_contracts',
-            'billing.revenue_cycle',
-            'claims.insurance',
-            'pos.lab_quick',
-            'pos.cafeteria',
-            'pos.pharmacy_otc',
             'staff.profiles',
             'staff.documents',
             'staff.credentialing',
@@ -817,31 +756,8 @@ return [
         'inpatient-ward.' => ['inpatient.ward'],
 
         // Billing
-        'billing-invoices.financial-controls.' => ['billing.financial_controls'],
-        'billing-invoices.record-payment' => ['billing.payments'],
-        'billing-invoices.reverse-payment' => ['billing.payments'],
-        'billing-invoices.payments' => ['billing.payments'],
-        'billing-invoices.audit-logs.' => ['billing.financial_controls'],
-        'billing-invoices.audit-logs' => ['billing.financial_controls'],
-        'billing-invoices.' => ['billing.invoices'],
-        'billing-payment-plans.' => ['billing.payment_plans'],
-        'billing-corporate-accounts.' => ['billing.payer_contracts'],
-        'billing-corporate-runs.' => ['billing.payer_contracts'],
-        'billing-service-catalog.' => ['billing.service_catalog'],
-        'consultation-mappings.' => ['billing.service_catalog'],
-        'billing-payer-contracts.' => ['billing.payer_contracts'],
-        'cash-billing.' => ['billing.cash_accounts'],
-        'discounts.' => ['billing.discounts_refunds'],
-        'billing-refunds.' => ['billing.discounts_refunds'],
-        'billing-routing.' => ['billing.revenue_cycle'],
 
         // Point of sale
-        'pos.registers.' => ['pos.registers_sessions'],
-        'pos.sessions.' => ['pos.registers_sessions'],
-        'pos.cafeteria.' => ['pos.cafeteria'],
-        'pos.pharmacy-otc.' => ['pos.pharmacy_otc'],
-        'pos.lab-quick.' => ['pos.lab_quick'],
-        'pos.sales.' => ['pos.sales'],
 
         // Inventory & procurement
         'inventory-procurement.suppliers.' => ['inventory.suppliers'],
@@ -881,7 +797,6 @@ return [
         'emergency-triage.' => ['emergency.triage'],
         'emergency.' => ['emergency.triage'],
         'theatre-procedures.' => ['theatre.procedures'],
-        'claims-insurance.' => ['claims.insurance'],
     ],
 
     /*
@@ -904,13 +819,13 @@ return [
             'patients.monthly' => 15000,
             'staff.seats' => 100,
             'inventory.items.max' => 5000,
-            'billing.transactions.monthly' => 50000,
+            'cashier.payments.monthly' => 50000,
         ],
         'hospital_network' => [
             'patients.monthly' => null,
             'staff.seats' => null,
             'inventory.items.max' => null,
-            'billing.transactions.monthly' => null,
+            'cashier.payments.monthly' => null,
         ],
     ],
 ];

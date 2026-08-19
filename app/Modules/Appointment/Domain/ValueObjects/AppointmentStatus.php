@@ -5,6 +5,20 @@ namespace App\Modules\Appointment\Domain\ValueObjects;
 enum AppointmentStatus: string
 {
     case SCHEDULED = 'scheduled';
+
+    /**
+     * Arrived, but not yet cleared into the clinical queue.
+     *
+     * Deliberately not a copy of "the charge is unpaid" — that lives on the
+     * charge, and duplicating it here would give two answers to one question.
+     * This records a different fact: the patient is physically present and
+     * standing at the cashier. A SCHEDULED visit with an unpaid charge is
+     * someone who has not arrived yet; the two are not interchangeable, and
+     * reception's queue only shows patients from WAITING_TRIAGE onwards, so
+     * without this state an arrived patient would be invisible until they paid.
+     */
+    case AWAITING_PAYMENT = 'awaiting_payment';
+
     case WAITING_TRIAGE = 'waiting_triage';
     case WAITING_PROVIDER = 'waiting_provider';
     case IN_CONSULTATION = 'in_consultation';
@@ -54,9 +68,20 @@ enum AppointmentStatus: string
     {
         return [
             self::SCHEDULED->value => [
+                // Check-in routes to one or the other depending on whether the
+                // visit's charge is authorized (Reception\CheckInUseCase).
+                self::AWAITING_PAYMENT->value,
                 self::WAITING_TRIAGE->value,
                 self::CANCELLED->value,
                 self::NO_SHOW->value,
+                self::COMPLETED->value,
+            ],
+            // Promoted when the charge clears — by payment, waiver or
+            // emergency override. NO_SHOW stays unreachable from here: the
+            // patient demonstrably arrived.
+            self::AWAITING_PAYMENT->value => [
+                self::WAITING_TRIAGE->value,
+                self::CANCELLED->value,
                 self::COMPLETED->value,
             ],
             self::WAITING_TRIAGE->value => [self::CANCELLED->value, self::COMPLETED->value],

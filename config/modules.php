@@ -219,8 +219,6 @@ return [
             ],
         ],
 
-
-
         'inventory_procurement' => [
             'enabled' => true,
             'label' => 'Supply Chain',

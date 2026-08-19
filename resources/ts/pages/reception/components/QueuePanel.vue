@@ -9,7 +9,7 @@
  */
 
 <script setup lang="ts">
-import { Activity, BedDouble, Megaphone, Stethoscope, UserCheck, X } from "lucide-vue-next";
+import { Activity, BedDouble, Megaphone, Stethoscope, UserCheck, Wallet, X } from "lucide-vue-next";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import Queue, { type QueueItem } from "@/components/common/Queue.vue";
@@ -28,6 +28,13 @@ const syncStore = useSyncStore();
 
 const emptyStateConfig = computed(() => {
   switch (props.queueActions.selectedStage.value) {
+    case "awaiting_payment":
+      return {
+        title: t("queue.empty_awaiting_payment_title"),
+        description: t("queue.empty_awaiting_payment_desc"),
+        illustration: "users" as const,
+        badge: t("queue.stage_awaiting_payment"),
+      };
     case "waiting_triage":
       return {
         title: t("queue.empty_triage_title"),
@@ -71,7 +78,31 @@ const emptyStateConfig = computed(() => {
   <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
     <!-- 2027 Patient Flow Stage Switcher (Triage -> Wait Doctor -> In Consult -> Admitted) -->
     <div class="border-b border-border/80 bg-surface px-3 py-2 shrink-0">
-      <div class="grid grid-cols-4 gap-1 rounded-lg bg-muted/70 p-1 text-xs font-medium">
+      <div class="grid grid-cols-5 gap-1 rounded-lg bg-muted/70 p-1 text-xs font-medium">
+        <button
+          type="button"
+          class="flex items-center justify-center gap-1.5 rounded-md py-1.5 px-2 transition-all cursor-pointer"
+          :class="
+            queueActions.selectedStage.value === 'awaiting_payment'
+              ? 'bg-card text-foreground font-semibold shadow-2xs'
+              : 'text-muted-foreground hover:text-foreground'
+          "
+          @click="queueActions.setStage('awaiting_payment')"
+        >
+          <Wallet class="size-3.5 text-critical shrink-0" />
+          <span class="truncate">{{ t("queue.stage_awaiting_payment") }}</span>
+          <span
+            class="rounded-full px-1.5 py-0.2 text-xs"
+            :class="
+              queueActions.selectedStage.value === 'awaiting_payment'
+                ? 'bg-critical/15 text-critical font-bold'
+                : 'bg-secondary text-muted-foreground'
+            "
+          >
+            {{ queueActions.stageCounts.value.awaiting_payment ?? 0 }}
+          </span>
+        </button>
+
         <button
           type="button"
           class="flex items-center justify-center gap-1.5 rounded-md py-1.5 px-2 transition-all cursor-pointer"
@@ -85,7 +116,7 @@ const emptyStateConfig = computed(() => {
           <Activity class="size-3.5 text-primary shrink-0" />
           <span class="truncate">{{ t("queue.stage_triage") }}</span>
           <span
-            class="rounded-full px-1.5 py-0.2 text-[10px]"
+            class="rounded-full px-1.5 py-0.2 text-xs"
             :class="
               queueActions.selectedStage.value === 'waiting_triage'
                 ? 'bg-primary/15 text-primary font-bold'
@@ -109,7 +140,7 @@ const emptyStateConfig = computed(() => {
           <UserCheck class="size-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
           <span class="truncate">{{ t("queue.stage_wait_doctor") }}</span>
           <span
-            class="rounded-full px-1.5 py-0.2 text-[10px]"
+            class="rounded-full px-1.5 py-0.2 text-xs"
             :class="
               queueActions.selectedStage.value === 'waiting_provider'
                 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold'
@@ -133,7 +164,7 @@ const emptyStateConfig = computed(() => {
           <Stethoscope class="size-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
           <span class="truncate">{{ t("queue.stage_in_consult") }}</span>
           <span
-            class="rounded-full px-1.5 py-0.2 text-[10px]"
+            class="rounded-full px-1.5 py-0.2 text-xs"
             :class="
               queueActions.selectedStage.value === 'in_consultation'
                 ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 font-bold'
@@ -157,7 +188,7 @@ const emptyStateConfig = computed(() => {
           <BedDouble class="size-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
           <span class="truncate">{{ t("queue.stage_admitted") }}</span>
           <span
-            class="rounded-full px-1.5 py-0.2 text-[10px]"
+            class="rounded-full px-1.5 py-0.2 text-xs"
             :class="
               queueActions.selectedStage.value === 'admitted'
                 ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-bold'

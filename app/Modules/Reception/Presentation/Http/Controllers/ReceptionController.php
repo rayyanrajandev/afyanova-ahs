@@ -269,6 +269,7 @@ class ReceptionController extends Controller
             'stage' => [
                 'required',
                 Rule::in([
+                    AppointmentStatus::AWAITING_PAYMENT->value,
                     AppointmentStatus::WAITING_TRIAGE->value,
                     AppointmentStatus::WAITING_PROVIDER->value,
                     AppointmentStatus::IN_CONSULTATION->value,

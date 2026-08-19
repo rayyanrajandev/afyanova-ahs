@@ -71,9 +71,9 @@ return [
     |                same_complaint_required => boolean
     */
     'system_settings_keys' => [
-        'follow_up_days'          => 'consultation.follow_up_days',
-        'review_fee_percentage'   => 'consultation.review_fee_percentage',
-        'review_fee_is_free'      => 'consultation.review_fee_is_free',
+        'follow_up_days' => 'consultation.follow_up_days',
+        'review_fee_percentage' => 'consultation.review_fee_percentage',
+        'review_fee_is_free' => 'consultation.review_fee_is_free',
         'same_complaint_required' => 'consultation.same_complaint_required',
     ],
 

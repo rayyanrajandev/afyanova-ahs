@@ -2,18 +2,23 @@
 
 namespace App\Modules\Revenue;
 
+use App\Modules\Appointment\Application\Listeners\PromoteAppointmentOnChargeAuthorized;
+use App\Modules\Revenue\Domain\Events\ServiceChargeAuthorized;
 use App\Modules\Revenue\Domain\Services\ChargeAuthorizationPolicyResolverInterface;
 use App\Modules\Revenue\Domain\Services\ChargeResolverInterface;
 use App\Modules\Revenue\Domain\Services\DocumentNumberAllocatorInterface;
 use App\Modules\Revenue\Domain\Services\OutstandingBalanceReaderInterface;
 use App\Modules\Revenue\Domain\Services\RevenueAuditRecorderInterface;
+use App\Modules\Revenue\Domain\Services\ServiceAuthorizationReaderInterface;
 use App\Modules\Revenue\Infrastructure\Policies\ChargeAuthorizationPolicyResolver;
 use App\Modules\Revenue\Infrastructure\Services\ChargeResolver;
 use App\Modules\Revenue\Infrastructure\Services\DocumentNumberAllocator;
 use App\Modules\Revenue\Infrastructure\Services\LedgerOutstandingBalanceReader;
 use App\Modules\Revenue\Infrastructure\Services\RevenueAuditRecorder;
+use App\Modules\Revenue\Infrastructure\Services\ServiceAuthorizationReader;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -51,6 +56,23 @@ class RevenueServiceProvider extends ServiceProvider
             ),
         );
 
+        $this->app->singleton(
+            ServiceAuthorizationReaderInterface::class,
+            ServiceAuthorizationReader::class,
+        );
+
         $this->app->bindIf(ConnectionInterface::class, fn () => DB::connection());
+    }
+
+    public function boot(): void
+    {
+        // Revenue announces that a charge cleared; Appointment decides what
+        // that means for the patient's place in the queue. Registered here
+        // rather than in the Appointment module only because Revenue owns the
+        // event — the dependency still points from Appointment to Revenue.
+        Event::listen(
+            ServiceChargeAuthorized::class,
+            [PromoteAppointmentOnChargeAuthorized::class, 'handle'],
+        );
     }
 }

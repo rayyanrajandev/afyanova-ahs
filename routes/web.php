@@ -45,6 +45,9 @@ Route::get('/', function (Request $request) {
     if (Gate::allows('pharmacy.access')) {
         return redirect('/pharmacy');
     }
+    if (Gate::allows('cashier.access')) {
+        return redirect('/cashier');
+    }
 
     return redirect('/reception');
 })->name('home');
@@ -92,6 +95,10 @@ Route::get('radiology', fn () => Inertia::render('radiology/Index'))
 Route::get('pharmacy', fn () => Inertia::render('pharmacy/Index'))
     ->middleware(['auth', 'verified', 'session.limits', 'can:pharmacy.access'])
     ->name('pharmacy');
+
+Route::get('cashier', fn () => Inertia::render('cashier/Index'))
+    ->middleware(['auth', 'verified', 'session.limits', 'can:cashier.access'])
+    ->name('cashier');
 
 /*
 |--------------------------------------------------------------------------

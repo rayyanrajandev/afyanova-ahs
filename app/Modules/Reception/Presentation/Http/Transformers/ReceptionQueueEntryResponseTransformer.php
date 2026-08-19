@@ -34,6 +34,9 @@ class ReceptionQueueEntryResponseTransformer
             'appointmentNumber' => $entry['appointmentNumber'] ?? null,
             'status' => $status,
             'stage' => $stage,
+            // Prepaid gate: lets the desk see who is waiting on the cashier
+            // without opening the row.
+            'paymentStatus' => $entry['paymentStatus'] ?? null,
             'patientId' => $entry['patientId'] ?? null,
             'patientName' => $entry['patientName'] ?? null,
             'patientNumber' => $entry['patientNumber'] ?? null,

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Revenue\Application\UseCases;
 
+use App\Modules\Revenue\Domain\Events\ServiceChargeAuthorized;
 use App\Modules\Revenue\Domain\Services\RevenueAuditRecorderInterface;
 use App\Modules\Revenue\Domain\ValueObjects\AuthorizationBasis;
 use App\Modules\Revenue\Domain\ValueObjects\ServiceChargeStatus;
@@ -91,6 +92,18 @@ class WaiveServiceChargeUseCase
             $charge->authorized_by_user_id = $approvedByUserId;
             $charge->authorization_reference = $basis->value;
             $charge->save();
+
+            $cleared = clone $charge;
+            DB::afterCommit(function () use ($cleared, $basis, $approvedByUserId): void {
+                event(new ServiceChargeAuthorized(
+                    serviceChargeId: (string) $cleared->id,
+                    patientId: (string) $cleared->patient_id,
+                    sourceKind: $cleared->source_workflow_kind,
+                    sourceId: $cleared->source_workflow_id,
+                    basis: $basis,
+                    actorUserId: $approvedByUserId,
+                ));
+            });
 
             $this->auditRecorder->record(
                 entityType: 'service_charge',

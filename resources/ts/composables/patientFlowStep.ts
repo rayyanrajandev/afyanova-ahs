@@ -17,6 +17,7 @@
 import type { StatusType } from "@/components/common/StatusBadge.vue";
 
 export type PatientFlowStep =
+  | "awaiting_payment"
   | "waiting_triage"
   | "in_triage"
   | "waiting_clinician"
@@ -40,6 +41,7 @@ export type PatientFlowStep =
 
 /** i18n key for a step, or null when the step isn't one we label directly. */
 const STEP_LABEL_KEYS: Partial<Record<PatientFlowStep, string>> = {
+  awaiting_payment: "patient.stage_awaiting_payment",
   waiting_triage: "patient.stage_waiting_triage",
   in_triage: "patient.stage_in_triage",
   waiting_clinician: "patient.stage_waiting_clinician",
@@ -67,6 +69,9 @@ const STEP_LABEL_KEYS: Partial<Record<PatientFlowStep, string>> = {
  * text rather than left to the reader.
  */
 const STEP_STATUS: Partial<Record<PatientFlowStep, StatusType>> = {
+  // Not merely "waiting": nothing clinical can begin at all until
+  // this clears, so it reads as a blocker rather than a queue.
+  awaiting_payment: "critical",
   waiting_triage: "warning",
   in_triage: "in_progress",
   waiting_clinician: "warning",

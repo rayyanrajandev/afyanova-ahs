@@ -16,6 +16,7 @@ use App\Modules\Appointment\Domain\ValueObjects\AppointmentStatus;
 use App\Modules\Admission\Domain\Repositories\AdmissionRepositoryInterface;
 use App\Modules\EmergencyTriage\Domain\Repositories\EmergencyTriageCaseRepositoryInterface;
 use App\Modules\Platform\Domain\Services\CurrentPlatformScopeContextInterface;
+use App\Modules\Revenue\Application\Services\ConsultationChargeRaiser;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
 use App\Support\FinancialCoverage;
 use Illuminate\Support\Carbon;
@@ -33,6 +34,7 @@ class CreateAppointmentUseCase
         private readonly ConsultationClassificationServiceInterface $consultationClassificationService,
         private readonly CurrentPlatformScopeContextInterface $platformScopeContext,
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
+        private readonly ConsultationChargeRaiser $consultationChargeRaiser,
     ) {}
 
     public function execute(array $payload, ?int $actorId = null): array
@@ -86,6 +88,13 @@ class CreateAppointmentUseCase
                 'consultation_classification' => $consultationClassificationAudit,
             ]),
         );
+
+        // Prepaid: the consultation is charged for now, before anyone is seen,
+        // so the cashier has something to take payment against and the gate at
+        // check-in has something to read. Never throws — see
+        // ConsultationChargeRaiser: a missing tariff must not stop a patient
+        // being registered.
+        $this->consultationChargeRaiser->raiseFor($createdAppointment, $actorId);
 
         return $createdAppointment;
     }

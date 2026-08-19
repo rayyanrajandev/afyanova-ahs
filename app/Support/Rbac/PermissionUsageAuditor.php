@@ -50,6 +50,7 @@ class PermissionUsageAuditor
      *     gateOnlyAllowlist: array<int, string>,
      *     orphanedChecks: array<int, string>,
      *     unusedSeeded: array<int, string>,
+     *     ungrantedChecks: array<int, string>,
      * }
      */
     public function audit(): array
@@ -80,7 +81,45 @@ class PermissionUsageAuditor
             'gateOnlyAllowlist' => $gateOnlyAllowlist,
             'orphanedChecks' => $orphanedChecks,
             'unusedSeeded' => $unusedSeeded,
+            'ungrantedChecks' => $this->ungrantedChecks($checked, $allowlistSet),
         ];
+    }
+
+    /**
+     * Permissions a route or gate actually checks that no role grants.
+     *
+     * This is the gap that let the retired cashier role ring up a sale and be
+     * unable to open the drawer it belonged to: `pos.sessions.manage` was
+     * seeded, so the seeded-vs-checked assertion passed, and it was held by
+     * nobody, so the route was unreachable by the only role that needed it.
+     * Three separate authorization bugs of this exact shape shipped before it
+     * was closed.
+     *
+     * Read from config/roles.php rather than the database: that file is the
+     * definition, and a check that only failed after someone re-seeded would
+     * not stop the build.
+     *
+     * @param  array<int, string>  $checked
+     * @param  array<string, int>  $allowlistSet
+     * @return array<int, string>
+     */
+    private function ungrantedChecks(array $checked, array $allowlistSet): array
+    {
+        $granted = [];
+
+        foreach ((array) config('roles', []) as $role) {
+            foreach ((array) ($role['permissions'] ?? []) as $permission) {
+                $granted[$permission] = true;
+            }
+        }
+
+        $ungranted = array_values(array_unique(array_filter(
+            $checked,
+            static fn (string $name): bool => ! isset($granted[$name]) && ! isset($allowlistSet[$name]),
+        )));
+        sort($ungranted);
+
+        return $ungranted;
     }
 
     /**
@@ -201,8 +240,6 @@ class PermissionUsageAuditor
      * describes the can: middleware — are not mistaken for real permission
      * checks. Uses the PHP tokenizer for correctness rather than a regex,
      * which would be fragile around strings containing comment-like sequences.
-     *
-     * @return string
      */
     private function stripComments(string $contents): string
     {

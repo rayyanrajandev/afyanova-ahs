@@ -78,7 +78,15 @@ export function useQueueActions(options: UseQueueActionsOptions = {}) {
     return queueStore.tasks.map((task) => {
       let category = task.description || t("queue.category_general_opd");
 
-      if (selectedStage.value === "waiting_triage") {
+      if (selectedStage.value === "awaiting_payment") {
+        // The one thing the desk needs on this tab is how much to send them
+        // with, so the amount replaces the usual arrival-tier category.
+        const due = task.paymentStatus?.amountDue;
+        const currency = task.paymentStatus?.currencyCode;
+        category = due
+          ? t("queue.amount_due", { amount: `${currency ?? ""} ${due}`.trim() })
+          : t("queue.unpaid_chip");
+      } else if (selectedStage.value === "waiting_triage") {
         const baseTier = tierLabel(task.arrivalMode);
         category = baseTier ? t(baseTier) : (task.description || t("queue.category_general_opd"));
       } else if (selectedStage.value === "waiting_provider") {
@@ -123,6 +131,9 @@ export function useQueueActions(options: UseQueueActionsOptions = {}) {
         status,
         statusLabel,
         category,
+        // Set only while the prepaid gate is shut. Queue.vue renders this as
+        // the row's administrative warning.
+        hasWarning: task.paymentStatus != null,
       };
     });
   });

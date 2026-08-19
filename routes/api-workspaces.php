@@ -2,7 +2,6 @@
 
 use App\Modules\Admission\Presentation\Http\Controllers\NursingAdmissionController;
 use App\Modules\Appointment\Presentation\Http\Controllers\AppointmentController;
-use App\Modules\Payer\Presentation\Http\Controllers\PatientInsuranceController;
 use App\Modules\Encounter\Presentation\Http\Controllers\EncounterClinicalAttachmentController;
 use App\Modules\Encounter\Presentation\Http\Controllers\EncounterController;
 use App\Modules\Encounter\Presentation\Http\Controllers\EncounterDiagnosisController;
@@ -10,11 +9,17 @@ use App\Modules\Laboratory\Presentation\Http\Controllers\LaboratoryOrderControll
 use App\Modules\MedicalRecord\Presentation\Http\Controllers\MedicalRecordController;
 use App\Modules\Patient\Presentation\Http\Controllers\PatientController;
 use App\Modules\PatientFlow\Presentation\Http\Controllers\PatientFlowController;
-use App\Modules\Platform\Presentation\Http\Controllers\PlatformConfigurationController;
 use App\Modules\PatientVitals\Presentation\Http\Controllers\PatientVitalSetController;
+use App\Modules\Payer\Presentation\Http\Controllers\PatientInsuranceController;
 use App\Modules\Pharmacy\Presentation\Http\Controllers\PharmacyOrderController;
+use App\Modules\Platform\Presentation\Http\Controllers\PlatformConfigurationController;
 use App\Modules\Radiology\Presentation\Http\Controllers\RadiologyOrderController;
 use App\Modules\Reception\Presentation\Http\Controllers\ReceptionController;
+use App\Modules\Revenue\Presentation\Http\Controllers\CashierChargeController;
+use App\Modules\Revenue\Presentation\Http\Controllers\CashierPaymentController;
+use App\Modules\Revenue\Presentation\Http\Controllers\CashierQueueController;
+use App\Modules\Revenue\Presentation\Http\Controllers\CashierRefundController;
+use App\Modules\Revenue\Presentation\Http\Controllers\CashierSessionController;
 use App\Modules\ServiceRequest\Presentation\Http\Controllers\NurseQueueController;
 use App\Modules\ServiceRequest\Presentation\Http\Controllers\ServiceRequestController;
 use App\Modules\Staff\Presentation\Http\Controllers\StaffProfileController;
@@ -157,6 +162,17 @@ Route::middleware('api.platform')
         // real, tested check-in logic is ReceptionController::checkIn() (already
         // used by the working `appointments.check-in` route above); pointed here
         // instead so the reception-workspace URL actually works.
+        // Restored 2026-08-19 (Cashier Phase 5). Both were dropped in the
+        // 29e52b6 route consolidation while queueStore.ts kept calling them,
+        // so the reception queue panel had been 404ing since. Same URIs,
+        // names and abilities as the originals in routes/api.php.
+        Route::get('reception/queue', [ReceptionController::class, 'queue'])
+            ->middleware('can:appointments.read')
+            ->name('reception.queue');
+        Route::get('reception/queue/status-counts', [ReceptionController::class, 'queueStatusCounts'])
+            ->middleware('can:appointments.read')
+            ->name('reception.queue.status-counts');
+
         Route::post('reception/queue/{id}/check-in', [ReceptionController::class, 'checkIn'])
             ->middleware('can:appointment.check-in')
             ->name('reception.queue.check-in');
@@ -184,6 +200,14 @@ Route::middleware('api.platform')
         Route::post('reception/queue/reorder', [ReceptionController::class, 'reorderQueue'])
             ->middleware('can:appointment.check-in')
             ->name('reception.queue.reorder');
+        // Restored 2026-08-19: dropped in the 29e52b6 route consolidation
+        // alongside the queue routes (restored above on the same date). The
+        // frontend's useArrivalIntake.ts and usePatientRegistration.ts both
+        // POST here for walk-in / emergency check-in. Authorization is handled
+        // by RegisterWalkInRequest (appointments.create + appointment.check-in).
+        Route::post('reception/walk-ins', [ReceptionController::class, 'registerWalkIn'])
+            ->name('reception.walk-ins.store');
+
         Route::get('reception/patients/{patientId}/flow-timeline', [PatientFlowController::class, 'patientTimeline'])
             ->middleware('can:patients.read')
             ->name('reception.patients.flow-timeline');
@@ -573,4 +597,107 @@ Route::middleware('api.platform')
         Route::get('pharmacy/patients/{patientId}/flow-timeline', [PatientFlowController::class, 'patientTimeline'])
             ->middleware('can:pharmacy.orders.read')
             ->name('pharmacy.patients.flow-timeline');
+
+        // ============================================================
+        // CASHIER WORKSPACE ROUTES (Cashier Phase 6)
+        // The prepaid counter. Reuses PatientController and
+        // PatientFlowController unchanged, exactly as the other workspaces do.
+        // ============================================================
+        // The queue is charge-driven, not appointment-driven: the cashier
+        // serves whoever owes money, which includes walk-ins with an ad-hoc
+        // charge and no appointment at all.
+        Route::get('cashier/queue', [CashierQueueController::class, 'index'])
+            ->middleware('can:cashier.charges.read')
+            ->name('cashier.queue');
+        Route::get('cashier/queue/status-counts', [CashierQueueController::class, 'statusCounts'])
+            ->middleware('can:cashier.charges.read')
+            ->name('cashier.queue.status-counts');
+
+        Route::get('cashier/patients', [PatientController::class, 'index'])
+            ->middleware('can:patients.read')
+            ->name('cashier.patients');
+        Route::get('cashier/patients/{mrn}', [PatientController::class, 'show'])
+            ->middleware('can:patients.read')
+            ->name('cashier.patients.show');
+        Route::get('cashier/patients/{patientId}/charges', [CashierQueueController::class, 'patientCharges'])
+            ->middleware('can:cashier.charges.read')
+            ->name('cashier.patients.charges');
+        Route::get('cashier/patients/{patientId}/flow-timeline', [PatientFlowController::class, 'patientTimeline'])
+            ->middleware('can:cashier.charges.read')
+            ->name('cashier.patients.flow-timeline');
+
+        Route::get('cashier/charges/{id}', [CashierQueueController::class, 'showCharge'])
+            ->middleware('can:cashier.charges.read')
+            ->name('cashier.charges.show');
+        Route::get('cashier/catalog', [CashierQueueController::class, 'catalog'])
+            ->middleware('can:cashier.charges.create')
+            ->name('cashier.catalog');
+        Route::post('cashier/charges', [CashierChargeController::class, 'store'])
+            ->middleware('can:cashier.charges.create')
+            ->name('cashier.charges.store');
+        Route::post('cashier/charges/{id}/cancel', [CashierChargeController::class, 'cancel'])
+            ->middleware('can:cashier.charges.cancel')
+            ->name('cashier.charges.cancel');
+        // Two ways to clear a charge without payment, deliberately split.
+        // A waiver is a supervisor's financial decision; an emergency override
+        // is a clinician's. One route with one ability could not express that,
+        // and would have let whoever held it grant both.
+        Route::post('cashier/charges/{id}/waive', [CashierChargeController::class, 'waive'])
+            ->middleware('can:cashier.waivers.approve')
+            ->name('cashier.charges.waive');
+        Route::post('cashier/charges/{id}/emergency-override', [CashierChargeController::class, 'emergencyOverride'])
+            ->middleware('can:cashier.charges.emergency-override')
+            ->name('cashier.charges.emergency-override');
+
+        Route::post('cashier/payments', [CashierPaymentController::class, 'store'])
+            ->middleware('can:cashier.payments.record')
+            ->name('cashier.payments.store');
+        Route::get('cashier/payments/{id}', [CashierPaymentController::class, 'show'])
+            ->middleware('can:cashier.payments.read')
+            ->name('cashier.payments.show');
+        Route::post('cashier/payments/{id}/reverse', [CashierPaymentController::class, 'reverse'])
+            ->middleware('can:cashier.payments.reverse')
+            ->name('cashier.payments.reverse');
+
+        Route::get('cashier/receipts/{id}', [CashierPaymentController::class, 'showReceipt'])
+            ->middleware('can:cashier.receipts.read')
+            ->name('cashier.receipts.show');
+        Route::post('cashier/receipts/{id}/reprint', [CashierPaymentController::class, 'reprintReceipt'])
+            ->middleware('can:cashier.receipts.reprint')
+            ->name('cashier.receipts.reprint');
+
+        // Scoped to the signed-in cashier: one drawer, theirs.
+        Route::get('cashier/session/current', [CashierSessionController::class, 'current'])
+            ->middleware('can:cashier.sessions.read')
+            ->name('cashier.session.current');
+        Route::post('cashier/sessions', [CashierSessionController::class, 'store'])
+            ->middleware('can:cashier.sessions.open')
+            ->name('cashier.sessions.store');
+        Route::post('cashier/sessions/{id}/movements', [CashierSessionController::class, 'recordMovement'])
+            ->middleware('can:cashier.sessions.move-cash')
+            ->name('cashier.sessions.movements.store');
+        Route::post('cashier/sessions/{id}/close', [CashierSessionController::class, 'close'])
+            ->middleware('can:cashier.sessions.close')
+            ->name('cashier.sessions.close');
+        Route::post('cashier/sessions/{id}/approve-variance', [CashierSessionController::class, 'approveVariance'])
+            ->middleware('can:cashier.sessions.approve-variance')
+            ->name('cashier.sessions.approve-variance');
+        Route::get('cashier/sessions/{id}/summary', [CashierSessionController::class, 'summary'])
+            ->middleware('can:cashier.sessions.read')
+            ->name('cashier.sessions.summary');
+
+        Route::get('cashier/refunds', [CashierRefundController::class, 'index'])
+            ->middleware('can:cashier.refunds.request')
+            ->name('cashier.refunds.index');
+        Route::post('cashier/refunds', [CashierRefundController::class, 'store'])
+            ->middleware('can:cashier.refunds.request')
+            ->name('cashier.refunds.store');
+        Route::post('cashier/refunds/{id}/approve', [CashierRefundController::class, 'approve'])
+            ->middleware('can:cashier.refunds.approve')
+            ->name('cashier.refunds.approve');
+
+        Route::get('cashier/day/summary', [CashierQueueController::class, 'daySummary'])
+            ->middleware('can:cashier.reports.read')
+            ->name('cashier.day.summary');
+
     });

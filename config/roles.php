@@ -99,6 +99,8 @@ return [
         'is_system' => true,
         'status' => 'active',
         'permissions' => [
+            // Cashier Phase 6: see whether the visit in front of you is cleared.
+            'cashier.charges.read',
             'patients.read', 'patients.create',
             'appointments.read', 'appointments.create',
             'admissions.read',
@@ -135,6 +137,11 @@ return [
         'is_system' => true,
         'status' => 'active',
         'permissions' => [
+            // Cashier Phase 6: treat now, reconcile later. Deliberately not held by
+            // any finance role — the call is clinical.
+            'cashier.charges.emergency-override',
+            // Cashier Phase 6: see whether the visit in front of you is cleared.
+            'cashier.charges.read',
             'patients.read', 'patients.create',
             'appointments.read', 'appointments.create',
             'admissions.read', 'admissions.create',
@@ -174,6 +181,8 @@ return [
         'is_system' => true,
         'status' => 'active',
         'permissions' => [
+            // Cashier Phase 6: see whether the visit in front of you is cleared.
+            'cashier.charges.read',
             'patients.read', 'patients.create',
             'appointments.read', 'appointments.create',
             'admissions.read', 'admissions.create',
@@ -214,6 +223,8 @@ return [
         'is_system' => true,
         'status' => 'active',
         'permissions' => [
+            // Cashier Phase 6: see whether the visit in front of you is cleared.
+            'cashier.charges.read',
             'patients.read',
             'appointments.read',
             'admissions.read',
@@ -257,6 +268,8 @@ return [
         'is_system' => true,
         'status' => 'active',
         'permissions' => [
+            // Cashier Phase 6: see whether the visit in front of you is cleared.
+            'cashier.charges.read',
             'patients.read', 'patients.create',
             'appointments.read', 'appointments.create',
             'medical.records.read', 'medical.records.create',
@@ -415,6 +428,23 @@ return [
         'is_system' => true,
         'status' => 'active',
         'permissions' => [
+            // Cashier Phase 6: operate the counter. Deliberately holds no approval
+            // permission — every second-person control belongs to a supervisor,
+            // and a cashier who could clear their own variance is not a control.
+            'cashier.access',
+            'cashier.charges.read',
+            'cashier.charges.create',
+            'cashier.charges.cancel',
+            'cashier.payments.record',
+            'cashier.payments.read',
+            'cashier.payments.reverse',
+            'cashier.receipts.read',
+            'cashier.receipts.reprint',
+            'cashier.sessions.read',
+            'cashier.sessions.open',
+            'cashier.sessions.close',
+            'cashier.sessions.move-cash',
+            'cashier.refunds.request',
             'patients.read',
         ],
     ],
@@ -428,6 +458,8 @@ return [
         'is_system' => true,
         'status' => 'active',
         'permissions' => [
+            // Cashier Phase 6: the desk needs to see the prepaid gate it enforces.
+            'cashier.charges.read',
             'patients.read', 'patients.create',
             'patient.demographics.update',
             'appointments.read', 'appointments.create',
@@ -459,6 +491,9 @@ return [
         'is_system' => true,
         'status' => 'active',
         'permissions' => [
+            // Cashier Phase 6: treat now, reconcile later. Deliberately not held by
+            // any finance role — the call is clinical.
+            'cashier.charges.emergency-override',
             'patients.read', 'patients.create', 'patient.demographics.update',
             'patients.update-status',
             'appointments.read', 'appointments.create', 'appointment.reschedule',
@@ -570,6 +605,8 @@ return [
         'is_system' => true,
         'status' => 'active',
         'permissions' => [
+            // Cashier Phase 6: see whether the visit in front of you is cleared.
+            'cashier.charges.read',
             'patients.read',
             'appointments.read', 'appointments.create',
             'medical.records.read', 'medical.records.create',
@@ -588,6 +625,11 @@ return [
         'is_system' => true,
         'status' => 'active',
         'permissions' => [
+            // Cashier Phase 6: treat now, reconcile later. Deliberately not held by
+            // any finance role — the call is clinical.
+            'cashier.charges.emergency-override',
+            // Cashier Phase 6: see whether the visit in front of you is cleared.
+            'cashier.charges.read',
             'patients.read',
             'appointments.read',
             'admissions.read',
@@ -610,6 +652,13 @@ return [
         'is_system' => true,
         'status' => 'active',
         'permissions' => [
+            // Cashier Phase 6: reads the books, handles no cash.
+            'cashier.access',
+            'cashier.charges.read',
+            'cashier.payments.read',
+            'cashier.receipts.read',
+            'cashier.sessions.read',
+            'cashier.reports.read',
             'patients.read',
         ],
     ],
@@ -623,6 +672,27 @@ return [
         'is_system' => true,
         'status' => 'active',
         'permissions' => [
+            // Cashier Phase 6: the approve column. Also allowed to work a till when
+            // short-staffed, so the use cases enforce requester != approver
+            // rather than trusting this split on its own.
+            'cashier.access',
+            'cashier.charges.read',
+            'cashier.charges.create',
+            'cashier.charges.cancel',
+            'cashier.payments.record',
+            'cashier.payments.read',
+            'cashier.payments.reverse',
+            'cashier.receipts.read',
+            'cashier.receipts.reprint',
+            'cashier.sessions.read',
+            'cashier.sessions.open',
+            'cashier.sessions.close',
+            'cashier.sessions.move-cash',
+            'cashier.sessions.approve-variance',
+            'cashier.refunds.request',
+            'cashier.refunds.approve',
+            'cashier.waivers.approve',
+            'cashier.reports.read',
             'patients.read',
         ],
     ],

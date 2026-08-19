@@ -12,6 +12,7 @@ import {
   Activity,
   ArrowLeft,
   Building2,
+  CalendarOff,
   CheckCircle2,
   ChevronDown,
   CircleCheck,
@@ -28,7 +29,6 @@ import {
 import { PopoverClose } from "reka-ui";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import VisitNotesDialog from "./VisitNotesDialog.vue";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/popover";
 import type { Patient, PatientAllergySummary } from "@/stores/patientStore";
 import type { ReadinessContext, VisitContext } from "@/stores/queueStore";
+import VisitNotesDialog from "./VisitNotesDialog.vue";
 
 const props = defineProps<{
   patient: Patient;
@@ -97,6 +98,22 @@ const hasRecordedTriageVitals = computed<boolean>(() => {
 
   return status !== "waiting_triage" && status !== "scheduled";
 });
+
+/**
+ * Whether this patient is actually on a visit right now.
+ *
+ * The distinction this component was missing. Selecting someone from the
+ * Patients tab resolves their active visit through
+ * `GET nursing/active-visit/{id}`, and for a patient who is not here today
+ * that resolves to null — at which point `hasRecordedTriageVitals` is false
+ * for the same reason it is false for someone standing in the triage queue.
+ *
+ * Those are opposite situations. One means act now; the other means this
+ * person is not in the building. Reading them as the same is why the Tasks
+ * tab could be empty while every clinical action sat live on the header of a
+ * patient with no visit at all.
+ */
+const hasActiveVisit = computed<boolean>(() => props.visit !== null);
 
 // Patient's journey context (e.g. "Walk-in OPD · In Triage")
 const visitLabel = computed<string | null>(() => {
@@ -235,7 +252,7 @@ const patientPhone = computed(() => {
         most common completion, never the only permitted path.
       -->
       <Button
-        v-if="!hasRecordedTriageVitals"
+        v-if="!hasRecordedTriageVitals && hasActiveVisit"
         size="sm"
         class="h-7 inline-flex items-center gap-1.5 shadow-xs font-medium cursor-pointer text-xs"
         @click="emit('openVitals')"
@@ -243,8 +260,26 @@ const patientPhone = computed(() => {
         <Activity class="size-3.5" aria-hidden="true" />
         <span>{{ t("nursing.record_vitals") }}</span>
       </Button>
+
+      <!--
+        No visit today. Vitals stay reachable and nothing else does: a nurse
+        taking observations on someone who collapsed in the corridor, or before
+        registration has finished, is exactly the moment not to be blocked, and
+        the API allows it deliberately. Everything else on this header belongs
+        to a visit that does not exist.
+      -->
       <Button
-        v-else-if="hasEncounter && hasPatientInContact"
+        v-else-if="!hasActiveVisit"
+        variant="outline"
+        size="sm"
+        class="h-7 inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer"
+        @click="emit('openVitals')"
+      >
+        <Activity class="size-3.5" aria-hidden="true" />
+        <span>{{ t("nursing.record_vitals") }}</span>
+      </Button>
+      <Button
+        v-else-if="hasActiveVisit && hasEncounter && hasPatientInContact"
         size="sm"
         :disabled="isUpdatingContact"
         class="h-7 inline-flex items-center gap-1.5 shadow-xs font-medium cursor-pointer text-xs disabled:opacity-60"
@@ -264,6 +299,15 @@ const patientPhone = computed(() => {
         <span>{{ t("nursing.retake_vitals") }}</span>
       </Button>
 
+      <!-- Says why the rest of the header is missing, rather than leaving a gap. -->
+      <span
+        v-if="!hasActiveVisit"
+        class="inline-flex items-center gap-1.5 rounded-md border border-border/70 px-2 py-1 text-xs text-muted-foreground"
+      >
+        <CalendarOff class="size-3.5" aria-hidden="true" />
+        {{ t("nursing.no_active_visit") }}
+      </span>
+
       <!--
         Hand the patient back. There is deliberately no matching "start"
         button: claiming happens automatically when the nurse opens the vitals
@@ -277,7 +321,7 @@ const patientPhone = computed(() => {
         the nurse walking away leaves no signal for the system to observe.
       -->
       <Button
-        v-if="hasEncounter && hasPatientInContact && !hasRecordedTriageVitals"
+        v-if="hasActiveVisit && hasEncounter && hasPatientInContact && !hasRecordedTriageVitals"
         variant="outline"
         size="sm"
         :disabled="isUpdatingContact"
@@ -288,8 +332,8 @@ const patientPhone = computed(() => {
         <span>{{ t("nursing.release_patient") }}</span>
       </Button>
 
-      <!-- Actions Dropdown Hub -->
-      <Popover>
+      <!-- Actions Dropdown Hub — every item inside belongs to a live visit. -->
+      <Popover v-if="hasActiveVisit">
         <PopoverTrigger as-child>
           <Button
             variant="outline"

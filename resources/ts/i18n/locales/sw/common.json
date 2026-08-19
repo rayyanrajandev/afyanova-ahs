@@ -703,7 +703,8 @@
         "stage_no_show": "Hakuja",
         "return_failed": "Imeshindikana kumrudisha mgonjwa mapokezi. Tafadhali jaribu tena.",
         "route_to_department": "Peleka Idara",
-        "route_to_department_placeholder": "Baki na uelekezaji uliopo"
+        "route_to_department_placeholder": "Baki na uelekezaji uliopo",
+        "no_active_visit": "Hakuna ziara inayoendelea leo"
     },
     "vitals": {
         "blood_pressure": "Shinikizo la Damu",

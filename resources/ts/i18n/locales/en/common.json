@@ -703,7 +703,8 @@
         "stage_no_show": "No Show",
         "return_failed": "Could not return patient to reception. Please try again.",
         "route_to_department": "Send To Department",
-        "route_to_department_placeholder": "Keep current routing"
+        "route_to_department_placeholder": "Keep current routing",
+        "no_active_visit": "No active visit today"
     },
     "vitals": {
         "blood_pressure": "Blood Pressure",

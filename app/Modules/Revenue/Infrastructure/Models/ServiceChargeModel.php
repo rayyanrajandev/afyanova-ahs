@@ -50,6 +50,16 @@ class ServiceChargeModel extends Model
         return $this->belongsTo(PriceBookEntryModel::class, 'price_book_entry_id');
     }
 
+    public function unitPrice(): Money
+    {
+        return Money::of((int) $this->unit_price_minor, (string) $this->currency_code);
+    }
+
+    public function grossAmount(): Money
+    {
+        return Money::of((int) $this->gross_amount_minor, (string) $this->currency_code);
+    }
+
     public function netAmount(): Money
     {
         return Money::of((int) $this->net_amount_minor, (string) $this->currency_code);

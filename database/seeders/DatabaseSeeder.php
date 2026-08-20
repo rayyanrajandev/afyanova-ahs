@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
             DskSuppliersSeeder::class,
             DskInventoryItemsSeeder::class,
             DskClinicalCatalogConsumptionRecipeSeeder::class,
+            DskStaffSeeder::class,
             WorkspaceTestUsersSeeder::class,
         ]);
     }

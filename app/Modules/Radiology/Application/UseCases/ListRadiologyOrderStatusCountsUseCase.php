@@ -44,6 +44,8 @@ class ListRadiologyOrderStatusCountsUseCase
         $toDateTime = isset($filters['to']) ? trim((string) $filters['to']) : null;
         $toDateTime = $toDateTime === '' ? null : $toDateTime;
 
+        $authorizedOnly = (bool) ($filters['authorizedOnly'] ?? false);
+
         return $this->radiologyOrderRepository->statusCounts(
             query: $query,
             patientId: $patientId,
@@ -52,6 +54,7 @@ class ListRadiologyOrderStatusCountsUseCase
             modality: $modality,
             fromDateTime: $fromDateTime,
             toDateTime: $toDateTime,
+            authorizedOnly: $authorizedOnly,
         );
     }
 }

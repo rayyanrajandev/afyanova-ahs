@@ -17,6 +17,13 @@ const props = defineProps<{
   session: CashierSession | null;
   isLoading: boolean;
   canReviewRefunds?: boolean;
+  /**
+   * The day summary needs `cashier.reports.read`, which the cashier role does
+   * not hold — only finance does. Offering the button to everyone meant a
+   * cashier opened it and got an error for something they were never allowed
+   * to see.
+   */
+  canReadReports?: boolean;
   pendingRefundCount?: number;
 }>();
 
@@ -25,6 +32,7 @@ const emit = defineEmits<{
   (e: "close"): void;
   (e: "move-cash"): void;
   (e: "day-summary"): void;
+  (e: "my-shift"): void;
   (e: "refunds"): void;
 }>();
 
@@ -56,6 +64,13 @@ const isOpen = computed(() => props.session?.status === "open");
       {{ t("cashier.drawer_float", { amount: formatMoney(session.openingFloat, session.currencyCode) }) }}
     </span>
 
+    <!-- Says why the drawer matters, beside the button that fixes it. The
+         cashier used to learn this by pressing "Take payment" and being
+         refused, which is the worst moment to discover a prerequisite. -->
+    <span v-else-if="!isLoading" class="text-xs font-medium text-warning">
+      {{ t("cashier.drawer_open_required") }}
+    </span>
+
     <div class="ml-auto flex items-center gap-2">
       <Button
         v-if="canReviewRefunds"
@@ -75,6 +90,7 @@ const isOpen = computed(() => props.session?.status === "open");
       </Button>
 
       <Button
+        v-if="canReadReports"
         variant="ghost"
         size="sm"
         class="cursor-pointer"
@@ -82,6 +98,17 @@ const isOpen = computed(() => props.session?.status === "open");
       >
         <ChartColumn class="mr-1.5 size-3.5" aria-hidden="true" />
         {{ t("cashier.day_summary") }}
+      </Button>
+
+      <Button
+        v-if="isOpen"
+        variant="ghost"
+        size="sm"
+        class="cursor-pointer font-medium text-primary"
+        @click="emit('my-shift')"
+      >
+        <Wallet class="mr-1.5 size-3.5" aria-hidden="true" />
+        My Shift
       </Button>
 
       <Button

@@ -61,7 +61,7 @@ const canSubmit = computed(() => amountMinor.value > 0 && !props.isSubmitting);
 
 <template>
   <Dialog :open="open" @update:open="emit('update:open', $event)">
-    <DialogContent class="sm:max-w-sm">
+    <DialogContent class="sm:max-w-xl">
       <DialogHeader>
         <DialogTitle>{{ t("cashier.drawer") }}</DialogTitle>
         <DialogDescription>{{ t("cashier.movement_hint") }}</DialogDescription>
@@ -70,7 +70,7 @@ const canSubmit = computed(() => amountMinor.value > 0 && !props.isSubmitting);
       <div class="flex flex-col gap-3">
         <div class="flex flex-col gap-1.5">
           <span class="text-sm font-medium">{{ t("cashier.reason") }}</span>
-          <div class="grid grid-cols-2 gap-1.5">
+          <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
             <button
               v-for="option in REASONS"
               :key="option"

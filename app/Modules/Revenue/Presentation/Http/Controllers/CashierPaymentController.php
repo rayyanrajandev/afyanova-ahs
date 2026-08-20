@@ -30,6 +30,10 @@ class CashierPaymentController extends Controller
                 idempotencyKey: $request->string('idempotencyKey')->toString(),
                 cashierUserId: (int) $request->user()?->id,
                 cashierSessionId: $request->input('cashierSessionId'),
+                method: $request->input('method', 'cash'),
+                paymentReference: $request->input('paymentReference'),
+                tenderLines: $request->input('tenderLines'),
+                phoneNumber: $request->input('phoneNumber'),
             );
 
             return response()->json([

@@ -28,7 +28,8 @@ interface ClinicalProcedureOrderRepositoryInterface
         int $page,
         int $perPage,
         ?string $sortBy,
-        string $sortDirection
+        string $sortDirection,
+        bool $authorizedOnly = false,
     ): array;
 
     public function statusCounts(
@@ -38,6 +39,7 @@ interface ClinicalProcedureOrderRepositoryInterface
         ?string $admissionId,
         ?string $procedureSetting,
         ?string $fromDateTime,
-        ?string $toDateTime
+        ?string $toDateTime,
+        bool $authorizedOnly = false,
     ): array;
 }

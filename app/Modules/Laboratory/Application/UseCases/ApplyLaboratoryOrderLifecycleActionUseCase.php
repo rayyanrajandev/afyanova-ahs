@@ -6,6 +6,8 @@ use App\Modules\Laboratory\Domain\Repositories\LaboratoryOrderAuditLogRepository
 use App\Modules\Laboratory\Domain\Repositories\LaboratoryOrderRepositoryInterface;
 use App\Modules\Laboratory\Domain\ValueObjects\LaboratoryOrderStatus;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
+use App\Modules\Revenue\Application\Services\PrepaidGatePolicy;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Support\ClinicalOrders\ClinicalOrderLifecycle;
 use Illuminate\Validation\ValidationException;
 
@@ -15,6 +17,7 @@ class ApplyLaboratoryOrderLifecycleActionUseCase
         private readonly LaboratoryOrderRepositoryInterface $laboratoryOrderRepository,
         private readonly LaboratoryOrderAuditLogRepositoryInterface $auditLogRepository,
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
+        private readonly PrepaidGatePolicy $prepaidGate,
     ) {}
 
     public function execute(string $id, string $action, string $reason, ?int $actorId = null): ?array
@@ -108,6 +111,14 @@ class ApplyLaboratoryOrderLifecycleActionUseCase
             metadata: [
                 'lifecycle_action' => $normalizedAction,
             ],
+        );
+
+        $this->prepaidGate->cancelPendingCharge(
+            kind: ChargeSourceKind::LABORATORY_ORDER,
+            orderId: $id,
+            reason: $reason,
+            actorId: $actorId,
+            fallbackReason: 'Laboratory order cancelled.',
         );
 
         return $updated;

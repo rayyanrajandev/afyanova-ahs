@@ -135,6 +135,25 @@ export function useCashierRefunds() {
     }
   }
 
+  async function reverse(paymentId: string, reason: string): Promise<boolean> {
+    isSubmitting.value = true;
+
+    try {
+      await call(`/api/v1/cashier/payments/${paymentId}/reverse`, "POST", { reason });
+      toast.success(t("cashier.payment_reversed"));
+      
+      // Need to re-fetch the list so the reversed payment reflects the new status
+      // We don't have patientId here directly, but the caller should re-fetch if needed.
+      return true;
+    } catch (e) {
+      toast.error((e as Error).message);
+
+      return false;
+    } finally {
+      isSubmitting.value = false;
+    }
+  }
+
   async function rule(
     refundId: string,
     decision: "approve" | "reject",
@@ -170,6 +189,7 @@ export function useCashierRefunds() {
     fetchPending,
     fetchPaymentsFor,
     request,
+    reverse,
     rule,
   };
 }

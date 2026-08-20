@@ -6,6 +6,8 @@ use App\Modules\Pharmacy\Domain\Repositories\PharmacyOrderAuditLogRepositoryInte
 use App\Modules\Pharmacy\Domain\Repositories\PharmacyOrderRepositoryInterface;
 use App\Modules\Pharmacy\Domain\ValueObjects\PharmacyOrderStatus;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
+use App\Modules\Revenue\Application\Services\PrepaidGatePolicy;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Support\ClinicalOrders\ClinicalOrderLifecycle;
 use Illuminate\Validation\ValidationException;
 
@@ -15,6 +17,7 @@ class ApplyPharmacyOrderLifecycleActionUseCase
         private readonly PharmacyOrderRepositoryInterface $pharmacyOrderRepository,
         private readonly PharmacyOrderAuditLogRepositoryInterface $auditLogRepository,
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
+        private readonly PrepaidGatePolicy $prepaidGate,
     ) {}
 
     public function execute(string $id, string $action, string $reason, ?int $actorId = null): ?array
@@ -126,6 +129,14 @@ class ApplyPharmacyOrderLifecycleActionUseCase
                 'lifecycle_action' => $normalizedAction,
                 'quantity_dispensed_at_action' => $quantityDispensed,
             ],
+        );
+
+        $this->prepaidGate->cancelPendingCharge(
+            kind: ChargeSourceKind::PHARMACY_ORDER,
+            orderId: $id,
+            reason: $reason,
+            actorId: $actorId,
+            fallbackReason: 'Pharmacy order cancelled.',
         );
 
         return $updated;

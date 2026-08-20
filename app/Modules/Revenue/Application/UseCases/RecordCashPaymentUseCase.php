@@ -48,6 +48,7 @@ class RecordCashPaymentUseCase
 
     /**
      * @param  list<string>  $serviceChargeIds
+     * @param  list<array{method: string, amountMinor: int, reference?: ?string}>|null  $tenderLines
      */
     public function execute(
         string $patientId,
@@ -56,6 +57,10 @@ class RecordCashPaymentUseCase
         string $idempotencyKey,
         int $cashierUserId,
         ?string $cashierSessionId = null,
+        ?string $method = 'cash',
+        ?string $paymentReference = null,
+        ?array $tenderLines = null,
+        ?string $phoneNumber = null,
     ): PaymentModel {
         if ($serviceChargeIds === []) {
             throw new InvalidArgumentException('A payment must settle at least one charge.');
@@ -76,7 +81,7 @@ class RecordCashPaymentUseCase
 
         return DB::transaction(function () use (
             $patientId, $serviceChargeIds, $tenderedAmountMinor, $idempotencyKey,
-            $cashierUserId, $session
+            $cashierUserId, $session, $method, $paymentReference, $tenderLines, $phoneNumber
         ): PaymentModel {
             // Lock the charges for the duration: two cashiers must not settle
             // the same charge, and the losing one has to see the first one's
@@ -117,16 +122,45 @@ class RecordCashPaymentUseCase
                 $due = $due->plus($charge->outstandingAmount());
             }
 
-            $tendered = Money::of($tenderedAmountMinor, $currencyCode);
+            $paymentMethod = PaymentMethod::tryFrom((string) ($method ?? 'cash')) ?? PaymentMethod::CASH;
 
-            if ($tendered->isLessThan($due)) {
-                throw new InsufficientTenderException($due, $tendered);
+            // Handle multi-tender split calculations if tenderLines provided
+            if ($tenderLines !== null && count($tenderLines) > 0) {
+                $totalTenderedMinor = 0;
+                $cashTenderedMinor = 0;
+
+                foreach ($tenderLines as $line) {
+                    $lineAmt = (int) ($line['amountMinor'] ?? 0);
+                    $totalTenderedMinor += $lineAmt;
+                    if (($line['method'] ?? '') === PaymentMethod::CASH->value) {
+                        $cashTenderedMinor += $lineAmt;
+                    }
+                }
+
+                $tendered = Money::of($totalTenderedMinor, $currencyCode);
+                if ($tendered->isLessThan($due)) {
+                    throw new InsufficientTenderException($due, $tendered);
+                }
+
+                $change = $cashTenderedMinor > 0 && $tendered->isGreaterThan($due)
+                    ? $tendered->minus($due)
+                    : Money::zero($currencyCode);
+            } else {
+                $tendered = Money::of($tenderedAmountMinor, $currencyCode);
+                if ($tendered->isLessThan($due)) {
+                    throw new InsufficientTenderException($due, $tendered);
+                }
+
+                $change = $paymentMethod === PaymentMethod::CASH
+                    ? $tendered->minus($due)
+                    : Money::zero($currencyCode);
             }
 
-            // Cash: the patient may hand over more than is owed. The excess is
-            // change, never an over-allocation — that distinction is what keeps
-            // the drawer reconcilable.
-            $change = $tendered->minus($due);
+            $metadata = array_filter([
+                'paymentReference' => $paymentReference,
+                'phoneNumber' => $phoneNumber,
+                'tenderLines' => $tenderLines,
+            ]);
 
             $payment = PaymentModel::query()->create([
                 'tenant_id' => $session->tenant_id,
@@ -136,7 +170,7 @@ class RecordCashPaymentUseCase
                 ),
                 'patient_id' => $patientId,
                 'cashier_session_id' => $session->id,
-                'method' => PaymentMethod::CASH->value,
+                'method' => $paymentMethod->value,
                 'currency_code' => $currencyCode,
                 'amount_minor' => $due->minorUnits,
                 'tendered_amount_minor' => $tendered->minorUnits,
@@ -148,6 +182,7 @@ class RecordCashPaymentUseCase
                 'received_at' => now(),
                 'received_by_user_id' => $cashierUserId,
                 'idempotency_key' => $idempotencyKey,
+                'metadata' => $metadata ?: null,
             ]);
 
             $lines = [];

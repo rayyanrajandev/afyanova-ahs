@@ -238,3 +238,126 @@ it('reports the facility day from the ledger', function (): void {
         ->and($day->json('data.receiptsIssued'))->toBe(1)
         ->and($day->json('data.sessions'))->toHaveCount(1);
 });
+
+it('shows how the expected cash figure was arrived at', function (): void {
+    // A variance the cashier cannot check is a number they are asked to sign
+    // for. The close must show its own arithmetic.
+    $cashier = cashierUser();
+    [$patientId, $chargeId] = seedPayablePatient('15000.00');
+
+    $sessionId = $this->actingAs($cashier)
+        ->postJson('/api/v1/cashier/sessions', ['openingFloatMinor' => 5000000])
+        ->json('data.id');
+
+    $this->actingAs($cashier)->postJson('/api/v1/cashier/payments', [
+        'patientId' => $patientId,
+        'serviceChargeIds' => [$chargeId],
+        'tenderedAmountMinor' => 1500000,
+        'idempotencyKey' => (string) Str::uuid(),
+    ]);
+
+    $this->actingAs($cashier)->postJson("/api/v1/cashier/sessions/{$sessionId}/movements", [
+        'reason' => 'banking_drop', 'amountMinor' => 2000000, 'note' => 'To the safe',
+    ]);
+
+    // 50,000 float + 15,000 taken − 20,000 banked = 45,000, counted 10,000.
+    $close = $this->actingAs($cashier)
+        ->postJson("/api/v1/cashier/sessions/{$sessionId}/close", ['declaredCashMinor' => 1000000])
+        ->assertOk();
+
+    expect($close->json('data.expectedCash'))->toBe('45000.00')
+        ->and($close->json('data.variance'))->toBe('-35000.00')
+        ->and($close->json('meta.requiresApproval'))->toBeTrue();
+
+    // Every term of that sum is returned, so the figure can be checked.
+    expect($close->json('meta.breakdown'))->toBe([
+        'openingFloat' => '50000.00',
+        'cashTaken' => '15000.00',
+        'cashIn' => '0.00',
+        'cashOut' => '20000.00',
+        'refundsPaid' => '0.00',
+        'reversals' => '0.00',
+        'paymentCount' => 1,
+    ]);
+});
+
+/*
+|--------------------------------------------------------------------------
+| After the money is taken (2026-08-19)
+|--------------------------------------------------------------------------
+|
+| Reported from a live counter: a payment recorded cleanly, then the "Paid
+| today" tab showed the patient at 0 TZS, opening them showed an empty pane,
+| and the day summary showed nothing at all. Three separate faults, all on the
+| read side — the ledger was correct throughout.
+|
+*/
+
+it('reports what was taken on the paid tab, not what is still owed', function (): void {
+    // amountDue is outstanding, and outstanding is zero the moment a charge is
+    // settled — so every row on this tab read 0.00.
+    $cashier = cashierUser();
+    [$patientId, $chargeId] = seedPayablePatient();
+
+    $this->actingAs($cashier)
+        ->postJson('/api/v1/cashier/sessions', ['openingFloatMinor' => 5000000])
+        ->assertCreated();
+
+    $this->actingAs($cashier)->postJson('/api/v1/cashier/payments', [
+        'patientId' => $patientId,
+        'serviceChargeIds' => [$chargeId],
+        'tenderedAmountMinor' => 1500000,
+        'idempotencyKey' => (string) Str::uuid(),
+    ])->assertCreated();
+
+    $paid = $this->actingAs($cashier)
+        ->getJson('/api/v1/cashier/queue?status=paid_today')
+        ->assertOk();
+
+    expect($paid->json('data.0.patientId'))->toBe($patientId)
+        ->and($paid->json('data.0.amountPaid'))->toBe('15000.00')
+        // Still reported, and still zero — the two figures mean different
+        // things and the tab picks the one it needs.
+        ->and($paid->json('data.0.amountDue'))->toBe('0.00');
+});
+
+it('shows a settled charge when the basket is asked to include one', function (): void {
+    // Opening a patient from the paid tab showed nothing: the basket lists what
+    // is owed, and they owe nothing. The endpoint has always accepted this
+    // flag; the workspace never sent it.
+    $cashier = cashierUser();
+    [$patientId, $chargeId] = seedPayablePatient();
+
+    $this->actingAs($cashier)
+        ->postJson('/api/v1/cashier/sessions', ['openingFloatMinor' => 5000000])
+        ->assertCreated();
+    $this->actingAs($cashier)->postJson('/api/v1/cashier/payments', [
+        'patientId' => $patientId,
+        'serviceChargeIds' => [$chargeId],
+        'tenderedAmountMinor' => 1500000,
+        'idempotencyKey' => (string) Str::uuid(),
+    ])->assertCreated();
+
+    $unpaidOnly = $this->actingAs($cashier)
+        ->getJson("/api/v1/cashier/patients/{$patientId}/charges")
+        ->assertOk();
+    expect($unpaidOnly->json('data'))->toBe([]);
+
+    $withSettled = $this->actingAs($cashier)
+        ->getJson("/api/v1/cashier/patients/{$patientId}/charges?includeSettled=1")
+        ->assertOk();
+    expect($withSettled->json('data.0.id'))->toBe($chargeId)
+        ->and($withSettled->json('data.0.status'))->toBe('authorized');
+});
+
+it('refuses the day summary to a cashier, which is why the button is not offered', function (): void {
+    // The workspace showed this button to everyone. A cashier does not hold
+    // cashier.reports.read, so opening it could only ever produce an error.
+    $this->actingAs(cashierUser())
+        ->getJson('/api/v1/cashier/day/summary')
+        ->assertForbidden();
+
+    $this->actingAs(supervisorUser())
+        ->getJson('/api/v1/cashier/day/summary')
+        ->assertOk();
+});

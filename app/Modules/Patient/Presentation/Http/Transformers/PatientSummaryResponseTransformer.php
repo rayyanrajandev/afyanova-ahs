@@ -77,6 +77,12 @@ class PatientSummaryResponseTransformer
             'currentAdmission' => $currentAdmission !== null ? [
                 'id' => $currentAdmission['id'] ?? null,
                 'admissionNumber' => $currentAdmission['admission_number'] ?? null,
+                // GetPatientSummaryUseCase only ever returns an ADMITTED row, so
+                // this reads as a constant today. It is sent anyway because the
+                // consumer's check is written as `status === 'admitted'`, and a
+                // consumer that asks a question deserves the field it asks
+                // about rather than an implicit guarantee it cannot see.
+                'status' => $currentAdmission['status'] ?? null,
                 'ward' => $currentAdmission['ward'] ?? null,
                 'bed' => $currentAdmission['bed'] ?? null,
                 'admittedAt' => $currentAdmission['admitted_at'] ?? null,

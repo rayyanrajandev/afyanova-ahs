@@ -8,6 +8,7 @@ use App\Modules\Appointment\Domain\ValueObjects\AppointmentStatus;
 use App\Modules\Appointment\Infrastructure\Models\AppointmentModel;
 use App\Modules\PatientFlow\Application\Services\RecordPatientFlowTransitionService;
 use App\Modules\PatientFlow\Domain\ValueObjects\PatientFlowStep;
+use App\Modules\PatientVitals\Application\Services\VitalsSummaryFormatter;
 use App\Modules\PatientVitals\Infrastructure\Models\PatientVitalSetModel;
 use App\Modules\PatientVitals\Presentation\Http\Requests\StorePatientVitalSetRequest;
 use App\Modules\PatientVitals\Presentation\Http\Requests\UpdatePatientVitalSetRequest;
@@ -24,6 +25,7 @@ class PatientVitalSetController extends Controller
     public function __construct(
         private readonly RecordAppointmentTriageUseCase $recordTriage,
         private readonly RecordPatientFlowTransitionService $recordPatientFlowTransition,
+        private readonly VitalsSummaryFormatter $vitalsSummary,
     ) {}
 
     /**
@@ -53,7 +55,16 @@ class PatientVitalSetController extends Controller
             'entry_state'           => 'active',
         ]);
 
-        $this->advanceVisitWorkflowOnVitalsRecorded($request, $validated);
+        $appointment = $this->advanceVisitWorkflowOnVitalsRecorded($request, $validated);
+
+        // Stamp the visit these observations belong to, when the caller did not
+        // name one. The nursing workspace posts only a patientId, so every set
+        // it recorded was stored with appointment_id NULL — which left no way to
+        // ask "were vitals taken on this visit?" without guessing from status,
+        // and that guess broke the moment a visit could sit unpaid.
+        if ($appointment !== null && $vitalSet->appointment_id === null) {
+            $vitalSet->forceFill(['appointment_id' => $appointment->id])->save();
+        }
 
         return response()->json(['data' => [
             'id'         => $vitalSet->id,
@@ -95,30 +106,37 @@ class PatientVitalSetController extends Controller
         return response()->json(['data' => $this->transform($vitalSet)], 201);
     }
 
-    private function advanceVisitWorkflowOnVitalsRecorded(StorePatientVitalSetRequest $request, array $validated): void
-    {
-        $summaryParts = [];
-        if (! empty($validated['temperatureC'])) {
-            $summaryParts[] = "T: {$validated['temperatureC']}°C";
-        }
-        if (! empty($validated['systolicBpMmhg']) && ! empty($validated['diastolicBpMmhg'])) {
-            $summaryParts[] = "BP: {$validated['systolicBpMmhg']}/{$validated['diastolicBpMmhg']} mmHg";
-        }
-        if (! empty($validated['heartRateBpm'])) {
-            $summaryParts[] = "HR: {$validated['heartRateBpm']} bpm";
-        }
-        if (! empty($validated['oxygenSaturationPct'])) {
-            $summaryParts[] = "SpO2: {$validated['oxygenSaturationPct']}%";
-        }
-        if (! empty($validated['weightKg'])) {
-            $summaryParts[] = "W: {$validated['weightKg']}kg";
-        }
-        $vitalsSummary = implode(', ', $summaryParts);
+    /**
+     * The only statuses from which recording vitals may hand a visit to the
+     * provider queue.
+     *
+     * Notably excludes IN_CONSULTATION: advancing from there reset a patient to
+     * waiting_provider and pulled them out of the doctor's room mid-visit. It
+     * also excludes AWAITING_PAYMENT, which is the prepaid gate doing its job.
+     */
+    private const TRIAGE_FLOW_STATUSES = [
+        AppointmentStatus::WAITING_TRIAGE->value,
+        AppointmentStatus::WAITING_PROVIDER->value,
+    ];
 
-        $appointment = $this->resolveTriageFlowAppointment($validated);
+    private function advanceVisitWorkflowOnVitalsRecorded(StorePatientVitalSetRequest $request, array $validated): ?AppointmentModel
+    {
+        $vitalsSummary = $this->vitalsSummary->fromRequest($validated);
+
+        // Two separate questions, deliberately answered separately (2026-08-19).
+        //
+        //  - Which visit do these observations belong to?  → any live visit.
+        //  - May that visit advance to the provider queue? → only the triage flow.
+        //
+        // They used to be one question, so a visit that could not advance also
+        // lost its timeline entry. After the prepaid gate shipped, that meant a
+        // nurse could take observations on a patient waiting at the cashier and
+        // the Activity tab would show nothing at all — the vitals were saved,
+        // the record of taking them was silently dropped.
+        $appointment = $this->resolveVisitForVitals($validated);
 
         if ($appointment === null) {
-            return;
+            return null;
         }
 
         // Vitals recorded, as its own timeline entry (2026-08-16 activity audit).
@@ -147,6 +165,20 @@ class PatientVitalSetController extends Controller
             // rather than a phantom transition.
             allowSameStep: true,
         );
+
+        // Observations are recorded above whatever happens next. The handoff is
+        // what the visit's status gates — most commonly a patient whose
+        // consultation charge has not cleared, who must not reach a clinician
+        // until it does.
+        if (! in_array((string) $appointment->status, self::TRIAGE_FLOW_STATUSES, true)) {
+            Log::info('Vitals recorded; visit not advanced because it is not in the triage flow', [
+                'appointment_id' => $appointment->id,
+                'patient_id' => $appointment->patient_id,
+                'appointment_status' => $appointment->status,
+            ]);
+
+            return $appointment;
+        }
 
         // Delegated to RecordAppointmentTriageUseCase rather than written here
         // (2026-08-16 patient-flow audit, finding 02). This method previously
@@ -199,6 +231,8 @@ class PatientVitalSetController extends Controller
                 'errors' => $exception->errors(),
             ]);
         }
+
+        return $appointment;
     }
 
     /**
@@ -211,18 +245,19 @@ class PatientVitalSetController extends Controller
      * The fallback lookup below always filtered correctly; the explicit path did
      * not, and the explicit path is the one the nursing workspace uses.
      */
-    private function resolveTriageFlowAppointment(array $validated): ?AppointmentModel
+    private function resolveVisitForVitals(array $validated): ?AppointmentModel
     {
-        $triageFlowStatuses = [
-            AppointmentStatus::WAITING_TRIAGE->value,
-            AppointmentStatus::WAITING_PROVIDER->value,
-        ];
+        // Any live visit, not only one sitting in triage. A patient at the
+        // cashier, or one already with a doctor, is still on a visit that
+        // observations belong to — advancing them is a separate decision made
+        // by the caller against TRIAGE_FLOW_STATUSES.
+        $liveStatuses = AppointmentStatus::arrivedAndUnresolved();
 
         $appointmentId = $validated['appointmentId'] ?? null;
 
         if ($appointmentId !== null) {
             $appointment = AppointmentModel::where('id', $appointmentId)
-                ->whereIn('status', $triageFlowStatuses)
+                ->whereIn('status', $liveStatuses)
                 ->first();
 
             if ($appointment !== null) {
@@ -231,7 +266,7 @@ class PatientVitalSetController extends Controller
         }
 
         return AppointmentModel::where('patient_id', $validated['patientId'])
-            ->whereIn('status', $triageFlowStatuses)
+            ->whereIn('status', $liveStatuses)
             ->latest('scheduled_at')
             ->first();
     }

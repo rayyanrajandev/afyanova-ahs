@@ -5,7 +5,7 @@ split-2 layout (context + main, resizable via SplitPane — Volume 1.1 §4.2),
 Afyanova tokens (Volume 1.2 §4.1). */
 
 <script setup lang="ts">
-import { Calendar, Clock, Search, Users, UserSearch } from "lucide-vue-next";
+import { Calendar, Clock, Search, Users, UserSearch, Wallet } from "lucide-vue-next";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
 import EmptyState from "@/components/common/EmptyState.vue";
@@ -18,6 +18,7 @@ import { useCommandPalette } from "@/composables/useCommandPalette";
 import { useShortcuts } from "@/composables/useShortcuts";
 import { useToast } from "@/composables/useToast";
 import ArrivalIntakeDialog from "@/pages/reception/components/ArrivalIntakeDialog.vue";
+import AwaitingPaymentPanel from "@/pages/reception/components/AwaitingPaymentPanel.vue";
 import CancelQueueItemDialog from "@/pages/reception/components/CancelQueueItemDialog.vue";
 import DuplicatePatientDialog from "@/pages/reception/components/DuplicatePatientDialog.vue";
 import EditDemographicsForm from "@/pages/reception/components/EditDemographicsForm.vue";
@@ -73,8 +74,8 @@ function handleAcknowledgeReturned(info: ReturnedPatientInfo) {
 // are.
 const RECEPTION_ACTIVE_TAB_KEY = "afyanova:reception:active-tab";
 const RECEPTION_QUEUE_STAGE_KEY = "afyanova:reception:queue-stage";
-type ReceptionTab = "patients" | "queue" | "schedule";
-const RECEPTION_TABS = ["patients", "queue", "schedule"] as const;
+type ReceptionTab = "patients" | "queue" | "awaiting_payment" | "schedule";
+const RECEPTION_TABS = ["patients", "queue", "awaiting_payment", "schedule"] as const;
 const RECEPTION_QUEUE_STAGES = [
   "waiting_triage",
   "waiting_provider",
@@ -329,6 +330,17 @@ const queueActions = useQueueActions({
   },
 });
 
+const clinicalQueueCount = computed(() => {
+  const counts = queueActions.stageCounts.value;
+  if (!counts) return queueActions.queue.value?.length ?? 0;
+  return (
+    (counts.waiting_triage ?? 0) +
+    (counts.waiting_provider ?? 0) +
+    (counts.in_consultation ?? 0) +
+    (counts.admitted ?? 0)
+  );
+});
+
 attachPersistence(queueActions.selectedStage, RECEPTION_QUEUE_STAGE_KEY, isReceptionQueueStage);
 
 // Sync selected patient and active tab with URL query params (?patient=...&tab=...)
@@ -464,7 +476,7 @@ const queueLiveAnnouncer = useQueueLiveAnnouncer();
               <TabsList class="h-8 gap-1 bg-transparent p-0 justify-start w-auto border-b-0 -mb-px">
                 <TabsTrigger
                   value="patients"
-                  class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                  class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px shrink-0"
                 >
                   <Users class="size-3.5" aria-hidden="true" />
                   <span>{{ t("clinician.patients") }}</span>
@@ -484,12 +496,12 @@ const queueLiveAnnouncer = useQueueLiveAnnouncer();
                 </TabsTrigger>
                 <TabsTrigger
                   value="queue"
-                  class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                  class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px shrink-0"
                 >
                   <Clock class="size-3.5" aria-hidden="true" />
                   <span>{{ t("queue.label") }}</span>
                   <span
-                    v-if="(queueActions.stageCounts.value?.total ?? queueActions.queue.value?.length ?? 0) > 0"
+                    v-if="clinicalQueueCount > 0"
                     class="relative flex size-1.5 shrink-0 ml-0.5"
                     aria-hidden="true"
                   >
@@ -497,22 +509,42 @@ const queueLiveAnnouncer = useQueueLiveAnnouncer();
                     <span class="relative inline-flex size-1.5 rounded-full bg-primary" />
                   </span>
                   <Badge
-                    v-if="(queueActions.stageCounts.value?.total ?? queueActions.queue.value?.length ?? 0) > 0"
+                    v-if="clinicalQueueCount > 0"
                     variant="secondary"
                     class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
                     :class="activeTab === 'queue' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
                     :aria-label="
                       t('queue.waiting_count_sr', {
-                        count: queueActions.stageCounts.value?.total ?? queueActions.queue.value?.length ?? 0,
+                        count: clinicalQueueCount,
                       })
                     "
                   >
-                    {{ queueActions.stageCounts.value?.total ?? queueActions.queue.value?.length ?? 0 }}
+                    {{ clinicalQueueCount }}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="awaiting_payment"
+                  class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px shrink-0"
+                >
+                  <Wallet class="size-3.5" aria-hidden="true" />
+                  <span>{{ t("queue.stage_awaiting_payment") }}</span>
+                  <Badge
+                    v-if="(queueActions.stageCounts.value?.awaiting_payment ?? 0) > 0"
+                    variant="secondary"
+                    class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
+                    :class="activeTab === 'awaiting_payment' ? 'bg-critical/15 text-critical font-bold' : 'text-muted-foreground'"
+                    :aria-label="
+                      t('queue.waiting_count_sr', {
+                        count: queueActions.stageCounts.value?.awaiting_payment ?? 0,
+                      })
+                    "
+                  >
+                    {{ queueActions.stageCounts.value?.awaiting_payment ?? 0 }}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger
                   value="schedule"
-                  class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+                  class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px shrink-0"
                 >
                   <Calendar class="size-3.5" aria-hidden="true" />
                   <span>{{ t("appointment.schedule_tab") }}</span>
@@ -543,6 +575,11 @@ const queueLiveAnnouncer = useQueueLiveAnnouncer();
                  QueuePanel.vue (2026-08-10, component-library audit). -->
             <TabsContent value="queue" class="flex flex-1 flex-col overflow-hidden">
               <QueuePanel :queue-actions="queueActions" />
+            </TabsContent>
+
+            <!-- Awaiting payment tab -->
+            <TabsContent value="awaiting_payment" class="flex flex-1 flex-col overflow-hidden">
+              <AwaitingPaymentPanel :queue-actions="queueActions" />
             </TabsContent>
 
             <!-- Schedule tab (Volume 2.1 §9) — booking-ahead, not the primary

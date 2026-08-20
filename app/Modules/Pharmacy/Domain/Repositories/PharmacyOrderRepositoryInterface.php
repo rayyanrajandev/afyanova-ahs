@@ -28,6 +28,7 @@ interface PharmacyOrderRepositoryInterface
         int $perPage,
         ?string $sortBy,
         string $sortDirection,
+        bool $authorizedOnly = false,
     ): array;
 
     public function statusCounts(
@@ -37,6 +38,7 @@ interface PharmacyOrderRepositoryInterface
         ?string $admissionId,
         ?string $fromDateTime,
         ?string $toDateTime,
+        bool $authorizedOnly = false,
     ): array;
 
     public function recentActiveMedicationHistory(

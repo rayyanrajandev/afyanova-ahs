@@ -9,6 +9,8 @@ use App\Modules\Pharmacy\Presentation\Http\Transformers\PharmacyOrderResponseTra
 use App\Modules\Radiology\Presentation\Http\Transformers\RadiologyOrderResponseTransformer;
 use App\Modules\TheatreProcedure\Presentation\Http\Transformers\TheatreProcedureResponseTransformer;
 
+use App\Support\ClinicalOrders\ClinicalOrderPaymentEnricher;
+
 class EncounterWorkspaceResponseTransformer
 {
     /**
@@ -25,6 +27,35 @@ class EncounterWorkspaceResponseTransformer
             ? $workspace['primaryMedicalRecord']
             : null;
 
+        $rawLabOrders = is_array($workspace['laboratoryOrders'] ?? null) ? $workspace['laboratoryOrders'] : [];
+        $transformedLabOrders = array_map(
+            static fn (array $order): array => LaboratoryOrderResponseTransformer::transform($order),
+            $rawLabOrders,
+        );
+        $enrichedLabOrders = ClinicalOrderPaymentEnricher::attachToTransformedOrders($rawLabOrders, $transformedLabOrders);
+
+        $rawRadOrders = is_array($workspace['radiologyOrders'] ?? null) ? $workspace['radiologyOrders'] : [];
+        $transformedRadOrders = array_map(
+            static fn (array $order): array => RadiologyOrderResponseTransformer::transform($order),
+            $rawRadOrders,
+        );
+        $enrichedRadOrders = ClinicalOrderPaymentEnricher::attachToTransformedOrders(
+            $rawRadOrders,
+            $transformedRadOrders,
+            \App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind::RADIOLOGY_ORDER,
+        );
+
+        $rawPharmOrders = is_array($workspace['pharmacyOrders'] ?? null) ? $workspace['pharmacyOrders'] : [];
+        $transformedPharmOrders = array_map(
+            static fn (array $order): array => PharmacyOrderResponseTransformer::transform($order),
+            $rawPharmOrders,
+        );
+        $enrichedPharmOrders = ClinicalOrderPaymentEnricher::attachToTransformedOrders(
+            $rawPharmOrders,
+            $transformedPharmOrders,
+            \App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind::PHARMACY_ORDER,
+        );
+
         return [
             'encounter' => EncounterResponseTransformer::transform($encounter),
             'patient' => $patient !== null ? self::transformPatientSummary($patient) : null,
@@ -39,24 +70,15 @@ class EncounterWorkspaceResponseTransformer
             'primaryMedicalRecord' => $primaryMedicalRecord !== null
                 ? MedicalRecordResponseTransformer::transform($primaryMedicalRecord)
                 : null,
-            'laboratoryOrders' => array_map(
-                static fn (array $order): array => LaboratoryOrderResponseTransformer::transform($order),
-                is_array($workspace['laboratoryOrders'] ?? null) ? $workspace['laboratoryOrders'] : [],
-            ),
+            'laboratoryOrders' => $enrichedLabOrders,
             // C-8 (reports/clinical-note-audit/15-critical-system-integrity-review.md):
             // the total pending count, independent of the CARE_ARTIFACT_LIMIT cap on
             // the list above, so a "+N more pending" affordance can be shown without
             // guessing from the capped list's length.
             'laboratoryOrdersPendingCount' => (int) ($workspace['laboratoryOrdersPendingCount'] ?? 0),
-            'pharmacyOrders' => array_map(
-                static fn (array $order): array => PharmacyOrderResponseTransformer::transform($order),
-                is_array($workspace['pharmacyOrders'] ?? null) ? $workspace['pharmacyOrders'] : [],
-            ),
+            'pharmacyOrders' => $enrichedPharmOrders,
             'pharmacyOrdersPendingCount' => (int) ($workspace['pharmacyOrdersPendingCount'] ?? 0),
-            'radiologyOrders' => array_map(
-                static fn (array $order): array => RadiologyOrderResponseTransformer::transform($order),
-                is_array($workspace['radiologyOrders'] ?? null) ? $workspace['radiologyOrders'] : [],
-            ),
+            'radiologyOrders' => $enrichedRadOrders,
             'radiologyOrdersPendingCount' => (int) ($workspace['radiologyOrdersPendingCount'] ?? 0),
             'theatreProcedures' => array_map(
                 static fn (array $procedure): array => TheatreProcedureResponseTransformer::transform($procedure),

@@ -16,6 +16,7 @@ enum PaymentMethod: string
     case MOBILE_MONEY = 'mobile_money';
     case CARD = 'card';
     case BANK_TRANSFER = 'bank_transfer';
+    case GEPG = 'gepg';
     case INSURANCE_SETTLEMENT = 'insurance_settlement';
 
     /**
@@ -28,7 +29,13 @@ enum PaymentMethod: string
 
     public function isImplemented(): bool
     {
-        return $this === self::CASH;
+        return match ($this) {
+            self::CASH,
+            self::MOBILE_MONEY,
+            self::BANK_TRANSFER,
+            self::GEPG => true,
+            default => false,
+        };
     }
 
     /**

@@ -13,6 +13,10 @@ use App\Modules\Platform\Domain\ValueObjects\ClinicalCatalogType;
 use App\Modules\Platform\Infrastructure\Models\ClinicalCatalogItemModel;
 use Illuminate\Database\Eloquent\Builder;
 
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
+use App\Modules\Revenue\Domain\ValueObjects\ServiceChargeStatus;
+use App\Modules\Laboratory\Domain\ValueObjects\LaboratoryOrderStatus;
+
 class EloquentLaboratoryOrderRepository implements LaboratoryOrderRepositoryInterface
 {
     public function __construct(
@@ -87,7 +91,8 @@ class EloquentLaboratoryOrderRepository implements LaboratoryOrderRepositoryInte
         int $perPage,
         ?string $sortBy,
         string $sortDirection,
-        ?string $department = null
+        ?string $department = null,
+        bool $authorizedOnly = false,
     ): array {
         $sortBy = in_array($sortBy, ['order_number', 'ordered_at', 'status', 'priority', 'created_at', 'updated_at'], true)
             ? $sortBy
@@ -96,6 +101,10 @@ class EloquentLaboratoryOrderRepository implements LaboratoryOrderRepositoryInte
         $queryBuilder = LaboratoryOrderModel::query();
         $this->applyPlatformScopeIfEnabled($queryBuilder);
         $this->applyActiveEntryStateScope($queryBuilder);
+
+        if ($authorizedOnly) {
+            $this->applyAuthorizedFilter($queryBuilder);
+        }
 
         $queryBuilder
             ->when($query, fn (Builder $builder, string $searchTerm) => $this->applyTextSearch($builder, $searchTerm))
@@ -152,11 +161,16 @@ class EloquentLaboratoryOrderRepository implements LaboratoryOrderRepositoryInte
         ?string $priority,
         ?string $fromDateTime,
         ?string $toDateTime,
-        ?string $department = null
+        ?string $department = null,
+        bool $authorizedOnly = false,
     ): array {
         $queryBuilder = LaboratoryOrderModel::query();
         $this->applyPlatformScopeIfEnabled($queryBuilder);
         $this->applyActiveEntryStateScope($queryBuilder);
+
+        if ($authorizedOnly) {
+            $this->applyAuthorizedFilter($queryBuilder);
+        }
 
         $queryBuilder
             ->when($query, fn (Builder $builder, string $searchTerm) => $this->applyTextSearch($builder, $searchTerm))
@@ -265,6 +279,27 @@ class EloquentLaboratoryOrderRepository implements LaboratoryOrderRepositoryInte
                     ->whereNull('lifecycle_reason_code')
                     ->orWhere('lifecycle_reason_code', '!=', 'entered_in_error');
             });
+    }
+
+    private function applyAuthorizedFilter(Builder $builder): void
+    {
+        if (! ChargeSourceKind::LABORATORY_ORDER->prepaidGateEnabled()) {
+            return;
+        }
+
+        $builder->where(function (Builder $q): void {
+            $q->whereIn('status', [
+                LaboratoryOrderStatus::COLLECTED->value,
+                LaboratoryOrderStatus::IN_PROGRESS->value,
+                LaboratoryOrderStatus::COMPLETED->value,
+            ])->orWhere(function (Builder $subQ): void {
+                $subQ->whereRaw("id::text IN (SELECT source_workflow_id FROM service_charges WHERE source_workflow_kind = ? AND status IN (?, ?))", [
+                    ChargeSourceKind::LABORATORY_ORDER->value,
+                    ServiceChargeStatus::AUTHORIZED->value,
+                    ServiceChargeStatus::FULFILLED->value,
+                ]);
+            });
+        });
     }
 
     private function toSearchResult(LengthAwarePaginator $paginator): array

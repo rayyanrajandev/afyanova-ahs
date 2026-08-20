@@ -2,6 +2,7 @@
 
 use App\Modules\Admission\Presentation\Http\Controllers\NursingAdmissionController;
 use App\Modules\Appointment\Presentation\Http\Controllers\AppointmentController;
+use App\Modules\ClinicalProcedure\Presentation\Http\Controllers\ClinicalProcedureOrderController;
 use App\Modules\Encounter\Presentation\Http\Controllers\EncounterClinicalAttachmentController;
 use App\Modules\Encounter\Presentation\Http\Controllers\EncounterController;
 use App\Modules\Encounter\Presentation\Http\Controllers\EncounterDiagnosisController;
@@ -303,6 +304,15 @@ Route::middleware('api.platform')
         Route::get('clinician/catalog/medications', [PharmacyOrderController::class, 'approvedMedicinesCatalog'])
             ->middleware('can:medication.prescribe')
             ->name('clinician.catalog.medications');
+        Route::get('clinician/orders/procedure', [ClinicalProcedureOrderController::class, 'index'])
+            ->middleware('can:clinical-procedure.order')
+            ->name('clinician.orders.procedure.index');
+        Route::post('clinician/orders/procedure', [ClinicalProcedureOrderController::class, 'store'])
+            ->middleware('can:clinical-procedure.order')
+            ->name('clinician.orders.procedure');
+        Route::post('clinician/orders/procedure/{id}/cancel', [ClinicalProcedureOrderController::class, 'applyLifecycleAction'])
+            ->middleware('can:clinical-procedure.order')
+            ->name('clinician.orders.procedure.cancel');
 
         // Patient-flow transitions (2026-08-16 flow audit, finding 05).
         // Until now the clinician prefix had encounters, notes, orders, results
@@ -599,6 +609,28 @@ Route::middleware('api.platform')
             ->name('pharmacy.patients.flow-timeline');
 
         // ============================================================
+        // CLINICAL PROCEDURE WORKSPACE ROUTES
+        // ============================================================
+        Route::get('procedure/orders', [ClinicalProcedureOrderController::class, 'index'])
+            ->middleware('can:clinical-procedure.orders.read')
+            ->name('procedure.orders.index');
+        Route::get('procedure/orders/status-counts', [ClinicalProcedureOrderController::class, 'statusCounts'])
+            ->middleware('can:clinical-procedure.orders.read')
+            ->name('procedure.orders.status-counts');
+        Route::get('procedure/orders/{id}', [ClinicalProcedureOrderController::class, 'show'])
+            ->middleware('can:clinical-procedure.orders.read')
+            ->name('procedure.orders.show');
+        Route::patch('procedure/orders/{id}/status', [ClinicalProcedureOrderController::class, 'updateStatus'])
+            ->middleware('can:clinical-procedure.perform')
+            ->name('procedure.orders.update-status');
+        Route::get('procedure/orders/{id}/audit-logs', [ClinicalProcedureOrderController::class, 'auditLogs'])
+            ->middleware('can:clinical-procedure.orders.view-audit-logs')
+            ->name('procedure.orders.audit-logs');
+        Route::get('procedure/patients/{patientId}/flow-timeline', [PatientFlowController::class, 'patientTimeline'])
+            ->middleware('can:clinical-procedure.orders.read')
+            ->name('procedure.patients.flow-timeline');
+
+        // ============================================================
         // CASHIER WORKSPACE ROUTES (Cashier Phase 6)
         // The prepaid counter. Reuses PatientController and
         // PatientFlowController unchanged, exactly as the other workspaces do.
@@ -676,6 +708,9 @@ Route::middleware('api.platform')
         Route::post('cashier/sessions', [CashierSessionController::class, 'store'])
             ->middleware('can:cashier.sessions.open')
             ->name('cashier.sessions.store');
+        Route::get('cashier/sessions/current/transactions', [CashierSessionController::class, 'currentTransactions'])
+            ->middleware('can:cashier.payments.read')
+            ->name('cashier.sessions.current.transactions');
         Route::post('cashier/sessions/{id}/movements', [CashierSessionController::class, 'recordMovement'])
             ->middleware('can:cashier.sessions.move-cash')
             ->name('cashier.sessions.movements.store');

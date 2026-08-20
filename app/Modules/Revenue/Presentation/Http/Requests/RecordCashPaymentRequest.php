@@ -31,6 +31,9 @@ class RecordCashPaymentRequest extends FormRequest
             // producing two keys for one intent.
             'idempotencyKey' => ['required', 'string', 'max:100'],
             'cashierSessionId' => ['nullable', 'uuid'],
+            'method' => ['nullable', 'string', 'in:cash,mobile_money,bank_transfer,gepg'],
+            'paymentReference' => ['nullable', 'string', 'max:100'],
+            'phoneNumber' => ['nullable', 'string', 'max:25'],
         ];
     }
 }

@@ -64,16 +64,6 @@ enum ClinicianQueueStage: string
     ];
 
     /**
-     * Encounter statuses that still represent live work when there is no
-     * appointment to read a stage from — a direct encounter opened at the desk.
-     */
-    private const LIVE_ENCOUNTER_STATUSES = [
-        EncounterStatus::OPENED->value,
-        EncounterStatus::IN_PROGRESS->value,
-        EncounterStatus::READY_FOR_SIGN->value,
-    ];
-
-    /**
      * Narrow a query to one pile.
      *
      * The order of the exclusions is the order of precedence, and it matters:
@@ -130,7 +120,7 @@ enum ClinicianQueueStage: string
                         ->orWhere(function (Builder $direct): void {
                             $direct
                                 ->whereNull('appointment_id')
-                                ->whereIn('status', self::LIVE_ENCOUNTER_STATUSES);
+                                ->whereIn('status', EncounterStatus::liveStatuses());
                         });
                 }),
         };

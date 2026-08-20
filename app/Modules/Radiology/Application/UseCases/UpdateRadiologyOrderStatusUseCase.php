@@ -10,6 +10,8 @@ use App\Modules\Radiology\Domain\Events\RadiologyOrderCompleted;
 use App\Modules\Radiology\Domain\Repositories\RadiologyOrderAuditLogRepositoryInterface;
 use App\Modules\Radiology\Domain\Repositories\RadiologyOrderRepositoryInterface;
 use App\Modules\Radiology\Domain\ValueObjects\RadiologyOrderStatus;
+use App\Modules\Revenue\Application\Services\PrepaidGatePolicy;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Support\ClinicalOrders\ClinicalOrderLifecycle;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -22,6 +24,7 @@ class UpdateRadiologyOrderStatusUseCase
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
         private readonly ClinicalCatalogRecipeStockConsumptionService $recipeStockConsumptionService,
         private readonly RecordRadiologyFlowTransitionService $recordFlowTransition,
+        private readonly PrepaidGatePolicy $prepaidGate,
     ) {}
 
     /**
@@ -56,6 +59,21 @@ class UpdateRadiologyOrderStatusUseCase
             }
 
             ClinicalOrderLifecycle::assertActiveForWorkflow($existing, 'radiology order');
+
+            // Prepaid gate. The statuses below are this module's own
+            // declaration of what "providing the service" means; the rule
+            // itself lives in PrepaidGatePolicy.
+            $this->prepaidGate->assertAuthorized(
+                kind: ChargeSourceKind::RADIOLOGY_ORDER,
+                orderId: $id,
+                targetStatus: $status,
+                deliveryStatuses: [
+                    RadiologyOrderStatus::SCHEDULED->value,
+                    RadiologyOrderStatus::IN_PROGRESS->value,
+                    RadiologyOrderStatus::COMPLETED->value,
+                ],
+                refusalMessage: 'Radiology order cannot be processed before payment has been verified.',
+            );
 
             $currentStatus = (string) ($existing['status'] ?? '');
             if (! RadiologyOrderStatus::canTransitionForward($currentStatus, $status)) {

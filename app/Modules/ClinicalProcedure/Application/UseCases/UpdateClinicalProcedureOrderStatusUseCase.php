@@ -9,6 +9,8 @@ use App\Modules\ClinicalProcedure\Domain\ValueObjects\ClinicalProcedureOrderStat
 use App\Modules\Platform\Application\Services\ClinicalCatalogRecipeStockConsumptionService;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
 use App\Modules\Platform\Domain\ValueObjects\ClinicalCatalogType;
+use App\Modules\Revenue\Application\Services\PrepaidGatePolicy;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Support\ClinicalOrders\ClinicalOrderLifecycle;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -20,6 +22,7 @@ class UpdateClinicalProcedureOrderStatusUseCase
         private readonly ClinicalProcedureOrderAuditLogRepositoryInterface $auditLogRepository,
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
         private readonly ClinicalCatalogRecipeStockConsumptionService $recipeStockConsumptionService,
+        private readonly PrepaidGatePolicy $prepaidGate,
     ) {}
 
     public function execute(string $id, string $status, ?string $reason, ?string $reportSummary, ?int $actorId = null): ?array
@@ -33,6 +36,21 @@ class UpdateClinicalProcedureOrderStatusUseCase
             }
 
             ClinicalOrderLifecycle::assertActiveForWorkflow($existing, 'clinical procedure order');
+
+            // Prepaid gate. The statuses below are this module's own
+            // declaration of what "providing the service" means; the rule
+            // itself lives in PrepaidGatePolicy.
+            $this->prepaidGate->assertAuthorized(
+                kind: ChargeSourceKind::CLINICAL_PROCEDURE_ORDER,
+                orderId: $id,
+                targetStatus: $status,
+                deliveryStatuses: [
+                    ClinicalProcedureOrderStatus::SCHEDULED->value,
+                    ClinicalProcedureOrderStatus::IN_PROGRESS->value,
+                    ClinicalProcedureOrderStatus::COMPLETED->value,
+                ],
+                refusalMessage: 'Clinical procedure cannot be performed before payment has been verified.',
+            );
 
             $currentStatus = (string) ($existing['status'] ?? '');
             if (! ClinicalProcedureOrderStatus::canTransitionForward($currentStatus, $status)) {

@@ -33,6 +33,17 @@ export interface CashierSession {
   approvalNote: string | null;
 }
 
+/** How the expected cash figure was arrived at, so the cashier can check it. */
+export interface CloseBreakdown {
+  openingFloat: string;
+  cashTaken: string;
+  cashIn: string;
+  cashOut: string;
+  refundsPaid: string;
+  reversals: string;
+  paymentCount: number;
+}
+
 export type CashMovementReason =
   | "float_top_up"
   | "banking_drop"
@@ -155,7 +166,11 @@ export function useCashierSession() {
    */
   async function close(
     declaredCashMinor: number,
-  ): Promise<{ session: CashierSession; requiresApproval: boolean } | null> {
+  ): Promise<{
+    session: CashierSession;
+    requiresApproval: boolean;
+    breakdown: CloseBreakdown | null;
+  } | null> {
     if (!session.value) return null;
 
     isSubmitting.value = true;
@@ -173,6 +188,7 @@ export function useCashierSession() {
       return {
         session: closed,
         requiresApproval: Boolean(payload?.meta?.requiresApproval),
+        breakdown: (payload?.meta?.breakdown as CloseBreakdown | undefined) ?? null,
       };
     } catch (e) {
       toast.error((e as Error).message);

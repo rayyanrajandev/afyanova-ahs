@@ -38,6 +38,8 @@ class ListPharmacyOrderStatusCountsUseCase
         $toDateTime = isset($filters['to']) ? trim((string) $filters['to']) : null;
         $toDateTime = $toDateTime === '' ? null : $toDateTime;
 
+        $authorizedOnly = (bool) ($filters['authorizedOnly'] ?? false);
+
         return $this->pharmacyOrderRepository->statusCounts(
             query: $query,
             patientId: $patientId,
@@ -45,6 +47,7 @@ class ListPharmacyOrderStatusCountsUseCase
             admissionId: $admissionId,
             fromDateTime: $fromDateTime,
             toDateTime: $toDateTime,
+            authorizedOnly: $authorizedOnly,
         );
     }
 }

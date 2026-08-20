@@ -81,6 +81,8 @@ class ListRadiologyOrdersUseCase
             $statuses = RadiologyOrderStatus::openWorklistValues();
         }
 
+        $authorizedOnly = (bool) ($filters['authorizedOnly'] ?? false);
+
         return $this->radiologyOrderRepository->search(
             query: $query,
             patientId: $patientId,
@@ -96,6 +98,7 @@ class ListRadiologyOrdersUseCase
             perPage: $perPage,
             sortBy: $sortBy,
             sortDirection: $sortDirection,
+            authorizedOnly: $authorizedOnly,
         );
     }
 }

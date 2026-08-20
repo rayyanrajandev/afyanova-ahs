@@ -81,6 +81,8 @@ class ListClinicalProcedureOrdersUseCase
             $statuses = ClinicalProcedureOrderStatus::openWorklistValues();
         }
 
+        $authorizedOnly = filter_var($filters['authorizedOnly'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
         return $this->clinicalProcedureOrderRepository->search(
             query: $query,
             patientId: $patientId,
@@ -96,6 +98,7 @@ class ListClinicalProcedureOrdersUseCase
             perPage: $perPage,
             sortBy: $sortBy,
             sortDirection: $sortDirection,
+            authorizedOnly: $authorizedOnly,
         );
     }
 }

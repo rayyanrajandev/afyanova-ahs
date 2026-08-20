@@ -42,6 +42,13 @@ class CashierSessionController extends Controller
         ]);
     }
 
+    public function currentTransactions(Request $request, \App\Modules\Revenue\Application\UseCases\GetActiveSessionTransactionsUseCase $useCase): JsonResponse
+    {
+        return response()->json([
+            'data' => $useCase->execute((int) $request->user()?->id),
+        ]);
+    }
+
     public function store(OpenCashierSessionRequest $request, OpenCashierSessionUseCase $useCase): JsonResponse
     {
         return $this->renderingRevenueErrors(function () use ($request, $useCase): JsonResponse {
@@ -95,9 +102,25 @@ class CashierSessionController extends Controller
                 actorUserId: (int) $request->user()?->id,
             );
 
+            $totals = $result['totals'];
+
             return response()->json([
                 'data' => CashierSessionResponseTransformer::transform($result['session']),
-                'meta' => ['requiresApproval' => $result['requiresApproval']],
+                'meta' => [
+                    'requiresApproval' => $result['requiresApproval'],
+                    // How the expected figure was arrived at. Returning the
+                    // variance without it asks a cashier to accept a number
+                    // they cannot check — and to sign for the difference.
+                    'breakdown' => [
+                        'openingFloat' => $totals['openingFloat']->toDecimalString(),
+                        'cashTaken' => $totals['cashTaken']->toDecimalString(),
+                        'cashIn' => $totals['cashIn']->toDecimalString(),
+                        'cashOut' => $totals['cashOut']->toDecimalString(),
+                        'refundsPaid' => $totals['refundsPaid']->toDecimalString(),
+                        'reversals' => $totals['reversals']->toDecimalString(),
+                        'paymentCount' => $totals['paymentCount'],
+                    ],
+                ],
             ]);
         });
     }

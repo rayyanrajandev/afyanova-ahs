@@ -8,7 +8,19 @@ use App\Modules\Platform\Infrastructure\Models\ChargeableItemModel;
 use App\Modules\Revenue\Application\Support\ServiceChargePricer;
 
 /**
- * The price list, searchable, for raising a charge at the counter.
+ * The price list a cashier may charge from directly.
+ *
+ * Deliberately not the whole catalogue. Clinically ordered services —
+ * medicines, lab tests, imaging, procedures — are excluded, because their
+ * charge belongs to the order that requested them: the prescriber decides a
+ * patient needs 21 tablets and the pharmacist decides what is dispensed, and a
+ * cashier has no basis for either figure. Of the 239 items in a typical
+ * catalogue, 237 are of that kind, so searching all of them offered a counter
+ * clerk a list of drugs to price by hand.
+ *
+ * What remains is what a counter legitimately sells on its own: consultation,
+ * and whatever forms, cards or certificates a facility adds. See
+ * config/revenue.php for the exclusion list and how to change it.
  *
  * Returns the resolved price rather than the catalogue's face value: an item
  * can be priced differently by facility, by tier and by date, and a cashier
@@ -38,8 +50,14 @@ class SearchChargeableItemsUseCase
         $facilityId = $this->scopeContext->facilityId();
         $currencyCode = $this->currencyResolver->resolve();
 
+        $excludedTypes = (array) config('revenue.counter_charge_excluded_catalog_types', []);
+
         $items = ChargeableItemModel::query()
             ->where('status', 'active')
+            ->when(
+                $excludedTypes !== [],
+                fn ($q) => $q->whereNotIn('catalog_type', $excludedTypes),
+            )
             ->when($facilityId, fn ($q) => $q->where(
                 fn ($inner) => $inner->whereNull('facility_id')->orWhere('facility_id', $facilityId),
             ))

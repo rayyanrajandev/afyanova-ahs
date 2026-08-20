@@ -84,6 +84,8 @@ class ListLaboratoryOrdersUseCase
         $department = isset($filters['department']) ? strtolower(trim((string) $filters['department'])) : null;
         $department = ($department === '' || $department === 'all') ? null : $department;
 
+        $authorizedOnly = (bool) ($filters['authorizedOnly'] ?? false);
+
         return $this->laboratoryOrderRepository->search(
             query: $query,
             patientId: $patientId,
@@ -100,6 +102,7 @@ class ListLaboratoryOrdersUseCase
             sortBy: $sortBy,
             sortDirection: $sortDirection,
             department: $department,
+            authorizedOnly: $authorizedOnly,
         );
     }
 }

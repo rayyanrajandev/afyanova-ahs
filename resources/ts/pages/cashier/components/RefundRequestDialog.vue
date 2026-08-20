@@ -35,6 +35,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "update:open", value: boolean): void;
   (e: "confirm", payload: { paymentId: string; amountMinor: number; reason: string }): void;
+  (e: "reverse", payload: { paymentId: string; reason: string }): void;
 }>();
 
 const { t } = useI18nSafe();
@@ -162,6 +163,21 @@ const canSubmit = computed(
       <DialogFooter>
         <Button variant="ghost" class="cursor-pointer" @click="emit('update:open', false)">
           {{ t("cashier.cancel") }}
+        </Button>
+        <Button
+          v-if="selected && fromAmountInput(amount) === decimalToMinor(selected.refundable)"
+          variant="outline"
+          class="cursor-pointer text-warning border-warning hover:bg-warning/10 hover:text-warning"
+          :disabled="reason.trim().length < 3 || isSubmitting"
+          @click="
+            selected &&
+              emit('reverse', {
+                paymentId: selected.id,
+                reason: reason.trim(),
+              })
+          "
+        >
+          Reverse Payment
         </Button>
         <Button
           class="cursor-pointer"

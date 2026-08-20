@@ -44,6 +44,8 @@ use App\Modules\Pharmacy\Presentation\Http\Transformers\PharmacyOrderAuditLogRes
 use App\Modules\Pharmacy\Presentation\Http\Transformers\PharmacyMedicationAvailabilityResponseTransformer;
 use App\Modules\Pharmacy\Presentation\Http\Transformers\PharmacyOrderResponseTransformer;
 use App\Modules\Pharmacy\Infrastructure\Models\PharmacyOrderModel;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
+use App\Support\ClinicalOrders\ClinicalOrderPaymentEnricher;
 use App\Support\ClinicalOrders\ClinicalOrderPatientSummaryEnricher;
 use App\Support\ClinicalOrders\ClinicalOrderUserSummaryEnricher;
 use App\Support\ClinicalOrders\ClinicalOrderVisitStageEnricher;
@@ -70,7 +72,14 @@ class PharmacyOrderController extends Controller
 
     public function index(Request $request, ListPharmacyOrdersUseCase $useCase): JsonResponse
     {
-        $result = $useCase->execute($request->all());
+        $filters = $request->all();
+
+        // When queried from the pharmacy worklist workspace, only show authorized orders
+        if (! array_key_exists('authorizedOnly', $filters) && ($request->routeIs('pharmacy.orders.*') || $request->is('api/v1/pharmacy/*'))) {
+            $filters['authorizedOnly'] = true;
+        }
+
+        $result = $useCase->execute($filters);
         $orders = ClinicalOrderPatientSummaryEnricher::attachToTransformedOrders(
             $result['data'],
             array_map([PharmacyOrderResponseTransformer::class, 'transform'], $result['data']),
@@ -81,6 +90,7 @@ class PharmacyOrderController extends Controller
         // carried it since their workspaces were built; without it the shared
         // stage badge simply never renders on a pharmacy row.
         $orders = ClinicalOrderVisitStageEnricher::attachToTransformedOrders($result['data'], $orders);
+        $orders = ClinicalOrderPaymentEnricher::attachToTransformedOrders($result['data'], $orders, ChargeSourceKind::PHARMACY_ORDER);
 
         return response()->json([
             'data' => ClinicalOrderUserSummaryEnricher::attachOrderingClinicianToTransformedOrders($result['data'], $orders),
@@ -90,7 +100,13 @@ class PharmacyOrderController extends Controller
 
     public function statusCounts(Request $request, ListPharmacyOrderStatusCountsUseCase $useCase): JsonResponse
     {
-        $counts = $useCase->execute($request->all());
+        $filters = $request->all();
+
+        if (! array_key_exists('authorizedOnly', $filters) && ($request->routeIs('pharmacy.orders.*') || $request->is('api/v1/pharmacy/*'))) {
+            $filters['authorizedOnly'] = true;
+        }
+
+        $counts = $useCase->execute($filters);
 
         return response()->json([
             'data' => $counts,
@@ -160,8 +176,11 @@ class PharmacyOrderController extends Controller
             return $this->validationError($field, $exception->getMessage());
         }
 
+        $transformed = PharmacyOrderResponseTransformer::transform($order);
+        $withPayment = ClinicalOrderPaymentEnricher::attachToTransformedOrders([$order], [$transformed], ChargeSourceKind::PHARMACY_ORDER)[0];
+
         return response()->json([
-            'data' => PharmacyOrderResponseTransformer::transform($order),
+            'data' => $withPayment,
         ], 201);
     }
 
@@ -173,6 +192,7 @@ class PharmacyOrderController extends Controller
         $transformed = PharmacyOrderResponseTransformer::transform($order);
         $enriched = ClinicalOrderPatientSummaryEnricher::attachToTransformedOrders([$order], [$transformed]);
         $enriched = ClinicalOrderVisitStageEnricher::attachToTransformedOrders([$order], $enriched);
+        $enriched = ClinicalOrderPaymentEnricher::attachToTransformedOrders([$order], $enriched, ChargeSourceKind::PHARMACY_ORDER);
         $enriched = ClinicalOrderUserSummaryEnricher::attachOrderingClinicianToTransformedOrders([$order], $enriched);
 
         return response()->json([

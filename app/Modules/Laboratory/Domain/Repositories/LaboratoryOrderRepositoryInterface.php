@@ -29,7 +29,8 @@ interface LaboratoryOrderRepositoryInterface
         int $perPage,
         ?string $sortBy,
         string $sortDirection,
-        ?string $department = null
+        ?string $department = null,
+        bool $authorizedOnly = false,
     ): array;
 
     public function statusCounts(
@@ -40,7 +41,8 @@ interface LaboratoryOrderRepositoryInterface
         ?string $priority,
         ?string $fromDateTime,
         ?string $toDateTime,
-        ?string $department = null
+        ?string $department = null,
+        bool $authorizedOnly = false,
     ): array;
 
     public function recentVerifiedResultsForPatient(string $patientId, int $limit = 10): array;

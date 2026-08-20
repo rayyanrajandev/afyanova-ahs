@@ -6,6 +6,8 @@ use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
 use App\Modules\ClinicalProcedure\Domain\Repositories\ClinicalProcedureOrderAuditLogRepositoryInterface;
 use App\Modules\ClinicalProcedure\Domain\Repositories\ClinicalProcedureOrderRepositoryInterface;
 use App\Modules\ClinicalProcedure\Domain\ValueObjects\ClinicalProcedureOrderStatus;
+use App\Modules\Revenue\Application\Services\PrepaidGatePolicy;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Support\ClinicalOrders\ClinicalOrderLifecycle;
 use Illuminate\Validation\ValidationException;
 
@@ -15,6 +17,7 @@ class ApplyClinicalProcedureOrderLifecycleActionUseCase
         private readonly ClinicalProcedureOrderRepositoryInterface $clinicalProcedureOrderRepository,
         private readonly ClinicalProcedureOrderAuditLogRepositoryInterface $auditLogRepository,
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
+        private readonly PrepaidGatePolicy $prepaidGate,
     ) {}
 
     public function execute(string $id, string $action, string $reason, ?int $actorId = null): ?array
@@ -108,6 +111,14 @@ class ApplyClinicalProcedureOrderLifecycleActionUseCase
             metadata: [
                 'lifecycle_action' => $normalizedAction,
             ],
+        );
+
+        $this->prepaidGate->cancelPendingCharge(
+            kind: ChargeSourceKind::CLINICAL_PROCEDURE_ORDER,
+            orderId: $id,
+            reason: $reason,
+            actorId: $actorId,
+            fallbackReason: 'Clinical procedure order cancelled.',
         );
 
         return $updated;

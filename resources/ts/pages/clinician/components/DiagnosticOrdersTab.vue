@@ -83,8 +83,12 @@ const diagnosticOrders = computed<PlacedClinicalOrder[]>(() => props.orders.diag
 
 function orderStatusLabel(order: PlacedClinicalOrder): string {
   switch (diagnosticOrderStage(order)) {
+    case "awaiting_payment":
+      return t("clinician.order_stage_awaiting_payment", "Awaiting Payment");
     case "awaiting_collection":
-      return t("clinician.order_stage_awaiting_collection", "Awaiting sample");
+      return order.isAuthorized
+        ? t("clinician.order_stage_authorized", "Payment Verified · Awaiting sample")
+        : t("clinician.order_stage_awaiting_collection", "Awaiting sample");
     case "in_progress":
       return t("clinician.order_stage_in_progress", "In progress");
     case "awaiting_release":
@@ -105,6 +109,10 @@ function orderBadgeVariant(order: PlacedClinicalOrder): OrderBadgeVariant {
     case "in_progress":
     case "awaiting_release":
       return "info";
+    case "awaiting_collection":
+      return "info";
+    case "awaiting_payment":
+      return "warning";
     case "cancelled":
       return "critical";
     default:

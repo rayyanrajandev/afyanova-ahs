@@ -62,7 +62,7 @@ const CLINICIAN_CHART_TAB_KEY = "afyanova:clinician:chart_tab";
 
 const CLINICIAN_QUEUE_STAGE_KEY = "afyanova:clinician:queue_stage";
 
-const CONTEXT_TABS = ["queue", "patients"] as const;
+const CONTEXT_TABS = ["patients", "queue"] as const;
 const CHART_TABS = ["consultation", "vitals", "orders", "prescriptions", "results", "activity"] as const;
 const QUEUE_STAGES = ["waiting_provider", "in_consultation", "admitted", "completed"] as const;
 
@@ -603,21 +603,6 @@ usePatientFlowLiveSync({
           <div class="border-b border-border bg-surface px-3 pt-1 shrink-0">
             <TabsList class="h-8 gap-1 bg-transparent p-0 justify-start w-auto border-b-0 -mb-px">
               <TabsTrigger
-                value="queue"
-                class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
-              >
-                <Stethoscope class="size-3.5" aria-hidden="true" />
-                <span>{{ t("queue.label") }}</span>
-                <Badge
-                  v-if="queueManager.queueItems.value.length > 0"
-                  variant="secondary"
-                  class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
-                  :class="contextTab === 'queue' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
-                >
-                  {{ queueManager.queueItems.value.length }}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger
                 value="patients"
                 class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
               >
@@ -632,20 +617,35 @@ usePatientFlowLiveSync({
                   {{ searchManager.totalPatients.value }}
                 </Badge>
               </TabsTrigger>
+              <TabsTrigger
+                value="queue"
+                class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+              >
+                <Stethoscope class="size-3.5" aria-hidden="true" />
+                <span>{{ t("queue.label") }}</span>
+                <Badge
+                  v-if="queueManager.queueItems.value.length > 0"
+                  variant="secondary"
+                  class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
+                  :class="contextTab === 'queue' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+                >
+                  {{ queueManager.queueItems.value.length }}
+                </Badge>
+              </TabsTrigger>
             </TabsList>
           </div>
 
-          <!-- Tab 1: Live Consultation Queue -->
-          <TabsContent value="queue" class="flex-1 min-h-0 overflow-hidden m-0 data-[state=inactive]:hidden">
-            <ConsultationQueuePanel :queue-actions="queueManager" />
-          </TabsContent>
-
-          <!-- Tab 2: Patients Directory Lookup -->
+          <!-- Tab 1: Patients Directory Lookup -->
           <TabsContent value="patients" class="flex-1 min-h-0 overflow-hidden m-0 data-[state=inactive]:hidden">
             <ClinicianPatientListPanel
               :search="searchManager"
               :on-select-patient="handleSelectPatientFromDirectory"
             />
+          </TabsContent>
+
+          <!-- Tab 2: Live Consultation Queue -->
+          <TabsContent value="queue" class="flex-1 min-h-0 overflow-hidden m-0 data-[state=inactive]:hidden">
+            <ConsultationQueuePanel :queue-actions="queueManager" />
           </TabsContent>
         </Tabs>
       </aside>

@@ -21,10 +21,13 @@ import CashMovementDialog from "./components/CashMovementDialog.vue";
 import ChargeBasketPanel from "./components/ChargeBasketPanel.vue";
 import CloseDrawerDialog from "./components/CloseDrawerDialog.vue";
 import DaySummaryDialog from "./components/DaySummaryDialog.vue";
+import MyShiftSummaryDialog from "./components/MyShiftSummaryDialog.vue";
 import OpenDrawerDialog from "./components/OpenDrawerDialog.vue";
 import RefundRequestDialog from "./components/RefundRequestDialog.vue";
 import RefundReviewDialog from "./components/RefundReviewDialog.vue";
 import TakePaymentDialog from "./components/TakePaymentDialog.vue";
+import { useCashierBarcodeScanner } from "./composables/useCashierBarcodeScanner";
+import { useCashierCustomerDisplaySender } from "./composables/useCashierCustomerDisplay";
 import { useCashierLiveSync } from "./composables/useCashierLiveSync";
 import { useCashierPayment } from "./composables/useCashierPayment";
 import {
@@ -37,6 +40,7 @@ import {
   useCashierSession,
   type CashierSession,
   type CashMovementReason,
+  type CloseBreakdown,
 } from "./composables/useCashierSession";
 
 const { t } = useI18nSafe();
@@ -46,6 +50,7 @@ const queue = useCashierQueue();
 const drawer = useCashierSession();
 const payment = useCashierPayment();
 const refunds = useCashierRefunds();
+const customerDisplay = useCashierCustomerDisplaySender();
 
 const showOpenDrawer = ref(false);
 const showCloseDrawer = ref(false);
@@ -53,6 +58,7 @@ const showPayment = ref(false);
 const showAdHocCharge = ref(false);
 const showMovement = ref(false);
 const showDaySummary = ref(false);
+const showMyShift = ref(false);
 const showRefundRequest = ref(false);
 const showRefundReview = ref(false);
 
@@ -67,9 +73,11 @@ const permissions = computed<string[]>(
 );
 const canRequestRefund = computed(() => permissions.value.includes("cashier.refunds.request"));
 const canApproveRefund = computed(() => permissions.value.includes("cashier.refunds.approve"));
+const canReadReports = computed(() => permissions.value.includes("cashier.reports.read"));
 const closeResult = ref<{
   session: CashierSession;
   requiresApproval: boolean;
+  breakdown: CloseBreakdown | null;
 } | null>(null);
 
 const currencyCode = computed(
@@ -92,6 +100,31 @@ useCashierLiveSync({
   },
 });
 
+/**
+ * Barcode & 2D QR gun listener: scanning a patient's wristband, clinic card
+ * or routing slip immediately searches and selects them.
+ */
+useCashierBarcodeScanner({
+  onScan: async (scannedText: string) => {
+    const term = scannedText.trim();
+    if (!term) return;
+
+    // Check if patient is already in current loaded rows
+    const matched = queue.rows.value.find(
+      (r) =>
+        r.patientNumber?.toLowerCase() === term.toLowerCase() ||
+        r.patientId === term,
+    );
+
+    if (matched) {
+      await selectPatient(matched.patientId);
+      toast.info(matched.patientName ?? matched.patientNumber ?? term);
+    } else {
+      queue.search(term);
+    }
+  },
+});
+
 onMounted(async () => {
   await Promise.all([drawer.fetchCurrent(), queue.fetchQueue()]);
 
@@ -105,6 +138,19 @@ async function selectPatient(patientId: string): Promise<void> {
   // Pre-select everything that can actually be taken, which is what the
   // cashier wants nine times out of ten; unticking is quicker than ticking.
   payment.beginPayment(queue.payableCharges.value);
+
+  customerDisplay.broadcast({
+    state: "basket_active",
+    patientName: queue.selectedRow.value?.patientName,
+    patientNumber: queue.selectedRow.value?.patientNumber,
+    currencyCode: currencyCode.value,
+    totalDue: queue.basketTotalDue.value,
+    charges: queue.charges.value.map((c) => ({
+      description: c.description,
+      amount: c.amountDue,
+      quantity: c.quantity,
+    })),
+  });
 }
 
 function setTab(tab: CashierQueueTab): void {
@@ -127,6 +173,14 @@ function openPaymentDialog(): void {
     ),
   );
   showPayment.value = true;
+
+  customerDisplay.broadcast({
+    state: "payment_prompt",
+    patientName: queue.selectedRow.value?.patientName,
+    patientNumber: queue.selectedRow.value?.patientNumber,
+    currencyCode: currencyCode.value,
+    totalDue: queue.basketTotalDue.value,
+  });
 }
 
 function toggleCharge(charge: CashierCharge): void {
@@ -141,6 +195,15 @@ async function confirmPayment(): Promise<void> {
   if (result === null) return;
 
   showPayment.value = false;
+
+  customerDisplay.broadcast({
+    state: "payment_success",
+    patientName: queue.selectedRow.value?.patientName,
+    patientNumber: queue.selectedRow.value?.patientNumber,
+    receiptNumber: result.receipt?.receiptNumber,
+    currencyCode: currencyCode.value,
+    totalDue: result.amount,
+  });
 
   if (result.receipt) {
     await printCashierReceipt(result.receipt, {
@@ -211,6 +274,16 @@ async function submitRefundRequest(payload: {
   }
 }
 
+async function reversePayment(payload: {
+  paymentId: string;
+  reason: string;
+}): Promise<void> {
+  if (await refunds.reverse(payload.paymentId, payload.reason)) {
+    showRefundRequest.value = false;
+    await queue.refresh();
+  }
+}
+
 async function ruleOnRefund(payload: {
   refundId: string;
   decision: "approve" | "reject";
@@ -256,11 +329,13 @@ function dismissCloseDialog(open: boolean): void {
       :session="drawer.session.value"
       :is-loading="drawer.isLoading.value"
       :can-review-refunds="canApproveRefund"
+      :can-read-reports="canReadReports"
       :pending-refund-count="refunds.pendingCount.value"
       @open="showOpenDrawer = true"
       @close="showCloseDrawer = true"
       @move-cash="showMovement = true"
       @day-summary="showDaySummary = true"
+      @my-shift="showMyShift = true"
       @refunds="showRefundReview = true"
     />
 
@@ -280,12 +355,7 @@ function dismissCloseDialog(open: boolean): void {
               :error="queue.error.value"
               @select="selectPatient"
               @tab="setTab"
-              @search="
-                (term) => {
-                  queue.searchTerm.value = term;
-                  void queue.fetchQueue(true);
-                }
-              "
+              @search="queue.search"
               @retry="queue.fetchQueue()"
             />
           </aside>
@@ -302,7 +372,7 @@ function dismissCloseDialog(open: boolean): void {
               :currency-code="currencyCode"
               :unpriced-count="queue.basketUnpricedCount.value"
               :is-loading="queue.isLoadingCharges.value"
-              :can-take-payment="true"
+              :can-take-payment="drawer.isOpen.value"
               :can-add-charge="true"
               :can-request-refund="canRequestRefund"
               @toggle="toggleCharge"
@@ -346,6 +416,7 @@ function dismissCloseDialog(open: boolean): void {
     />
 
     <DaySummaryDialog :open="showDaySummary" @update:open="showDaySummary = $event" />
+    <MyShiftSummaryDialog :open="showMyShift" @update:open="showMyShift = $event" />
 
     <RefundRequestDialog
       :open="showRefundRequest"
@@ -354,6 +425,7 @@ function dismissCloseDialog(open: boolean): void {
       :is-submitting="refunds.isSubmitting.value"
       @update:open="showRefundRequest = $event"
       @confirm="submitRefundRequest"
+      @reverse="reversePayment"
     />
 
     <RefundReviewDialog
@@ -374,8 +446,17 @@ function dismissCloseDialog(open: boolean): void {
       :can-submit="payment.canSubmit.value"
       :is-submitting="payment.isSubmitting.value"
       :currency-code="currencyCode"
+      :payment-method="payment.paymentMethod.value"
+      :payment-reference="payment.paymentReference.value"
+      :phone-number="payment.phoneNumber.value"
+      :tender-lines="payment.tenderLines.value"
       @update:open="showPayment = $event"
       @update:tendered="payment.tenderedMinor.value = $event"
+      @update:method="payment.paymentMethod.value = $event"
+      @update:reference="payment.paymentReference.value = $event"
+      @update:phone="payment.phoneNumber.value = $event"
+      @add-tender="payment.tenderLines.value.push($event)"
+      @remove-tender="payment.tenderLines.value.splice($event, 1)"
       @confirm="confirmPayment"
     />
   </div>

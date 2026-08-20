@@ -20,7 +20,10 @@ export interface CashierQueueRow {
   patientNumber: string | null;
   chargeCount: number;
   unpricedCount: number;
+  /** Still owed. Zero once settled — which is why the paid tab needs the next one. */
   amountDue: string;
+  /** Already taken. What the "Paid today" tab is actually reporting. */
+  amountPaid: string;
   currencyCode: string;
   oldestChargeAt: string | null;
 }
@@ -46,7 +49,14 @@ export interface CashierCharge {
   payerClass: string;
   status: string;
   pricingStatus: string | null;
-  /** False for an unpriced charge: outstanding, but nothing to take yet. */
+  /**
+   * Whether money can be taken for this charge right now.
+   *
+   * False for two unrelated reasons — the charge is unpriced, or it has already
+   * been settled — so a screen must consult `pricingStatus` before explaining
+   * which. Rendering both as "Not priced" labelled paid consultations unpriced
+   * the moment settled charges could reach the basket.
+   */
   isPayable: boolean;
   authorizationBasis: string | null;
   authorizedAt: string | null;
@@ -79,6 +89,19 @@ export function useCashierQueue() {
   const isLoadingCharges = ref(false);
   const error = ref<string | null>(null);
 
+  /**
+   * Only the newest request may write to the queue.
+   *
+   * Several can be in flight at once — a keystroke in the search box, a live
+   * sync refetch, a tab switch — and they do not come back in the order they
+   * were sent. Without this the response for "As" can land after the one for
+   * "Asha" and overwrite it, which is why the list appeared to change on its
+   * own and sometimes showed nothing.
+   */
+  let latestQueueRequest = 0;
+  let latestChargesRequest = 0;
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
   const selectedRow = computed(
     () => rows.value.find((r) => r.patientId === selectedPatientId.value) ?? null,
   );
@@ -100,6 +123,8 @@ export function useCashierQueue() {
   }
 
   async function fetchQueue(silent = false): Promise<void> {
+    const request = ++latestQueueRequest;
+
     if (!silent) isLoading.value = true;
     error.value = null;
 
@@ -113,6 +138,9 @@ export function useCashierQueue() {
         get(`/api/v1/cashier/queue?${params.toString()}`),
         get("/api/v1/cashier/queue/status-counts"),
       ]);
+
+      // A response that has been overtaken is thrown away, not rendered.
+      if (request !== latestQueueRequest) return;
 
       rows.value = queue?.data ?? [];
       counts.value = {
@@ -130,10 +158,26 @@ export function useCashierQueue() {
         charges.value = [];
       }
     } catch (e) {
-      error.value = (e as Error).message;
+      if (request === latestQueueRequest) {
+        error.value = (e as Error).message;
+      }
     } finally {
-      isLoading.value = false;
+      if (request === latestQueueRequest) {
+        isLoading.value = false;
+      }
     }
+  }
+
+  /**
+   * Typing is not a reason to hit the server. Waits for a pause, and cancels
+   * the previous wait so a fast typist sends one request rather than one per
+   * character.
+   */
+  function search(term: string): void {
+    searchTerm.value = term;
+
+    if (searchTimer !== null) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => void fetchQueue(true), 250);
   }
 
   async function selectPatient(patientId: string | null): Promise<void> {
@@ -142,18 +186,33 @@ export function useCashierQueue() {
 
     if (patientId === null) return;
 
+    const request = ++latestChargesRequest;
     isLoadingCharges.value = true;
 
     try {
-      const payload = await get(`/api/v1/cashier/patients/${patientId}/charges`);
+      // The basket defaults to what is owed, which is nothing once a patient
+      // has paid — so opening someone from the "Paid today" tab showed an empty
+      // pane. The endpoint has always accepted this; nothing ever sent it.
+      const payload = await get(
+        `/api/v1/cashier/patients/${patientId}/charges` +
+          (activeTab.value === "paid_today" ? "?includeSettled=1" : ""),
+      );
+
+      // The cashier may have clicked someone else while this was in flight.
+      if (request !== latestChargesRequest || selectedPatientId.value !== patientId) return;
+
       charges.value = payload?.data ?? [];
       basketTotalDue.value = payload?.meta?.amountDue ?? "0.00";
       basketCurrency.value = payload?.meta?.currencyCode ?? "TZS";
       basketUnpricedCount.value = payload?.meta?.unpricedCount ?? 0;
     } catch (e) {
-      error.value = (e as Error).message;
+      if (request === latestChargesRequest) {
+        error.value = (e as Error).message;
+      }
     } finally {
-      isLoadingCharges.value = false;
+      if (request === latestChargesRequest) {
+        isLoadingCharges.value = false;
+      }
     }
   }
 
@@ -188,6 +247,7 @@ export function useCashierQueue() {
     isLoadingCharges,
     error,
     fetchQueue,
+    search,
     selectPatient,
     refresh,
     setTab,

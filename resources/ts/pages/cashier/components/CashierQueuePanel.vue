@@ -64,7 +64,12 @@ const items = computed<QueueItem[]>(() =>
       // narrow enough to truncate it to "TZS 1…".
       category: t("cashier.charge_count", row.chargeCount, { count: row.chargeCount }),
       status: props.activeTab === "paid_today" ? "complete" : "warning",
-      statusLabel: formatMoney(row.amountDue, row.currencyCode),
+      // On the paid tab the outstanding figure is always zero; what the
+      // cashier wants to see there is what they took.
+      statusLabel: formatMoney(
+        props.activeTab === "paid_today" ? row.amountPaid : row.amountDue,
+        row.currencyCode,
+      ),
       // A charge with no price cannot be taken, and the cashier needs to see
       // that before they call the patient over.
       hasWarning: row.unpricedCount > 0,

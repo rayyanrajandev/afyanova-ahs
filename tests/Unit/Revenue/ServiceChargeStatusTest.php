@@ -68,13 +68,20 @@ it('keeps payer authorization reserved and unreachable', function (): void {
         ->and(AuthorizationBasis::PAYMENT->requiresReason())->toBeFalse();
 });
 
-it('implements only consultation and manual charge sources for now', function (): void {
+it('implements consultation, laboratory order, radiology order, pharmacy order, clinical procedure order, and manual charge sources', function (): void {
     expect(ChargeSourceKind::CONSULTATION->isImplemented())->toBeTrue()
-        ->and(ChargeSourceKind::MANUAL->isImplemented())->toBeTrue()
-        ->and(ChargeSourceKind::LABORATORY_ORDER->isImplemented())->toBeFalse();
+        ->and(ChargeSourceKind::LABORATORY_ORDER->isImplemented())->toBeTrue()
+        ->and(ChargeSourceKind::RADIOLOGY_ORDER->isImplemented())->toBeTrue()
+        ->and(ChargeSourceKind::PHARMACY_ORDER->isImplemented())->toBeTrue()
+        ->and(ChargeSourceKind::CLINICAL_PROCEDURE_ORDER->isImplemented())->toBeTrue()
+        ->and(ChargeSourceKind::MANUAL->isImplemented())->toBeTrue();
 
     // A manual charge has no clinical record behind it, so it is the one kind
     // that may be raised repeatedly for the same patient.
     expect(ChargeSourceKind::MANUAL->requiresSourceReference())->toBeFalse()
-        ->and(ChargeSourceKind::CONSULTATION->requiresSourceReference())->toBeTrue();
+        ->and(ChargeSourceKind::CONSULTATION->requiresSourceReference())->toBeTrue()
+        ->and(ChargeSourceKind::LABORATORY_ORDER->requiresSourceReference())->toBeTrue()
+        ->and(ChargeSourceKind::RADIOLOGY_ORDER->requiresSourceReference())->toBeTrue()
+        ->and(ChargeSourceKind::PHARMACY_ORDER->requiresSourceReference())->toBeTrue()
+        ->and(ChargeSourceKind::CLINICAL_PROCEDURE_ORDER->requiresSourceReference())->toBeTrue();
 });

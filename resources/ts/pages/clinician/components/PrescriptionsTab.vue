@@ -182,6 +182,32 @@ function selectDrug(drug: MedicationCatalogItem) {
   showDrugDropdown.value = false;
 }
 
+function prescriptionStatusLabel(order: PlacedClinicalOrder): string {
+  if (order.status === "cancelled") return t("common.cancelled", "Cancelled");
+  if (order.status === "dispensed" || order.status === "completed") return t("clinician.dispensed", "Dispensed");
+  if (order.isAuthorized === false && (order.paymentStatus === "pending_payment" || order.paymentStatus === "draft")) {
+    return t("clinician.awaiting_payment", "Awaiting Payment");
+  }
+  if (order.isAuthorized) {
+    return t("clinician.payment_verified_ready_dispense", "Payment Verified · Ready to Dispense");
+  }
+  return order.status;
+}
+
+function prescriptionBadgeClasses(order: PlacedClinicalOrder): Record<string, boolean> {
+  const isAwaitingPayment = order.isAuthorized === false && (order.paymentStatus === "pending_payment" || order.paymentStatus === "draft");
+  const isDispensed = order.status === "dispensed" || order.status === "completed";
+  const isCancelled = order.status === "cancelled";
+  const isReadyToDispense = order.isAuthorized && !isDispensed && !isCancelled;
+
+  return {
+    "border-amber-500/40 text-amber-600 bg-amber-500/10": isAwaitingPayment,
+    "border-sky-500/40 text-sky-600 bg-sky-500/10": isReadyToDispense,
+    "border-emerald-500/40 text-emerald-600 bg-emerald-500/10": isDispensed,
+    "border-rose-500/40 text-rose-600 bg-rose-500/10": isCancelled,
+  };
+}
+
 async function handleSubmitPrescriptions() {
   if (!props.encounterId || !props.patientId) return;
   await props.orders.submitPrescriptions(props.encounterId, props.patientId);
@@ -548,13 +574,9 @@ async function handleSubmitPrescriptions() {
                 <Badge
                   variant="outline"
                   class="text-[9.5px] font-mono uppercase px-1.5 py-0"
-                  :class="{
-                    'border-emerald-500/40 text-emerald-600 bg-emerald-500/10': order.status === 'dispensed' || order.status === 'completed',
-                    'border-amber-500/40 text-amber-600 bg-amber-500/10': order.status === 'pending' || order.status === 'in_progress',
-                    'border-rose-500/40 text-rose-600 bg-rose-500/10': order.status === 'cancelled',
-                  }"
+                  :class="prescriptionBadgeClasses(order)"
                 >
-                  {{ order.status }}
+                  {{ prescriptionStatusLabel(order) }}
                 </Badge>
               </td>
               <td class="p-2 pr-3 text-right">

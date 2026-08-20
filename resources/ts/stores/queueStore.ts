@@ -63,6 +63,14 @@ export interface VisitContext {
     visitCategory: string | null;
     encounterType: string | null;
     isAdmitted: boolean;
+    /**
+     * Whether observations have been taken on *this* visit, resolved by the
+     * server from the record rather than inferred from the appointment's
+     * status. The inference held only while recording vitals was what advanced
+     * a visit; an unpaid visit does not advance, so the nursing header kept
+     * offering "Record Vitals" to a nurse who had just taken them.
+     */
+    hasRecordedVitals?: boolean;
 }
 
 /**

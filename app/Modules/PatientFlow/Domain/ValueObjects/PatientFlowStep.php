@@ -83,6 +83,12 @@ enum PatientFlowStep: string
     public function label(): string
     {
         return match ($this) {
+            // Added 2026-08-19. The case was declared and mapped in
+            // fromAppointmentStatus() but never given a label, and PHP `match`
+            // throws rather than returning null — so releasing a nurse's claim
+            // on an unpaid visit, or rendering its flow timeline, died with an
+            // UnhandledMatchError instead of showing a phrase.
+            self::AWAITING_PAYMENT => 'Awaiting payment',
             self::WAITING_TRIAGE => 'Waiting for triage',
             self::IN_TRIAGE => 'In triage',
             self::WAITING_CLINICIAN => 'Waiting for doctor',

@@ -6,6 +6,8 @@ use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
 use App\Modules\Radiology\Domain\Repositories\RadiologyOrderAuditLogRepositoryInterface;
 use App\Modules\Radiology\Domain\Repositories\RadiologyOrderRepositoryInterface;
 use App\Modules\Radiology\Domain\ValueObjects\RadiologyOrderStatus;
+use App\Modules\Revenue\Application\Services\PrepaidGatePolicy;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Support\ClinicalOrders\ClinicalOrderLifecycle;
 use Illuminate\Validation\ValidationException;
 
@@ -15,6 +17,7 @@ class ApplyRadiologyOrderLifecycleActionUseCase
         private readonly RadiologyOrderRepositoryInterface $radiologyOrderRepository,
         private readonly RadiologyOrderAuditLogRepositoryInterface $auditLogRepository,
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
+        private readonly PrepaidGatePolicy $prepaidGate,
     ) {}
 
     public function execute(string $id, string $action, string $reason, ?int $actorId = null): ?array
@@ -108,6 +111,14 @@ class ApplyRadiologyOrderLifecycleActionUseCase
             metadata: [
                 'lifecycle_action' => $normalizedAction,
             ],
+        );
+
+        $this->prepaidGate->cancelPendingCharge(
+            kind: ChargeSourceKind::RADIOLOGY_ORDER,
+            orderId: $id,
+            reason: $reason,
+            actorId: $actorId,
+            fallbackReason: 'Radiology order cancelled.',
         );
 
         return $updated;

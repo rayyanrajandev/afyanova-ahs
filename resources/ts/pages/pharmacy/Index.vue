@@ -29,6 +29,7 @@ import {
   makeValidator,
 } from "@/composables/usePersistedSelection";
 import { usePatientFlowLiveSync } from "@/composables/usePatientFlowLiveSync";
+import { usePharmacyLiveSync } from "./composables/usePharmacyLiveSync";
 import { useWorkspaceUrlSync } from "@/composables/useWorkspaceUrlSync";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -88,6 +89,12 @@ useWorkspaceUrlSync({
 
 usePatientFlowLiveSync({
   onBoardUpdated: () => {
+    void pharmacyManager.fetchOrders(true);
+  },
+});
+
+usePharmacyLiveSync({
+  onQueueUpdated: () => {
     void pharmacyManager.fetchOrders(true);
   },
 });

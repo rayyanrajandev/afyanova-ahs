@@ -3,6 +3,7 @@
 namespace App\Modules\Appointment\Infrastructure\Repositories;
 
 use App\Modules\Appointment\Domain\Repositories\AppointmentRepositoryInterface;
+use App\Modules\Appointment\Domain\ValueObjects\AppointmentStatus;
 use App\Modules\Appointment\Infrastructure\Models\AppointmentModel;
 use App\Modules\Patient\Infrastructure\Models\PatientModel;
 use App\Modules\Platform\Domain\Services\FeatureFlagResolverInterface;
@@ -71,7 +72,9 @@ class EloquentAppointmentRepository implements AppointmentRepositoryInterface
         $query
             ->where('patient_id', $patientId)
             ->whereDate('scheduled_at', $scheduledDate)
-            ->whereIn('status', ['scheduled', 'waiting_triage', 'waiting_provider', 'in_consultation'])
+            // A booking counts here (unlike arrivedAndUnresolved()), because
+            // this question is same-day double-booking, not arrival.
+            ->whereIn('status', [AppointmentStatus::SCHEDULED->value, ...AppointmentStatus::arrivedAndUnresolved()])
             ->when(
                 $excludeAppointmentId,
                 fn (Builder $builder, string $appointmentId) => $builder->where('id', '!=', $appointmentId),
@@ -100,7 +103,7 @@ class EloquentAppointmentRepository implements AppointmentRepositoryInterface
             // findActiveForPatientOnDate() correctly keeps 'scheduled' in
             // its own whitelist because its job (same-day double-booking
             // prevention) is a different question.
-            ->whereIn('status', ['waiting_triage', 'waiting_provider', 'in_consultation'])
+            ->whereIn('status', AppointmentStatus::arrivedAndUnresolved())
             ->when(
                 $excludeAppointmentId,
                 fn (Builder $builder, string $appointmentId) => $builder->where('id', '!=', $appointmentId),

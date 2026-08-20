@@ -17,6 +17,8 @@ use App\Modules\Pharmacy\Domain\Repositories\PharmacyOrderRepositoryInterface;
 use App\Modules\Pharmacy\Domain\ValueObjects\PharmacyOrderStatus;
 use App\Modules\Platform\Domain\Services\CurrentPlatformScopeContextInterface;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
+use App\Modules\Revenue\Application\Services\PrepaidGatePolicy;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Support\ClinicalOrders\ClinicalOrderLifecycle;
 use Illuminate\Support\Facades\DB;
 
@@ -45,6 +47,7 @@ class UpdatePharmacyOrderStatusUseCase
         private readonly DepartmentRepositoryInterface $departmentRepository,
         private readonly CurrentPlatformScopeContextInterface $platformScopeContext,
         private readonly RecordPharmacyFlowTransitionService $recordFlowTransition,
+        private readonly PrepaidGatePolicy $prepaidGate,
     ) {}
 
     public function execute(
@@ -65,6 +68,21 @@ class UpdatePharmacyOrderStatusUseCase
         }
 
         ClinicalOrderLifecycle::assertActiveForWorkflow($existing, 'pharmacy order');
+
+        // Prepaid gate. The statuses below are this module's own
+        // declaration of what "providing the service" means; the rule
+        // itself lives in PrepaidGatePolicy.
+        $this->prepaidGate->assertAuthorized(
+            kind: ChargeSourceKind::PHARMACY_ORDER,
+            orderId: $id,
+            targetStatus: $status,
+            deliveryStatuses: [
+                PharmacyOrderStatus::IN_PREPARATION->value,
+                PharmacyOrderStatus::PARTIALLY_DISPENSED->value,
+                PharmacyOrderStatus::DISPENSED->value,
+            ],
+            refusalMessage: 'Prescription cannot be prepared or dispensed before payment has been verified.',
+        );
 
         $quantityDispensedInputProvided = $quantityDispensed !== null;
         $dispensingNotesInputProvided = trim((string) ($dispensingNotes ?? '')) !== '';

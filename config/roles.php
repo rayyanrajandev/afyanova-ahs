@@ -241,6 +241,9 @@ return [
             'service.requests.read',
             'clinical-procedure.orders.read',
             'clinical-procedure.order',
+            'clinical-procedure.perform',
+            'clinical-procedure.orders.update-status',
+            'clinical-procedure.orders.view-audit-logs',
             // nursing/notes/{id} is guarded by this. CLINICAL.NURSE.MIDWIFE
             // already held it for the same nursing notes — the plain nurse role
             // simply never did (2026-08-16).

@@ -11,7 +11,7 @@
 -->
 <script setup lang="ts">
 import { AlertTriangle } from "lucide-vue-next";
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -89,6 +89,16 @@ async function load(): Promise<void> {
 onMounted(() => {
   if (props.open) void load();
 });
+
+// The dialog is mounted once by the workspace and toggled by prop, so
+// onMounted alone fired while it was still closed and never again — opening it
+// showed an empty report because nothing had ever been fetched.
+watch(
+  () => props.open,
+  (open) => {
+    if (open) void load();
+  },
+);
 
 defineExpose({ load });
 </script>

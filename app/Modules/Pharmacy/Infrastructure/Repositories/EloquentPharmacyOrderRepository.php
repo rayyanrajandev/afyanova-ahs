@@ -11,6 +11,10 @@ use App\Support\ClinicalOrders\ClinicalOrderPatientTextSearch;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 
+use App\Modules\Pharmacy\Domain\ValueObjects\PharmacyOrderStatus;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
+use App\Modules\Revenue\Domain\ValueObjects\ServiceChargeStatus;
+
 class EloquentPharmacyOrderRepository implements PharmacyOrderRepositoryInterface
 {
     public function __construct(
@@ -84,6 +88,7 @@ class EloquentPharmacyOrderRepository implements PharmacyOrderRepositoryInterfac
         int $perPage,
         ?string $sortBy,
         string $sortDirection,
+        bool $authorizedOnly = false,
     ): array {
         $sortBy = in_array($sortBy, ['order_number', 'ordered_at', 'status', 'created_at', 'updated_at'], true)
             ? $sortBy
@@ -92,6 +97,10 @@ class EloquentPharmacyOrderRepository implements PharmacyOrderRepositoryInterfac
         $queryBuilder = PharmacyOrderModel::query();
         $this->applyPlatformScopeIfEnabled($queryBuilder);
         $this->applyActiveEntryStateScope($queryBuilder);
+
+        if ($authorizedOnly) {
+            $this->applyAuthorizedFilter($queryBuilder);
+        }
 
         $queryBuilder
             ->when($query, fn (Builder $builder, string $searchTerm) => $this->applyTextSearch($builder, $searchTerm))
@@ -125,10 +134,15 @@ class EloquentPharmacyOrderRepository implements PharmacyOrderRepositoryInterfac
         ?string $admissionId,
         ?string $fromDateTime,
         ?string $toDateTime,
+        bool $authorizedOnly = false,
     ): array {
         $queryBuilder = PharmacyOrderModel::query();
         $this->applyPlatformScopeIfEnabled($queryBuilder);
         $this->applyActiveEntryStateScope($queryBuilder);
+
+        if ($authorizedOnly) {
+            $this->applyAuthorizedFilter($queryBuilder);
+        }
 
         $queryBuilder
             ->when($query, fn (Builder $builder, string $searchTerm) => $this->applyTextSearch($builder, $searchTerm))
@@ -382,6 +396,27 @@ class EloquentPharmacyOrderRepository implements PharmacyOrderRepositoryInterfac
     private function applyActiveEntryStateScope(Builder $query): void
     {
         $query->where('entry_state', ClinicalOrderEntryState::ACTIVE->value);
+    }
+
+    private function applyAuthorizedFilter(Builder $builder): void
+    {
+        if (! ChargeSourceKind::PHARMACY_ORDER->prepaidGateEnabled()) {
+            return;
+        }
+
+        $builder->where(function (Builder $q): void {
+            $q->whereIn('status', [
+                PharmacyOrderStatus::IN_PREPARATION->value,
+                PharmacyOrderStatus::PARTIALLY_DISPENSED->value,
+                PharmacyOrderStatus::DISPENSED->value,
+            ])->orWhere(function (Builder $subQ): void {
+                $subQ->whereRaw("id::text IN (SELECT source_workflow_id FROM service_charges WHERE source_workflow_kind = ? AND status IN (?, ?))", [
+                    ChargeSourceKind::PHARMACY_ORDER->value,
+                    ServiceChargeStatus::AUTHORIZED->value,
+                    ServiceChargeStatus::FULFILLED->value,
+                ]);
+            });
+        });
     }
 
     private function applyNotEnteredInErrorScope(Builder $query): void

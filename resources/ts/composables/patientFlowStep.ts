@@ -58,8 +58,14 @@ const STEP_LABEL_KEYS: Partial<Record<PatientFlowStep, string>> = {
   in_imaging: "patient.stage_in_imaging",
   waiting_lab_and_imaging: "patient.stage_waiting_lab_and_imaging",
   in_lab_and_imaging: "patient.stage_in_lab_and_imaging",
+  waiting_pharmacy: "patient.stage_waiting_pharmacy",
+  waiting_direct_service: "patient.stage_waiting_direct_service",
+  in_direct_service: "patient.stage_in_direct_service",
   admitted: "patient.stage_admitted_inpatient",
+  returned_to_reception: "patient.stage_returned_to_reception",
   completed: "patient.stage_completed",
+  cancelled: "patient.stage_cancelled",
+  no_show: "patient.stage_no_show",
 };
 
 /**

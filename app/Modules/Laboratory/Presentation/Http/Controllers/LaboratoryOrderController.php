@@ -30,6 +30,7 @@ use App\Modules\Laboratory\Presentation\Http\Transformers\LaboratoryOrderRespons
 use App\Modules\Platform\Application\Exceptions\TenantScopeRequiredForIsolationException;
 use App\Modules\Platform\Infrastructure\Models\AuditExportJobModel;
 use App\Support\ClinicalOrders\ClinicalOrderPatientSummaryEnricher;
+use App\Support\ClinicalOrders\ClinicalOrderPaymentEnricher;
 use App\Support\ClinicalOrders\ClinicalOrderUserSummaryEnricher;
 use App\Support\ClinicalOrders\ClinicalOrderVisitStageEnricher;
 use Illuminate\Http\JsonResponse;
@@ -49,7 +50,14 @@ class LaboratoryOrderController extends Controller
 
     public function index(Request $request, ListLaboratoryOrdersUseCase $useCase): JsonResponse
     {
-        $result = $useCase->execute($request->all());
+        $filters = $request->all();
+
+        // When queried from the laboratory bench workspace, only show authorized orders
+        if (! array_key_exists('authorizedOnly', $filters) && ($request->routeIs('laboratory.orders.*') || $request->is('api/v1/laboratory/*'))) {
+            $filters['authorizedOnly'] = true;
+        }
+
+        $result = $useCase->execute($filters);
         $orders = ClinicalOrderPatientSummaryEnricher::attachToTransformedOrders(
             $result['data'],
             array_map([LaboratoryOrderResponseTransformer::class, 'transform'], $result['data']),
@@ -59,6 +67,7 @@ class LaboratoryOrderController extends Controller
         // still waiting for triage, with a doctor, or held by the lab itself —
         // instead of showing only this order's own status.
         $orders = ClinicalOrderVisitStageEnricher::attachToTransformedOrders($result['data'], $orders);
+        $orders = ClinicalOrderPaymentEnricher::attachToTransformedOrders($result['data'], $orders);
 
         return response()->json([
             'data' => ClinicalOrderUserSummaryEnricher::attachOrderingClinicianToTransformedOrders($result['data'], $orders),
@@ -68,7 +77,13 @@ class LaboratoryOrderController extends Controller
 
     public function statusCounts(Request $request, ListLaboratoryOrderStatusCountsUseCase $useCase): JsonResponse
     {
-        $counts = $useCase->execute($request->all());
+        $filters = $request->all();
+
+        if (! array_key_exists('authorizedOnly', $filters) && ($request->routeIs('laboratory.orders.*') || $request->is('api/v1/laboratory/*'))) {
+            $filters['authorizedOnly'] = true;
+        }
+
+        $counts = $useCase->execute($filters);
 
         return response()->json([
             'data' => $counts,
@@ -98,8 +113,11 @@ class LaboratoryOrderController extends Controller
             return $this->validationError($field, $exception->getMessage());
         }
 
+        $transformed = LaboratoryOrderResponseTransformer::transform($order);
+        $withPayment = ClinicalOrderPaymentEnricher::attachToTransformedOrders([$order], [$transformed])[0];
+
         return response()->json([
-            'data' => LaboratoryOrderResponseTransformer::transform($order),
+            'data' => $withPayment,
         ], 201);
     }
 
@@ -113,11 +131,12 @@ class LaboratoryOrderController extends Controller
             [$order],
             [$transformed],
         );
+        $withPayment = ClinicalOrderPaymentEnricher::attachToTransformedOrders([$order], $withPatient);
 
         return response()->json([
             'data' => ClinicalOrderUserSummaryEnricher::attachOrderingClinicianToTransformedOrders(
                 [$order],
-                $withPatient,
+                $withPayment,
             )[0],
         ]);
     }

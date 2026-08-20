@@ -24,6 +24,8 @@ use App\Modules\ClinicalProcedure\Presentation\Http\Requests\UpdateClinicalProce
 use App\Modules\ClinicalProcedure\Presentation\Http\Requests\UpdateClinicalProcedureOrderStatusRequest;
 use App\Modules\ClinicalProcedure\Presentation\Http\Transformers\ClinicalProcedureOrderAuditLogResponseTransformer;
 use App\Modules\ClinicalProcedure\Presentation\Http\Transformers\ClinicalProcedureOrderResponseTransformer;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
+use App\Support\ClinicalOrders\ClinicalOrderPaymentEnricher;
 use App\Support\ClinicalOrders\ClinicalOrderPatientSummaryEnricher;
 use App\Support\ClinicalOrders\ClinicalOrderUserSummaryEnricher;
 use Illuminate\Http\JsonResponse;
@@ -40,10 +42,22 @@ class ClinicalProcedureOrderController extends Controller
 
     public function index(Request $request, ListClinicalProcedureOrdersUseCase $useCase): JsonResponse
     {
-        $result = $useCase->execute($request->all());
+        $filters = $request->all();
+
+        // When queried from the procedure workstation, only show authorized orders
+        if (! array_key_exists('authorizedOnly', $filters) && ($request->routeIs('procedure.orders.*') || $request->is('api/v1/procedure/*') || $request->is('api/v1/clinical-procedure/*'))) {
+            $filters['authorizedOnly'] = true;
+        }
+
+        $result = $useCase->execute($filters);
         $orders = ClinicalOrderPatientSummaryEnricher::attachToTransformedOrders(
             $result['data'],
             array_map([ClinicalProcedureOrderResponseTransformer::class, 'transform'], $result['data']),
+        );
+        $orders = ClinicalOrderPaymentEnricher::attachToTransformedOrders(
+            $result['data'],
+            $orders,
+            ChargeSourceKind::CLINICAL_PROCEDURE_ORDER,
         );
 
         return response()->json([
@@ -54,7 +68,13 @@ class ClinicalProcedureOrderController extends Controller
 
     public function statusCounts(Request $request, ListClinicalProcedureOrderStatusCountsUseCase $useCase): JsonResponse
     {
-        $counts = $useCase->execute($request->all());
+        $filters = $request->all();
+
+        if (! array_key_exists('authorizedOnly', $filters) && ($request->routeIs('procedure.orders.*') || $request->is('api/v1/procedure/*') || $request->is('api/v1/clinical-procedure/*'))) {
+            $filters['authorizedOnly'] = true;
+        }
+
+        $counts = $useCase->execute($filters);
 
         return response()->json([
             'data' => $counts,
@@ -84,8 +104,15 @@ class ClinicalProcedureOrderController extends Controller
             return $this->validationError($field, $exception->getMessage());
         }
 
+        $transformed = ClinicalProcedureOrderResponseTransformer::transform($order);
+        $enriched = ClinicalOrderPaymentEnricher::attachToTransformedOrders(
+            [$order],
+            [$transformed],
+            ChargeSourceKind::CLINICAL_PROCEDURE_ORDER,
+        )[0] ?? $transformed;
+
         return response()->json([
-            'data' => ClinicalProcedureOrderResponseTransformer::transform($order),
+            'data' => $enriched,
         ], 201);
     }
 
@@ -94,8 +121,15 @@ class ClinicalProcedureOrderController extends Controller
         $order = $useCase->execute($id);
         abort_if($order === null, 404, 'Clinical procedure order not found.');
 
+        $transformed = ClinicalProcedureOrderResponseTransformer::transform($order, true);
+        $enriched = ClinicalOrderPaymentEnricher::attachToTransformedOrders(
+            [$order],
+            [$transformed],
+            ChargeSourceKind::CLINICAL_PROCEDURE_ORDER,
+        )[0] ?? $transformed;
+
         return response()->json([
-            'data' => ClinicalProcedureOrderResponseTransformer::transform($order, true),
+            'data' => $enriched,
         ]);
     }
 

@@ -85,9 +85,28 @@ export const useVitalsStore = defineStore('vitals', () => {
                 headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: JSON.stringify(input),
             });
-            if (!res.ok) throw new Error('Failed to record vitals');
-            const body = (await res.json()) as { data?: VitalSetRecorded };
-            if (!body.data) throw new Error('Failed to record vitals');
+            // Read the body before deciding. A 403, a 419 (expired session) and
+            // a 422 all arrive here, and each one says exactly what went wrong —
+            // discarding it turned every failure into "Failed to save vitals"
+            // with nothing a nurse or an engineer could act on.
+            const body = (await res.json().catch(() => null)) as
+                | { data?: VitalSetRecorded; message?: string; errors?: Record<string, string[]> }
+                | null;
+
+            if (!res.ok) {
+                const firstFieldError = body?.errors
+                    ? Object.values(body.errors).flat()[0]
+                    : undefined;
+
+                throw new Error(
+                    firstFieldError ??
+                        body?.message ??
+                        `Failed to record vitals (HTTP ${res.status})`,
+                );
+            }
+
+            if (!body?.data) throw new Error('The server accepted the vitals but returned no record.');
+
             return body.data;
         } catch (e) {
             error.value = e instanceof Error ? e.message : 'Failed to record vitals';

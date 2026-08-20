@@ -17,6 +17,7 @@ use App\Modules\Platform\Domain\Services\CurrentPlatformScopeContextInterface;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
 use App\Modules\ServiceRequest\Application\UseCases\LinkServiceRequestToClinicalOrderUseCase;
 use App\Modules\ServiceRequest\Domain\ValueObjects\ServiceRequestServiceType;
+use App\Modules\Revenue\Application\Services\LaboratoryChargeRaiser;
 use App\Support\ClinicalOrders\ClinicalOrderLifecycle;
 use App\Support\ClinicalOrders\OrderSessionManager;
 use Illuminate\Support\Str;
@@ -35,6 +36,7 @@ class CreateLaboratoryOrderUseCase
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
         private readonly OrderSessionManager $orderSessionManager,
         private readonly LinkServiceRequestToClinicalOrderUseCase $serviceRequestLinker,
+        private readonly LaboratoryChargeRaiser $laboratoryChargeRaiser,
     ) {}
 
     public function execute(array $payload, ?int $actorId = null): array
@@ -123,6 +125,10 @@ class CreateLaboratoryOrderUseCase
                 actorId: $actorId,
             );
         }
+
+        // Prepaid: the laboratory order is charged for upon creation before
+        // any specimen is collected or processed.
+        $this->laboratoryChargeRaiser->raiseFor($createdOrder, $actorId);
 
         return $createdOrder;
     }

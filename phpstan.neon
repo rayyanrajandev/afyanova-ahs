@@ -1,0 +1,32 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - phpstan-baseline.neon
+
+parameters:
+    paths:
+        - app
+        - database/seeders
+        - routes
+
+    # Level 5 is chosen for one specific reason: it is the point at which
+    # PHPStan reports a `match` that does not handle every case of a known
+    # enum. That single check is what this tool was introduced for.
+    #
+    # PatientFlowStep::AWAITING_PAYMENT was declared, mapped in
+    # fromAppointmentStatus(), and never given a label(). PHP `match` throws
+    # rather than returning null, so releasing a nurse's claim on an unpaid
+    # visit and rendering that visit's timeline both died with a 500 that
+    # reached the browser as an unexplained failure. Nothing in 367 tests
+    # covered it, because nothing had thought to.
+    #
+    # Raise the level over time; do not lower it.
+    level: 5
+
+    # The existing findings are captured in phpstan-baseline.neon rather than
+    # fixed in one pass. The point of the tool is to stop *new* ones, and a
+    # wall of pre-existing errors is how static analysis gets switched off.
+    # Shrink the baseline as files are touched for other reasons.
+    treatPhpDocTypesAsCertain: false
+
+    excludePaths:
+        - app/Console/Commands/Backfill*

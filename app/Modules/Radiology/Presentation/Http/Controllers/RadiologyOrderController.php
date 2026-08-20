@@ -27,7 +27,9 @@ use App\Modules\Radiology\Presentation\Http\Requests\UpdateRadiologyOrderStatusR
 use App\Modules\Radiology\Presentation\Http\Requests\VerifyRadiologyOrderResultRequest;
 use App\Modules\Radiology\Presentation\Http\Transformers\RadiologyOrderAuditLogResponseTransformer;
 use App\Modules\Radiology\Presentation\Http\Transformers\RadiologyOrderResponseTransformer;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Support\ClinicalOrders\ClinicalOrderPatientSummaryEnricher;
+use App\Support\ClinicalOrders\ClinicalOrderPaymentEnricher;
 use App\Support\ClinicalOrders\ClinicalOrderUserSummaryEnricher;
 use App\Support\ClinicalOrders\ClinicalOrderVisitStageEnricher;
 use Illuminate\Http\JsonResponse;
@@ -44,7 +46,14 @@ class RadiologyOrderController extends Controller
 
     public function index(Request $request, ListRadiologyOrdersUseCase $useCase): JsonResponse
     {
-        $result = $useCase->execute($request->all());
+        $filters = $request->all();
+
+        // When queried from the radiology worklist workspace, only show authorized orders
+        if (! array_key_exists('authorizedOnly', $filters) && ($request->routeIs('radiology.orders.*') || $request->is('api/v1/radiology/*'))) {
+            $filters['authorizedOnly'] = true;
+        }
+
+        $result = $useCase->execute($filters);
         $orders = ClinicalOrderPatientSummaryEnricher::attachToTransformedOrders(
             $result['data'],
             array_map([RadiologyOrderResponseTransformer::class, 'transform'], $result['data']),
@@ -54,6 +63,7 @@ class RadiologyOrderController extends Controller
         // this patient is still with a doctor, already waiting at imaging, or
         // long gone — the order's own status cannot say.
         $orders = ClinicalOrderVisitStageEnricher::attachToTransformedOrders($result['data'], $orders);
+        $orders = ClinicalOrderPaymentEnricher::attachToTransformedOrders($result['data'], $orders, ChargeSourceKind::RADIOLOGY_ORDER);
 
         return response()->json([
             'data' => ClinicalOrderUserSummaryEnricher::attachOrderingClinicianToTransformedOrders($result['data'], $orders),
@@ -63,7 +73,13 @@ class RadiologyOrderController extends Controller
 
     public function statusCounts(Request $request, ListRadiologyOrderStatusCountsUseCase $useCase): JsonResponse
     {
-        $counts = $useCase->execute($request->all());
+        $filters = $request->all();
+
+        if (! array_key_exists('authorizedOnly', $filters) && ($request->routeIs('radiology.orders.*') || $request->is('api/v1/radiology/*'))) {
+            $filters['authorizedOnly'] = true;
+        }
+
+        $counts = $useCase->execute($filters);
 
         return response()->json([
             'data' => $counts,
@@ -93,8 +109,11 @@ class RadiologyOrderController extends Controller
             return $this->validationError($field, $exception->getMessage());
         }
 
+        $transformed = RadiologyOrderResponseTransformer::transform($order);
+        $withPayment = ClinicalOrderPaymentEnricher::attachToTransformedOrders([$order], [$transformed], ChargeSourceKind::RADIOLOGY_ORDER)[0];
+
         return response()->json([
-            'data' => RadiologyOrderResponseTransformer::transform($order),
+            'data' => $withPayment,
         ], 201);
     }
 
@@ -105,6 +124,7 @@ class RadiologyOrderController extends Controller
 
         $transformed = RadiologyOrderResponseTransformer::transform($order, true);
         $enriched = ClinicalOrderPatientSummaryEnricher::attachToTransformedOrders([$order], [$transformed]);
+        $enriched = ClinicalOrderPaymentEnricher::attachToTransformedOrders([$order], $enriched, ChargeSourceKind::RADIOLOGY_ORDER);
         $enriched = ClinicalOrderUserSummaryEnricher::attachOrderingClinicianToTransformedOrders([$order], $enriched);
 
         return response()->json([

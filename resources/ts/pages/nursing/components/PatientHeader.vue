@@ -29,6 +29,7 @@ import {
 import { PopoverClose } from "reka-ui";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { hasRecordedTriageVitals as hasRecordedTriageVitalsFor } from "@/composables/appointmentStatus";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -93,10 +94,19 @@ function onNotesUpdated(updatedNotes: string) {
  * status at waiting_triage until vitals are actually saved.
  */
 const hasRecordedTriageVitals = computed<boolean>(() => {
-  const status = props.visit?.appointmentStatus;
-  if (!status) return false;
+  const visit = props.visit;
+  if (!visit) return false;
 
-  return status !== "waiting_triage" && status !== "scheduled";
+  // The server's answer wins where it has one: it is read from the record and
+  // scoped to this visit, so it stays true for a patient whose visit cannot
+  // advance — an unpaid one, most commonly.
+  if (visit.hasRecordedVitals === true) return true;
+
+  // Fallback for a visit the server could not scope a lookup by (a direct
+  // encounter with no appointment) and for observations recorded before that
+  // linkage existed: reaching a post-triage status means vitals were taken,
+  // because recording them is what gets a visit there.
+  return hasRecordedTriageVitalsFor(visit.appointmentStatus);
 });
 
 /**

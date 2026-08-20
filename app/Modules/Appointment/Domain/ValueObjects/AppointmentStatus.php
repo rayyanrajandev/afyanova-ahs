@@ -35,6 +35,41 @@ enum AppointmentStatus: string
     }
 
     /**
+     * The patient is physically here and their visit is not yet resolved.
+     *
+     * AWAITING_PAYMENT belongs in this set and was missing from both callers
+     * until 2026-08-19. The omission dated from the prepaid model adding the
+     * status without revisiting the queries that enumerate "active", and one
+     * list produced three failures:
+     *
+     *  - The Reception patient profile crashed on a checked-in patient. The
+     *    summary reported no active appointment while the encounter was open,
+     *    and the template assumed those two could never disagree.
+     *  - A patient standing at the cashier could be registered and checked in
+     *    a *second* time, because the duplicate-arrival guard could not see
+     *    them — a duplicate visit and a duplicate consultation charge.
+     *  - Reception could not proactively disable Check-In for such a patient,
+     *    which is the reason the summary exposes this field at all.
+     *
+     * Stated once, here, so the next status added to this enum has one place
+     * to be considered rather than several to be forgotten in.
+     *
+     * SCHEDULED is deliberately absent: a booking is not an arrival. The
+     * same-day double-booking check adds it explicitly for its own question.
+     *
+     * @return array<int, string>
+     */
+    public static function arrivedAndUnresolved(): array
+    {
+        return [
+            self::AWAITING_PAYMENT->value,
+            self::WAITING_TRIAGE->value,
+            self::WAITING_PROVIDER->value,
+            self::IN_CONSULTATION->value,
+        ];
+    }
+
+    /**
      * Phase 2 of reports/patient-arrival-checkin-modernization-plan.md, closing the
      * gap named in reports/patient-arrival-checkin-audit.md §3: the generic
      * PATCH appointments/{id}/status endpoint previously accepted any enum value

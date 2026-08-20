@@ -367,9 +367,9 @@ const primaryAction = computed<{
 </script>
 
 <template>
-  <div class="flex flex-1 flex-col overflow-hidden bg-surface rounded-lg">
+  <div class="flex flex-1 flex-col overflow-hidden bg-surface">
     <!-- Pinned Patient Header (2027 High-Density Enterprise Layout — Strict Non-Wrapping) -->
-    <header class="shrink-0 border-b border-border bg-surface px-4 py-2 flex items-center justify-between gap-3 overflow-hidden rounded-t-lg">
+    <header class="shrink-0 border-b border-border bg-surface px-4 py-2 flex items-center justify-between gap-3 overflow-hidden">
       <!-- Left identity & safety block -->
       <div class="flex min-w-0 items-center gap-3 flex-1 overflow-hidden">
         <Avatar class="size-9 shrink-0 border border-primary/20 bg-primary/5">
@@ -384,7 +384,7 @@ const primaryAction = computed<{
             <h1 class="truncate text-sm font-bold tracking-tight text-foreground">
               {{ patientDisplayName(patient) }}
             </h1>
-            <span class="font-mono text-xs font-medium text-muted-foreground bg-secondary px-1.5 py-0.2 rounded border border-border/60 shrink-0">
+            <span class="font-mono text-xs font-medium text-muted-foreground bg-secondary px-1.5 py-0.5 rounded border border-border/60 shrink-0">
               {{ patient.identifier[0]?.value }}
             </span>
             <span
@@ -396,7 +396,7 @@ const primaryAction = computed<{
             <!-- Journey Stage Badge -->
             <Badge
               variant="secondary"
-              class="gap-1 text-[10.5px] px-2 py-0.2 font-medium border border-border shrink-0"
+              class="gap-1 text-[10.5px] px-2 py-0.5 font-medium border border-border shrink-0"
             >
               <span
                 class="size-1.5 shrink-0 rounded-full"
@@ -586,35 +586,61 @@ const primaryAction = computed<{
     <!-- Tabbed Profile Navigation & Content -->
     <Tabs v-model="activeProfileTab" class="flex flex-1 flex-col overflow-hidden">
       <!-- Tabs Navigation Bar -->
-      <div class="border-b border-border bg-surface px-3.5 pt-1 shrink-0">
+      <div class="border-b border-border bg-surface px-3 pt-1 shrink-0">
         <TabsList class="h-8 gap-1 bg-transparent p-0 justify-start w-auto border-b-0 -mb-px">
           <TabsTrigger
             value="overview"
-            class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+            class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px shrink-0"
           >
-            <Activity class="size-3.5" />
+            <Activity class="size-3.5" aria-hidden="true" />
             <span>{{ t("patient.tab_overview") }}</span>
           </TabsTrigger>
           <TabsTrigger
             value="demographics"
-            class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+            class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px shrink-0"
           >
-            <Contact class="size-3.5" />
+            <Contact class="size-3.5" aria-hidden="true" />
             <span>{{ t("patient.tab_demographics") }}</span>
           </TabsTrigger>
           <TabsTrigger
             value="appointments"
-            class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+            class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px shrink-0"
           >
-            <CalendarClock class="size-3.5" />
-            <span>{{ t("patient.tab_appointments") }} ({{ profile.upcomingAppointments.value.length }})</span>
+            <CalendarClock class="size-3.5" aria-hidden="true" />
+            <span>{{ t("patient.tab_appointments") }}</span>
+            <Badge
+              v-if="profile.upcomingAppointments.value.length > 0"
+              variant="secondary"
+              class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
+              :class="activeProfileTab === 'appointments' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+              :aria-label="
+                t('appointment.count_sr', {
+                  count: profile.upcomingAppointments.value.length,
+                })
+              "
+            >
+              {{ profile.upcomingAppointments.value.length }}
+            </Badge>
           </TabsTrigger>
           <TabsTrigger
             value="audit"
-            class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2.5 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px"
+            class="h-8 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-xs font-semibold data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary cursor-pointer -mb-px shrink-0"
           >
-            <ScrollText class="size-3.5" />
+            <ScrollText class="size-3.5" aria-hidden="true" />
             <span>{{ t("patient.tab_audit") }}</span>
+            <Badge
+              v-if="profile.auditFeed.value.length > 0"
+              variant="secondary"
+              class="ml-0.5 px-1.5 py-0 text-[10px] font-mono tabular-nums transition-colors"
+              :class="activeProfileTab === 'audit' ? 'bg-primary/15 text-primary font-semibold' : 'text-muted-foreground'"
+              :aria-label="
+                t('patient.count_sr', {
+                  count: profile.auditFeed.value.length,
+                })
+              "
+            >
+              {{ profile.auditFeed.value.length }}
+            </Badge>
           </TabsTrigger>
         </TabsList>
       </div>
@@ -685,14 +711,24 @@ const primaryAction = computed<{
                 {{ t("patient.no_active_visit") }}
               </div>
               <div v-else class="space-y-1.5 text-xs">
-                <div class="flex items-center justify-between py-0.5">
-                  <span class="text-muted-foreground">{{ t("appointment.department") }}:</span>
-                  <span class="font-medium text-foreground">{{ activeAppointment!.department ?? "General OPD" }}</span>
-                </div>
-                <div class="flex items-center justify-between py-0.5">
-                  <span class="text-muted-foreground">{{ t("appointment.scheduled") }}:</span>
-                  <span class="font-mono text-foreground">{{ formatClinicalDate(activeAppointment!.scheduledAt) }}</span>
-                </div>
+                <!--
+                  Guarded, not asserted. This block renders whenever *either* an
+                  appointment or a live encounter exists (see currentVisitIsEmpty),
+                  so activeAppointment can legitimately be null here — a
+                  direct-service walk-in has an encounter and no appointment. The
+                  `!` that used to be on these two lines silenced the compiler on
+                  a case that genuinely occurs and crashed the panel at runtime.
+                -->
+                <template v-if="activeAppointment">
+                  <div class="flex items-center justify-between py-0.5">
+                    <span class="text-muted-foreground">{{ t("appointment.department") }}:</span>
+                    <span class="font-medium text-foreground">{{ activeAppointment.department ?? "General OPD" }}</span>
+                  </div>
+                  <div class="flex items-center justify-between py-0.5">
+                    <span class="text-muted-foreground">{{ t("appointment.scheduled") }}:</span>
+                    <span class="font-mono text-foreground">{{ formatClinicalDate(activeAppointment.scheduledAt) }}</span>
+                  </div>
+                </template>
                 <div v-if="currentVisitClinicianName" class="flex items-center justify-between py-0.5">
                   <span class="text-muted-foreground">{{ t("appointment.attending") }}:</span>
                   <span class="font-medium text-foreground">{{ currentVisitClinicianName }}</span>
@@ -982,7 +1018,7 @@ const primaryAction = computed<{
                   {{ profile.auditActionLabel(entry) }}
                 </span>
                 <span class="font-mono text-muted-foreground text-[11px]">
-                  {{ formatClinicalDate(entry.timestamp) }}
+                  {{ formatClinicalDate(entry.occurredAt) }}
                 </span>
               </li>
             </ul>

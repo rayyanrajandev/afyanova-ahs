@@ -168,6 +168,8 @@ export interface PatientInsuranceSummary {
 export interface PatientLatestEncounterSummary {
     id: string;
     encounterNumber: string | null;
+    /** outpatient | inpatient | emergency — drives the profile's admitted check. */
+    type: string | null;
     status: string | null;
     openedAt: string | null;
     closedAt: string | null;
@@ -211,6 +213,15 @@ export interface PatientRecentActivityEntry {
     occurredAt: string | null;
 }
 
+export interface PatientCurrentAdmissionSummary {
+    id: string;
+    admissionNumber: string | null;
+    ward: string | null;
+    bed: string | null;
+    admittedAt: string | null;
+    status: string | null;
+}
+
 export interface PatientSummary {
     contact: {
         email: string | null;
@@ -224,6 +235,7 @@ export interface PatientSummary {
     upcomingAppointment: PatientUpcomingAppointmentSummary | null;
     recentActivity: PatientRecentActivityEntry[];
     activeAppointment: PatientActiveAppointmentSummary | null;
+    currentAdmission: PatientCurrentAdmissionSummary | null;
 }
 
 const BASE_URL = '/api/v1';
@@ -525,6 +537,10 @@ export const usePatientStore = defineStore('patient', () => {
                 upcomingAppointment: data.upcomingAppointment ?? null,
                 recentActivity: data.recentActivity ?? [],
                 activeAppointment: data.activeAppointment ?? null,
+                // Was omitted here while the backend sent it, so every consumer
+                // read undefined and the profile's admitted state was
+                // unreachable.
+                currentAdmission: data.currentAdmission ?? null,
             };
         } catch {
             return null;

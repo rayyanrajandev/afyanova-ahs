@@ -3,9 +3,12 @@
 namespace App\Modules\ClinicalProcedure\Infrastructure\Repositories;
 
 use App\Modules\ClinicalProcedure\Domain\Repositories\ClinicalProcedureOrderRepositoryInterface;
+use App\Modules\ClinicalProcedure\Domain\ValueObjects\ClinicalProcedureOrderStatus;
 use App\Modules\ClinicalProcedure\Infrastructure\Models\ClinicalProcedureOrderModel;
 use App\Modules\Platform\Domain\Services\FeatureFlagResolverInterface;
 use App\Modules\Platform\Infrastructure\Support\PlatformScopeQueryApplier;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
+use App\Modules\Revenue\Domain\ValueObjects\ServiceChargeStatus;
 use App\Support\ClinicalOrders\ClinicalOrderEntryState;
 use App\Support\ClinicalOrders\ClinicalOrderPatientTextSearch;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -84,7 +87,8 @@ class EloquentClinicalProcedureOrderRepository implements ClinicalProcedureOrder
         int $page,
         int $perPage,
         ?string $sortBy,
-        string $sortDirection
+        string $sortDirection,
+        bool $authorizedOnly = false,
     ): array {
         $sortBy = in_array($sortBy, ['order_number', 'ordered_at', 'scheduled_for', 'status', 'procedure_setting', 'created_at', 'updated_at'], true)
             ? $sortBy
@@ -93,6 +97,10 @@ class EloquentClinicalProcedureOrderRepository implements ClinicalProcedureOrder
         $queryBuilder = ClinicalProcedureOrderModel::query();
         $this->applyPlatformScopeIfEnabled($queryBuilder);
         $this->applyActiveEntryStateScope($queryBuilder);
+
+        if ($authorizedOnly) {
+            $this->applyAuthorizedFilter($queryBuilder);
+        }
 
         $queryBuilder
             ->when($query, fn (Builder $builder, string $searchTerm) => $this->applyTextSearch($builder, $searchTerm))
@@ -127,11 +135,16 @@ class EloquentClinicalProcedureOrderRepository implements ClinicalProcedureOrder
         ?string $admissionId,
         ?string $procedureSetting,
         ?string $fromDateTime,
-        ?string $toDateTime
+        ?string $toDateTime,
+        bool $authorizedOnly = false,
     ): array {
         $queryBuilder = ClinicalProcedureOrderModel::query();
         $this->applyPlatformScopeIfEnabled($queryBuilder);
         $this->applyActiveEntryStateScope($queryBuilder);
+
+        if ($authorizedOnly) {
+            $this->applyAuthorizedFilter($queryBuilder);
+        }
 
         $queryBuilder
             ->when($query, fn (Builder $builder, string $searchTerm) => $this->applyTextSearch($builder, $searchTerm))
@@ -209,6 +222,27 @@ class EloquentClinicalProcedureOrderRepository implements ClinicalProcedureOrder
     private function applyActiveEntryStateScope(Builder $query): void
     {
         $query->where('entry_state', ClinicalOrderEntryState::ACTIVE->value);
+    }
+
+    private function applyAuthorizedFilter(Builder $builder): void
+    {
+        if (! ChargeSourceKind::CLINICAL_PROCEDURE_ORDER->prepaidGateEnabled()) {
+            return;
+        }
+
+        $builder->where(function (Builder $q): void {
+            $q->whereIn('status', [
+                ClinicalProcedureOrderStatus::SCHEDULED->value,
+                ClinicalProcedureOrderStatus::IN_PROGRESS->value,
+                ClinicalProcedureOrderStatus::COMPLETED->value,
+            ])->orWhere(function (Builder $subQ): void {
+                $subQ->whereRaw("id::text IN (SELECT source_workflow_id FROM service_charges WHERE source_workflow_kind = ? AND status IN (?, ?))", [
+                    ChargeSourceKind::CLINICAL_PROCEDURE_ORDER->value,
+                    ServiceChargeStatus::AUTHORIZED->value,
+                    ServiceChargeStatus::FULFILLED->value,
+                ]);
+            });
+        });
     }
 
     private function toSearchResult(LengthAwarePaginator $paginator): array

@@ -22,6 +22,34 @@ enum ChargeSourceKind: string
     case MANUAL = 'manual';
 
     /**
+     * Whether the prepaid gate is switched on for this kind.
+     *
+     * The enum value is the config key by construction, so a new kind cannot
+     * arrive with its gate silently unreadable — and the key is derived in one
+     * place rather than retyped at each of the eight sites that ask.
+     */
+    public function prepaidGateEnabled(): bool
+    {
+        return (bool) config("revenue.prepaid_required_for.{$this->value}", true);
+    }
+
+    /**
+     * Human-readable name, for messages a person reads. The enum value is a
+     * key ('laboratory_order'); this is prose ('laboratory order').
+     */
+    public function label(): string
+    {
+        return match ($this) {
+            self::CONSULTATION => 'consultation',
+            self::LABORATORY_ORDER => 'laboratory order',
+            self::RADIOLOGY_ORDER => 'radiology order',
+            self::PHARMACY_ORDER => 'pharmacy order',
+            self::CLINICAL_PROCEDURE_ORDER => 'clinical procedure order',
+            self::MANUAL => 'counter charge',
+        };
+    }
+
+    /**
      * @return array<int, string>
      */
     public static function values(): array
@@ -38,7 +66,12 @@ enum ChargeSourceKind: string
      */
     public function isImplemented(): bool
     {
-        return $this === self::CONSULTATION || $this === self::MANUAL;
+        return $this === self::CONSULTATION
+            || $this === self::LABORATORY_ORDER
+            || $this === self::RADIOLOGY_ORDER
+            || $this === self::PHARMACY_ORDER
+            || $this === self::CLINICAL_PROCEDURE_ORDER
+            || $this === self::MANUAL;
     }
 
     /**

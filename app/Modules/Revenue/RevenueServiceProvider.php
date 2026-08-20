@@ -10,6 +10,7 @@ use App\Modules\Revenue\Domain\Services\ChargeResolverInterface;
 use App\Modules\Revenue\Domain\Services\DocumentNumberAllocatorInterface;
 use App\Modules\Revenue\Domain\Services\OutstandingBalanceReaderInterface;
 use App\Modules\Revenue\Domain\Services\RevenueAuditRecorderInterface;
+use App\Modules\Revenue\Domain\Services\RevenueTelemetryRecorderInterface;
 use App\Modules\Revenue\Domain\Services\ServiceAuthorizationReaderInterface;
 use App\Modules\Revenue\Infrastructure\Models\PaymentModel;
 use App\Modules\Revenue\Infrastructure\Models\ServiceChargeModel;
@@ -20,6 +21,7 @@ use App\Modules\Revenue\Infrastructure\Services\ChargeResolver;
 use App\Modules\Revenue\Infrastructure\Services\DocumentNumberAllocator;
 use App\Modules\Revenue\Infrastructure\Services\LedgerOutstandingBalanceReader;
 use App\Modules\Revenue\Infrastructure\Services\RevenueAuditRecorder;
+use App\Modules\Revenue\Infrastructure\Services\RevenueTelemetryRecorder;
 use App\Modules\Revenue\Infrastructure\Services\ServiceAuthorizationReader;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\DB;
@@ -46,6 +48,7 @@ class RevenueServiceProvider extends ServiceProvider
 
         $this->app->singleton(ChargeResolverInterface::class, ChargeResolver::class);
         $this->app->singleton(RevenueAuditRecorderInterface::class, RevenueAuditRecorder::class);
+        $this->app->singleton(RevenueTelemetryRecorderInterface::class, RevenueTelemetryRecorder::class);
 
         // The payer-extensibility seam: one policy today, keyed by payer
         // class. Adding an insurer registers another and changes nothing else.
@@ -81,6 +84,11 @@ class RevenueServiceProvider extends ServiceProvider
         Event::listen(
             ServiceChargeAuthorized::class,
             [PromoteAppointmentOnChargeAuthorized::class, 'handle'],
+        );
+
+        Event::listen(
+            ServiceChargeAuthorized::class,
+            [\App\Modules\Revenue\Application\Listeners\NotifyAndBroadcastOnChargeAuthorized::class, 'handle'],
         );
 
         // The queue announces itself from the tables it is derived from, so a

@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\PatientFlow\Application\Services\PatientFlowBoardChannelAuthorizer;
+use App\Modules\Platform\Application\Services\ClinicalWorkstationChannelAuthorizer;
 use App\Modules\Revenue\Application\Services\CashierQueueChannelAuthorizer;
 use Illuminate\Support\Facades\Broadcast;
 
@@ -42,3 +43,25 @@ Broadcast::channel(
     'cashier-queue.{facilityId}',
     fn ($user, string $facilityId): bool => app(CashierQueueChannelAuthorizer::class)->authorize($user, $facilityId),
 );
+
+// Departmental Clinical Workstation Queues
+Broadcast::channel(
+    'laboratory-queue.{facilityId}',
+    fn ($user, string $facilityId): bool => app(ClinicalWorkstationChannelAuthorizer::class)->authorize($user, $facilityId, 'laboratory.orders.read'),
+);
+
+Broadcast::channel(
+    'radiology-queue.{facilityId}',
+    fn ($user, string $facilityId): bool => app(ClinicalWorkstationChannelAuthorizer::class)->authorize($user, $facilityId, 'radiology.orders.read'),
+);
+
+Broadcast::channel(
+    'pharmacy-queue.{facilityId}',
+    fn ($user, string $facilityId): bool => app(ClinicalWorkstationChannelAuthorizer::class)->authorize($user, $facilityId, 'pharmacy.orders.read'),
+);
+
+Broadcast::channel(
+    'procedure-queue.{facilityId}',
+    fn ($user, string $facilityId): bool => app(ClinicalWorkstationChannelAuthorizer::class)->authorize($user, $facilityId, 'clinical-procedure.orders.read'),
+);
+

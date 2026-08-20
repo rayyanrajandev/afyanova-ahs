@@ -1,9 +1,17 @@
 <!--
   AdHocChargeDialog — a charge with no clinical order behind it
   =============================================================
-  Forms, cards, a service someone walks in for. The price shown is the resolved
-  one, not the catalogue's face value, because that is what the charge will
-  actually be — quoting anything else turns the queue into an argument.
+  Forms, cards, a service someone walks in for.
+
+  Medicines, lab tests, imaging and procedures are deliberately absent: their
+  charge belongs to the order that requested them. A prescriber decides a
+  patient needs 21 tablets and a pharmacist decides what is dispensed — a
+  cashier typing a quantity here would produce a charge matching no
+  prescription. See config/revenue.php.
+
+  The price shown is the resolved one, not the catalogue's face value, because
+  that is what the charge will actually be — quoting anything else turns the
+  queue into an argument.
 -->
 <script setup lang="ts">
 import { Search } from "lucide-vue-next";
@@ -109,7 +117,14 @@ async function runSearch(): Promise<void> {
           />
         </div>
 
-        <ul class="max-h-64 overflow-y-auto rounded-md border border-border/70">
+        <p
+          v-if="!isSearching && items.length === 0"
+          class="rounded-md border border-border/70 px-3 py-4 text-center text-xs text-muted-foreground"
+        >
+          {{ t("cashier.ad_hoc_none") }}
+        </p>
+
+        <ul v-else class="max-h-64 overflow-y-auto rounded-md border border-border/70">
           <li v-for="item in items" :key="item.id">
             <button
               type="button"
@@ -135,6 +150,8 @@ async function runSearch(): Promise<void> {
             </button>
           </li>
         </ul>
+
+        <p class="text-xs text-muted-foreground">{{ t("cashier.ad_hoc_scope_hint") }}</p>
 
         <div class="flex flex-col gap-1.5">
           <Label for="cashier-quantity">{{ t("cashier.ad_hoc_quantity") }}</Label>

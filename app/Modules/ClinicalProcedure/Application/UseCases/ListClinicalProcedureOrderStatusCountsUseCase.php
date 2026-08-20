@@ -44,6 +44,8 @@ class ListClinicalProcedureOrderStatusCountsUseCase
         $toDateTime = isset($filters['to']) ? trim((string) $filters['to']) : null;
         $toDateTime = $toDateTime === '' ? null : $toDateTime;
 
+        $authorizedOnly = filter_var($filters['authorizedOnly'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
         return $this->clinicalProcedureOrderRepository->statusCounts(
             query: $query,
             patientId: $patientId,
@@ -52,6 +54,7 @@ class ListClinicalProcedureOrderStatusCountsUseCase
             procedureSetting: $procedureSetting,
             fromDateTime: $fromDateTime,
             toDateTime: $toDateTime,
+            authorizedOnly: $authorizedOnly,
         );
     }
 }

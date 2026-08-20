@@ -28,7 +28,8 @@ interface RadiologyOrderRepositoryInterface
         int $page,
         int $perPage,
         ?string $sortBy,
-        string $sortDirection
+        string $sortDirection,
+        bool $authorizedOnly = false,
     ): array;
 
     public function statusCounts(
@@ -38,6 +39,7 @@ interface RadiologyOrderRepositoryInterface
         ?string $admissionId,
         ?string $modality,
         ?string $fromDateTime,
-        ?string $toDateTime
+        ?string $toDateTime,
+        bool $authorizedOnly = false,
     ): array;
 }

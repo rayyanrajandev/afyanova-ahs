@@ -69,6 +69,12 @@ class AppServiceProvider extends ServiceProvider
 
         // Phase 2: SOD Alerting
         $this->app->singleton(SodAlertNotifier::class, SodAlertNotifier::class);
+
+        // Departmental Workstation Announcers (scoped per request for deduplication)
+        $this->app->scoped(\App\Modules\Laboratory\Application\Services\LaboratoryQueueAnnouncer::class);
+        $this->app->scoped(\App\Modules\Radiology\Application\Services\RadiologyQueueAnnouncer::class);
+        $this->app->scoped(\App\Modules\Pharmacy\Application\Services\PharmacyQueueAnnouncer::class);
+        $this->app->scoped(\App\Modules\ClinicalProcedure\Application\Services\ClinicalProcedureQueueAnnouncer::class);
     }
 
     public function boot(): void
@@ -85,6 +91,12 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(PharmacyOrderModel::class, PharmacyOrderPolicy::class);
         Gate::policy(RadiologyOrderModel::class, RadiologyOrderPolicy::class);
         Gate::policy(AppointmentModel::class, AppointmentPolicy::class);
+
+        // Department Workstation Observers for Real-time WebSocket Live Sync
+        LaboratoryOrderModel::observe(\App\Modules\Laboratory\Infrastructure\Observers\LaboratoryOrderObserver::class);
+        RadiologyOrderModel::observe(\App\Modules\Radiology\Infrastructure\Observers\RadiologyOrderObserver::class);
+        PharmacyOrderModel::observe(\App\Modules\Pharmacy\Infrastructure\Observers\PharmacyOrderObserver::class);
+        \App\Modules\ClinicalProcedure\Infrastructure\Models\ClinicalProcedureOrderModel::observe(\App\Modules\ClinicalProcedure\Infrastructure\Observers\ClinicalProcedureOrderObserver::class);
 
         Gate::before(function ($user, string $ability): ?bool {
             if (! method_exists($user, 'hasPermissionTo')) {

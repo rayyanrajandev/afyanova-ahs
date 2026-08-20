@@ -66,6 +66,37 @@ class DskChargeableItemsSeeder extends Seeder
         'PROC-MED-REFERRAL' => 3000,
     ];
 
+    /**
+     * Consultation has no clinical catalog item to derive from — it is not a
+     * lab test, a procedure or a formulary line — so it is declared here
+     * rather than read from ClinicalCatalogItemModel like everything below.
+     *
+     * These mirror migration 2026_08_19_000006, which seeds the same two items
+     * for databases that already carry a catalogue. That migration cannot help
+     * a fresh install: it resolves its (tenant, facility) scopes by querying
+     * chargeable_items, and on a fresh database it runs in the same batch that
+     * creates that table — long before any seeder fills it — so the loop finds
+     * nothing and silently seeds nothing. That is why consultation was the one
+     * priced service missing from a freshly seeded environment, and why the
+     * prepaid gate opened for every visit. Seeding here fixes the fresh-install
+     * path; the migration still covers existing databases. Both are idempotent.
+     *
+     * Amounts are placeholders at plausible Tanzanian OPD levels, not a pricing
+     * decision — a facility supersedes them through the price book as normal.
+     */
+    private array $consultationItems = [
+        [
+            'code' => 'CONSULT-GENERAL-OPD',
+            'name' => 'General outpatient consultation',
+            'price' => 15000,
+        ],
+        [
+            'code' => 'CONSULT-SPECIALIST-OPD',
+            'name' => 'Specialist outpatient consultation',
+            'price' => 30000,
+        ],
+    ];
+
     public function run(): void
     {
         $facility = FacilityModel::where('code', 'DSK')->first();
@@ -129,7 +160,10 @@ class DskChargeableItemsSeeder extends Seeder
             }
         }
 
+        $consultationCount = $this->seedConsultationItems($facility);
+
         $this->command?->info("Seeded {$count} chargeable items and {$priceCount} price book entries for DSK Dispensary.");
+        $this->command?->info("Seeded {$consultationCount} consultation chargeable items.");
     }
 
     private function resolvePrice(ClinicalCatalogItemModel $item): float
@@ -297,5 +331,65 @@ class DskChargeableItemsSeeder extends Seeder
         ];
 
         return $prices[$item->code] ?? 1000;
+    }
+
+    /**
+     * Idempotent: re-running the seeder never duplicates an item or a price,
+     * and never overwrites a tariff a facility has already set.
+     */
+    private function seedConsultationItems(FacilityModel $facility): int
+    {
+        $seeded = 0;
+
+        foreach ($this->consultationItems as $item) {
+            $chargeable = ChargeableItemModel::firstOrCreate(
+                [
+                    'facility_id' => $facility->id,
+                    'code' => $item['code'],
+                ],
+                [
+                    'tenant_id' => $facility->tenant_id,
+                    'catalog_type' => 'consultation',
+                    'charge_model' => 'flat',
+                    'name' => $item['name'],
+                    'category' => 'consultation',
+                    'default_unit' => 'visit',
+                    'status' => 'active',
+                    // Not VAT-rated for these facilities. A facility that must
+                    // charge tax sets the rate on the item and ServiceChargePricer
+                    // picks it up with no code change.
+                    'is_taxable' => false,
+                ],
+            );
+
+            if ($chargeable->wasRecentlyCreated) {
+                $seeded++;
+            }
+
+            $hasPrice = PriceBookEntryModel::where('chargeable_item_id', $chargeable->id)
+                ->where('status', 'active')
+                ->exists();
+
+            if ($hasPrice) {
+                continue;
+            }
+
+            PriceBookEntryModel::create([
+                'chargeable_item_id' => $chargeable->id,
+                'tenant_id' => $facility->tenant_id,
+                'facility_id' => $facility->id,
+                // A null payer contract is the cash tariff — the only one this
+                // phase resolves, and the fallback every payer tariff sits above.
+                'payer_contract_id' => null,
+                'currency_code' => 'TZS',
+                'unit_price' => $item['price'],
+                'tax_rate_percent' => 0,
+                'is_taxable' => false,
+                'tariff_version' => 1,
+                'status' => 'active',
+            ]);
+        }
+
+        return $seeded;
     }
 }

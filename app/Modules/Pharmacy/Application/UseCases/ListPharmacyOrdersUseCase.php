@@ -71,6 +71,8 @@ class ListPharmacyOrdersUseCase
             $statuses = PharmacyOrderStatus::openWorklistValues();
         }
 
+        $authorizedOnly = (bool) ($filters['authorizedOnly'] ?? false);
+
         return $this->pharmacyOrderRepository->search(
             query: $query,
             patientId: $patientId,
@@ -85,6 +87,7 @@ class ListPharmacyOrdersUseCase
             perPage: $perPage,
             sortBy: $sortBy,
             sortDirection: $sortDirection,
+            authorizedOnly: $authorizedOnly,
         );
     }
 }

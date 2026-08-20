@@ -37,10 +37,39 @@ return [
     */
     'prepaid_required_for' => [
         'consultation' => env('REVENUE_PREPAID_CONSULTATION', true),
-        'laboratory_order' => false,
-        'radiology_order' => false,
-        'clinical_procedure_order' => false,
-        'pharmacy_order' => false,
+        'laboratory_order' => env('REVENUE_PREPAID_LABORATORY_ORDER', true),
+        'radiology_order' => env('REVENUE_PREPAID_RADIOLOGY_ORDER', true),
+        'clinical_procedure_order' => env('REVENUE_PREPAID_CLINICAL_PROCEDURE_ORDER', true),
+        'pharmacy_order' => env('REVENUE_PREPAID_PHARMACY_ORDER', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Counter-raised charges
+    |--------------------------------------------------------------------------
+    |
+    | What a cashier may add by hand.
+    |
+    | A charge for a clinically ordered service must come from the order, never
+    | from the counter. The prescriber decides that a patient needs 21 tablets
+    | and the pharmacist decides what is actually dispensed; a cashier has no
+    | basis for either number, and letting them type one produces a charge that
+    | matches no prescription.
+    |
+    | So these catalogue types are excluded from the ad-hoc charge search. Their
+    | charges are raised by the workspace that owns the order — consultation
+    | already is, at appointment creation; laboratory, imaging, procedures and
+    | pharmacy follow when each workspace's trigger is built.
+    |
+    | A facility that genuinely sells one of these over the counter — a walk-in
+    | dressing change, say — can remove that type here. That is a deliberate
+    | decision, not a default.
+    */
+    'counter_charge_excluded_catalog_types' => [
+        'formulary_item',
+        'lab_test',
+        'radiology_procedure',
+        'clinical_procedure',
     ],
 
     /*

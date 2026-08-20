@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Revenue;
 
+use App\Modules\Appointment\Application\UseCases\CreateAppointmentUseCase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -89,5 +90,58 @@ final class RevenueTestSupport
     public static function patientId(): string
     {
         return (string) Str::uuid();
+    }
+
+    /**
+     * A real patient row, for journeys that book and check in rather than
+     * charge a bare id. `patientId()` above deliberately stays a bare UUID —
+     * the ledger tests that use it never touch the patients table.
+     */
+    public static function registeredPatient(string $first = 'Juma', string $last = 'Bakari'): string
+    {
+        $patientId = (string) Str::uuid();
+
+        DB::table('patients')->insert([
+            'id' => $patientId,
+            'patient_number' => 'PT-'.Str::upper(Str::random(8)),
+            'first_name' => $first,
+            'last_name' => $last,
+            'gender' => 'male',
+            'date_of_birth' => '1986-04-19',
+            'country_code' => 'TZ',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $patientId;
+    }
+
+    /**
+     * Seed the consultation tariff under the code configuration actually names,
+     * so a journey test fails if config and catalogue ever part company.
+     *
+     * @return array{chargeableItemId: string, priceBookEntryId: string}
+     */
+    public static function configuredConsultationItem(string $price = '15000.00'): array
+    {
+        return self::pricedItem((string) config('revenue.consultation.default_item_code'), $price);
+    }
+
+    /**
+     * Book a visit through the real use case, which is what raises the
+     * consultation charge.
+     *
+     * @return array<string, mixed>
+     */
+    public static function bookConsultation(string $patientId): array
+    {
+        return app(CreateAppointmentUseCase::class)->execute([
+            'patient_id' => $patientId,
+            'department' => 'General',
+            'scheduled_at' => now()->addHour()->toDateTimeString(),
+            'consultation_type' => 'new',
+            'financial_coverage_type' => 'self_pay',
+        ]);
     }
 }

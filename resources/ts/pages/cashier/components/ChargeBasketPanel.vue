@@ -144,12 +144,31 @@ const hasSelection = computed(() => props.selectedChargeIds.length > 0);
             </div>
 
             <div class="shrink-0 text-right">
+              <!--
+                Three states, not two. `isPayable` is false for an unpriced
+                charge *and* for one that has already been settled, and this
+                column used to render both as "Not priced". That was harmless
+                only while settled charges never reached the basket; once the
+                paid tab could open one, a fully paid consultation was labelled
+                unpriced. The reason a charge cannot be taken has to be the
+                reason shown.
+              -->
               <p v-if="charge.isPayable" class="text-sm font-semibold tabular-nums">
                 {{ formatMoney(charge.amountDue, charge.currencyCode) }}
               </p>
-              <p v-else class="text-xs font-medium text-warning">
-                {{ t("cashier.not_priced") }}
-              </p>
+              <template v-else-if="charge.pricingStatus !== 'priced'">
+                <p class="text-xs font-medium text-warning">
+                  {{ t("cashier.not_priced") }}
+                </p>
+              </template>
+              <template v-else>
+                <p class="text-sm font-semibold tabular-nums text-muted-foreground">
+                  {{ formatMoney(charge.amountPaid, charge.currencyCode) }}
+                </p>
+                <p class="text-[11px] font-medium text-success">
+                  {{ t("cashier.charge_settled") }}
+                </p>
+              </template>
             </div>
           </li>
         </ul>
@@ -165,15 +184,24 @@ const hasSelection = computed(() => props.selectedChargeIds.length > 0);
           </p>
         </div>
 
-        <Button
-          size="lg"
-          class="cursor-pointer"
-          :disabled="!hasSelection || !canTakePayment || isLoading"
-          @click="emit('take-payment')"
-        >
-          <Receipt class="mr-2 size-4" aria-hidden="true" />
-          {{ t("cashier.take_payment") }}
-        </Button>
+        <div class="flex flex-col items-end gap-1">
+          <Button
+            size="lg"
+            class="cursor-pointer"
+            :disabled="!hasSelection || !canTakePayment || isLoading"
+            @click="emit('take-payment')"
+          >
+            <Receipt class="mr-2 size-4" aria-hidden="true" />
+            {{ t("cashier.take_payment") }}
+          </Button>
+
+          <!-- A disabled control that does not say why is a dead end. The
+               drawer is the only prerequisite the cashier cannot infer from
+               this panel, so it is the one spelled out. -->
+          <p v-if="!canTakePayment" class="text-[11px] font-medium text-warning">
+            {{ t("cashier.take_payment_needs_drawer") }}
+          </p>
+        </div>
       </footer>
     </template>
   </div>

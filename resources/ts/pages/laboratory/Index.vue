@@ -30,6 +30,7 @@ import {
   makeValidator,
 } from "@/composables/usePersistedSelection";
 import { usePatientFlowLiveSync } from "@/composables/usePatientFlowLiveSync";
+import { useLaboratoryLiveSync } from "./composables/useLaboratoryLiveSync";
 import { useWorkspaceUrlSync } from "@/composables/useWorkspaceUrlSync";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -143,6 +144,12 @@ function selectTab(tab: LabTabId) {
 // in changed nothing on this screen until the technician reloaded the page.
 usePatientFlowLiveSync({
   onBoardUpdated: () => {
+    void laboratoryManager.fetchOrders();
+  },
+});
+
+useLaboratoryLiveSync({
+  onQueueUpdated: () => {
     void laboratoryManager.fetchOrders();
   },
 });

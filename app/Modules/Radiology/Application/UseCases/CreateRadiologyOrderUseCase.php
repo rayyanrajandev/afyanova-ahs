@@ -15,6 +15,7 @@ use App\Modules\Radiology\Domain\Services\AppointmentLookupServiceInterface;
 use App\Modules\Radiology\Domain\Services\PatientLookupServiceInterface;
 use App\Modules\Radiology\Domain\Services\RadiologyProcedureCatalogLookupServiceInterface;
 use App\Modules\Radiology\Domain\ValueObjects\RadiologyOrderStatus;
+use App\Modules\Revenue\Application\Services\RadiologyChargeRaiser;
 use App\Modules\ServiceRequest\Application\UseCases\LinkServiceRequestToClinicalOrderUseCase;
 use App\Modules\ServiceRequest\Domain\ValueObjects\ServiceRequestServiceType;
 use App\Support\ClinicalOrders\ClinicalOrderLifecycle;
@@ -35,6 +36,7 @@ class CreateRadiologyOrderUseCase
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
         private readonly OrderSessionManager $orderSessionManager,
         private readonly LinkServiceRequestToClinicalOrderUseCase $serviceRequestLinker,
+        private readonly RadiologyChargeRaiser $radiologyChargeRaiser,
     ) {}
 
     public function execute(array $payload, ?int $actorId = null): array
@@ -123,6 +125,10 @@ class CreateRadiologyOrderUseCase
                 actorId: $actorId,
             );
         }
+
+        // Prepaid: the radiology order is charged for upon creation before
+        // any study is scheduled, performed, or reported.
+        $this->radiologyChargeRaiser->raiseFor($createdOrder, $actorId);
 
         return $createdOrder;
     }

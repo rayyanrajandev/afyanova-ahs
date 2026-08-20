@@ -23,6 +23,10 @@ class CashierChargeController extends Controller
     /**
      * An ad-hoc charge raised at the counter — a form, a card, a service with
      * no clinical order behind it.
+     *
+     * Clinically ordered items are refused here as well as hidden from the
+     * search: hiding something in a picker is not a control when the endpoint
+     * still accepts its id.
      */
     public function store(StoreServiceChargeRequest $request, RaiseServiceChargeUseCase $useCase): JsonResponse
     {
@@ -30,6 +34,19 @@ class CashierChargeController extends Controller
             $item = ChargeableItemModel::query()->find($request->string('chargeableItemId')->toString());
 
             abort_if($item === null, 404, 'Chargeable item not found.');
+
+            $excluded = (array) config('revenue.counter_charge_excluded_catalog_types', []);
+
+            if (in_array((string) $item->catalog_type, $excluded, true)) {
+                return response()->json([
+                    'message' => sprintf(
+                        '%s is ordered clinically, so its charge is raised by the order — not at the counter.',
+                        $item->name,
+                    ),
+                    'code' => 'COUNTER_CHARGE_NOT_ALLOWED',
+                    'catalogType' => (string) $item->catalog_type,
+                ], 422);
+            }
 
             $charge = $useCase->execute(
                 patientId: $request->string('patientId')->toString(),

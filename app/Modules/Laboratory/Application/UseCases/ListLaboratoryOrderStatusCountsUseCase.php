@@ -48,6 +48,8 @@ class ListLaboratoryOrderStatusCountsUseCase
         $department = isset($filters['department']) ? strtolower(trim((string) $filters['department'])) : null;
         $department = ($department === '' || $department === 'all') ? null : $department;
 
+        $authorizedOnly = (bool) ($filters['authorizedOnly'] ?? false);
+
         return $this->laboratoryOrderRepository->statusCounts(
             query: $query,
             patientId: $patientId,
@@ -57,6 +59,7 @@ class ListLaboratoryOrderStatusCountsUseCase
             fromDateTime: $fromDateTime,
             toDateTime: $toDateTime,
             department: $department,
+            authorizedOnly: $authorizedOnly,
         );
     }
 }

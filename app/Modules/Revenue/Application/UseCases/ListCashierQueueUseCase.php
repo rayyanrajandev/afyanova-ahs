@@ -77,6 +77,16 @@ class ListCashierQueueUseCase
                     Money::zero($currency),
                 );
 
+                // Both figures, always. `amountDue` is outstanding, which is
+                // zero the moment a charge is settled — so the "Paid today" tab
+                // reported every patient it listed as 0.00, having summed what
+                // they still owed rather than what they had just handed over.
+                // One field cannot mean two things across two tabs.
+                $paid = $patientCharges->reduce(
+                    fn (Money $carry, ServiceChargeModel $charge): Money => $carry->plus($charge->allocatedAmount()),
+                    Money::zero($currency),
+                );
+
                 $patient = $patientsById->get($patientId);
 
                 return [
@@ -92,6 +102,7 @@ class ListCashierQueueUseCase
                         ->filter(fn (ServiceChargeModel $c): bool => $c->pricing_status !== 'priced')
                         ->count(),
                     'amountDue' => $total->toDecimalString(),
+                    'amountPaid' => $paid->toDecimalString(),
                     'currencyCode' => $currency,
                     'oldestChargeAt' => $patientCharges->min('created_at')?->toIso8601String(),
                 ];

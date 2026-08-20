@@ -6,8 +6,11 @@ use App\Modules\Appointment\Application\Support\ConsultationReviewPolicyResolver
 use App\Modules\Platform\Domain\Services\CurrentPlatformScopeContextInterface;
 use App\Modules\Platform\Infrastructure\Models\ChargeableItemModel;
 use App\Modules\Revenue\Application\UseCases\RaiseServiceChargeUseCase;
+use App\Modules\Revenue\Domain\Services\RevenueTelemetryRecorderInterface;
 use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Modules\Revenue\Domain\ValueObjects\PayerClass;
+use App\Modules\Revenue\Domain\ValueObjects\RevenueTelemetryEvent;
+use App\Modules\Revenue\Domain\ValueObjects\RevenueTelemetryReason;
 use App\Modules\Revenue\Infrastructure\Models\ServiceChargeModel;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -32,6 +35,7 @@ class ConsultationChargeRaiser
         private readonly RaiseServiceChargeUseCase $raiseServiceCharge,
         private readonly ConsultationReviewPolicyResolver $reviewPolicyResolver,
         private readonly CurrentPlatformScopeContextInterface $scopeContext,
+        private readonly RevenueTelemetryRecorderInterface $telemetry,
     ) {}
 
     /**
@@ -46,6 +50,16 @@ class ConsultationChargeRaiser
                 'appointment_id' => $appointment['id'] ?? null,
                 'error' => $exception->getMessage(),
             ]);
+
+            $this->telemetry->record(
+                event: RevenueTelemetryEvent::CHARGE_NOT_RAISED,
+                reason: RevenueTelemetryReason::EXCEPTION,
+                sourceKind: ChargeSourceKind::CONSULTATION,
+                sourceWorkflowId: isset($appointment['id']) ? (string) $appointment['id'] : null,
+                patientId: isset($appointment['patient_id']) ? (string) $appointment['patient_id'] : null,
+                actorUserId: $actorUserId,
+                detail: $exception->getMessage(),
+            );
 
             return null;
         }
@@ -83,6 +97,16 @@ class ConsultationChargeRaiser
                 'payer_class' => $payerClass->value,
             ]);
 
+            $this->telemetry->record(
+                event: RevenueTelemetryEvent::CHARGE_NOT_RAISED,
+                reason: RevenueTelemetryReason::PAYER_UNIMPLEMENTED,
+                sourceKind: ChargeSourceKind::CONSULTATION,
+                sourceWorkflowId: $appointmentId,
+                patientId: $patientId,
+                actorUserId: $actorUserId,
+                detail: $payerClass->value,
+            );
+
             return null;
         }
 
@@ -93,6 +117,19 @@ class ConsultationChargeRaiser
                 'appointment_id' => $appointmentId,
                 'expected_code' => (string) config('revenue.consultation.default_item_code'),
             ]);
+
+            // The signal that was missing when this gate sat dead in every
+            // environment: config named an item the catalogue did not hold, and
+            // the only evidence was this log line.
+            $this->telemetry->record(
+                event: RevenueTelemetryEvent::CHARGE_NOT_RAISED,
+                reason: RevenueTelemetryReason::NO_ITEM,
+                sourceKind: ChargeSourceKind::CONSULTATION,
+                sourceWorkflowId: $appointmentId,
+                patientId: $patientId,
+                actorUserId: $actorUserId,
+                detail: (string) config('revenue.consultation.default_item_code'),
+            );
 
             return null;
         }

@@ -18,6 +18,7 @@ use App\Modules\Pharmacy\Domain\Services\PatientLookupServiceInterface;
 use App\Modules\Pharmacy\Domain\ValueObjects\PharmacyOrderStatus;
 use App\Modules\Platform\Domain\Services\CurrentPlatformScopeContextInterface;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
+use App\Modules\Revenue\Application\Services\PharmacyChargeRaiser;
 use App\Modules\ServiceRequest\Application\UseCases\LinkServiceRequestToClinicalOrderUseCase;
 use App\Modules\ServiceRequest\Domain\ValueObjects\ServiceRequestServiceType;
 use App\Support\ClinicalOrders\ClinicalOrderLifecycle;
@@ -75,6 +76,7 @@ class CreatePharmacyOrderUseCase
         private readonly OrderSessionManager $orderSessionManager,
         private readonly MedicationSafetyReviewGate $medicationSafetyReviewGate,
         private readonly LinkServiceRequestToClinicalOrderUseCase $serviceRequestLinker,
+        private readonly PharmacyChargeRaiser $pharmacyChargeRaiser,
     ) {}
 
     public function execute(array $payload, ?int $actorId = null): array
@@ -246,6 +248,10 @@ class CreatePharmacyOrderUseCase
                 actorId: $actorId,
             );
         }
+
+        // Prepaid: the pharmacy order is charged for upon creation before
+        // any medication is prepared or dispensed.
+        $this->pharmacyChargeRaiser->raiseFor($createdOrder, $actorId);
 
         return $createdOrder;
     }

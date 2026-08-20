@@ -58,6 +58,11 @@ class EncounterListItemResponseTransformer
             'admissionId' => $encounter['admission_id'] ?? null,
             'primaryClinicianUserId' => $encounter['primary_clinician_user_id'] ?? null,
             'primaryClinicianName' => $encounter['primary_clinician']['name'] ?? null,
+            // Outpatient / inpatient / emergency. Consumers ask whether a visit
+            // is inpatient (the Reception profile's admitted check, among
+            // others) and nothing here was answering, so the question silently
+            // evaluated to undefined.
+            'type' => $encounter['type'] ?? null,
             'status' => $encounter['status'] ?? null,
             'statusReason' => $encounter['status_reason'] ?? null,
             'openedAt' => $encounter['opened_at'] ?? null,

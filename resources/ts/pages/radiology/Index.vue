@@ -27,6 +27,7 @@ import PatientFlowTimeline from "@/components/common/PatientFlowTimeline.vue";
 import SplitPane from "@/components/common/SplitPane.vue";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePatientFlowLiveSync } from "@/composables/usePatientFlowLiveSync";
+import { useRadiologyLiveSync } from "./composables/useRadiologyLiveSync";
 import {
   attachPersistence,
   makeValidator,
@@ -87,6 +88,12 @@ onMounted(() => {
 // would only find out by reloading.
 usePatientFlowLiveSync({
   onBoardUpdated: () => {
+    void radiology.fetchOrders();
+  },
+});
+
+useRadiologyLiveSync({
+  onQueueUpdated: () => {
     void radiology.fetchOrders();
   },
 });

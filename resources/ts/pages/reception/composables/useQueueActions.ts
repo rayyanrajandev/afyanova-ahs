@@ -12,6 +12,7 @@
  *
  * Enhanced 2026-08-14: Multi-stage patient journey tracking (Waiting Triage,
  * Waiting Doctor / OPD Consultation, In Consultation) with live stage counters.
+ * Updated 2026-08-19: Dedicated Awaiting Payment queue state.
  */
 
 import { computed, ref, watch } from "vue";
@@ -20,7 +21,13 @@ import type { QueueItem } from "@/components/common/Queue.vue";
 import { stepBadgeStatus, stepLabelKey } from "@/composables/patientFlowStep";
 import { useToast } from "@/composables/useToast";
 import { usePatientStore } from "@/stores/patientStore";
-import { useQueueStore, type QueueTask, type ReceptionQueueStage } from "@/stores/queueStore";
+import {
+  toTask,
+  useQueueStore,
+  type QueueTask,
+  type ReceptionQueueEntry,
+  type ReceptionQueueStage,
+} from "@/stores/queueStore";
 import { useRecentStore } from "@/stores/recentStore";
 
 export interface UseQueueActionsOptions {
@@ -51,6 +58,9 @@ export function useQueueActions(options: UseQueueActionsOptions = {}) {
   const selectedStage = ref<ReceptionQueueStage>(options.initialStage ?? "waiting_triage");
   const stageCounts = computed(() => queueStore.stageCounts);
 
+  const awaitingPaymentTasks = ref<QueueTask[]>([]);
+  const isAwaitingPaymentLoading = ref(false);
+
   function tierLabel(arrivalMode: QueueTask["arrivalMode"]): string | undefined {
     switch (arrivalMode) {
       case "returned":
@@ -73,20 +83,46 @@ export function useQueueActions(options: UseQueueActionsOptions = {}) {
     return "normal";
   }
 
+  const awaitingPaymentQueue = computed<QueueItem[]>(() => {
+    void locale.value;
+    return awaitingPaymentTasks.value.map((task) => {
+      const due = task.paymentStatus?.amountDue;
+      const currency = task.paymentStatus?.currencyCode;
+      const category = due
+        ? t("queue.amount_due", { amount: `${currency ?? ""} ${due}`.trim() })
+        : t("queue.unpaid_chip");
+
+      let status: QueueItem["status"] = "warning";
+      let statusLabel: string | undefined = t("queue.stage_awaiting_payment");
+
+      const stepStatus = stepBadgeStatus(task.stage);
+      const stepKey = stepLabelKey(task.stage);
+
+      if (stepStatus !== null && stepKey !== null) {
+        status = stepStatus;
+        statusLabel = t(stepKey);
+      }
+
+      return {
+        id: task.id,
+        name: task.patientName,
+        waitTime: task.dueTime,
+        waitMinutes: task.waitMinutes,
+        priority: arrivalModePriority(task.arrivalMode),
+        status,
+        statusLabel,
+        category,
+        hasWarning: task.paymentStatus != null,
+      };
+    });
+  });
+
   const queue = computed<QueueItem[]>(() => {
     void locale.value;
     return queueStore.tasks.map((task) => {
       let category = task.description || t("queue.category_general_opd");
 
-      if (selectedStage.value === "awaiting_payment") {
-        // The one thing the desk needs on this tab is how much to send them
-        // with, so the amount replaces the usual arrival-tier category.
-        const due = task.paymentStatus?.amountDue;
-        const currency = task.paymentStatus?.currencyCode;
-        category = due
-          ? t("queue.amount_due", { amount: `${currency ?? ""} ${due}`.trim() })
-          : t("queue.unpaid_chip");
-      } else if (selectedStage.value === "waiting_triage") {
+      if (selectedStage.value === "waiting_triage") {
         const baseTier = tierLabel(task.arrivalMode);
         category = baseTier ? t(baseTier) : (task.description || t("queue.category_general_opd"));
       } else if (selectedStage.value === "waiting_provider") {
@@ -150,6 +186,25 @@ export function useQueueActions(options: UseQueueActionsOptions = {}) {
     selectedStage.value = stage;
   }
 
+  async function fetchAwaitingPayment(): Promise<QueueTask[]> {
+    isAwaitingPaymentLoading.value = true;
+    try {
+      const res = await fetch("/api/v1/reception/queue?stage=awaiting_payment", {
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!res.ok) throw new Error("Failed to fetch awaiting payment queue");
+      const body = (await res.json()) as { data?: ReceptionQueueEntry[] };
+      awaitingPaymentTasks.value = (body.data ?? []).map(toTask);
+      void fetchStageCounts();
+      return awaitingPaymentTasks.value;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : "Failed to fetch awaiting payment queue";
+      return [];
+    } finally {
+      isAwaitingPaymentLoading.value = false;
+    }
+  }
+
   // One loader for every way the stage can change — clicking a tab, restoring
   // the last session, or following a link. `immediate` covers the initial load,
   // so there is no separate mount-time fetch to fall out of step with this.
@@ -161,11 +216,17 @@ export function useQueueActions(options: UseQueueActionsOptions = {}) {
     { immediate: true },
   );
 
+  // Load awaiting payment list on composable initialization
+  void fetchAwaitingPayment();
+
   /**
    * Re-fetch on a live patient-flow board update (§10.4, useReceptionLiveSync)
    */
   async function refetchQueue() {
-    await queueStore.fetchReceptionQueue(selectedStage.value);
+    await Promise.all([
+      queueStore.fetchReceptionQueue(selectedStage.value),
+      fetchAwaitingPayment(),
+    ]);
   }
 
   /**
@@ -186,7 +247,9 @@ export function useQueueActions(options: UseQueueActionsOptions = {}) {
    * Open a queue row's patient in the main pane
    */
   async function handleQueueOpen(item: QueueItem) {
-    const patientId = queueStore.tasks.find((task) => task.id === item.id)?.patientId;
+    const patientId =
+      queueStore.tasks.find((task) => task.id === item.id)?.patientId ??
+      awaitingPaymentTasks.value.find((task) => task.id === item.id)?.patientId;
     if (!patientId) return;
 
     patientStore.setCurrentPatient(patientId);
@@ -205,6 +268,15 @@ export function useQueueActions(options: UseQueueActionsOptions = {}) {
       toast.critical(queueStore.error ?? t("queue.reorder_failed"));
     }
     await queueStore.fetchReceptionQueue(selectedStage.value);
+    void fetchStageCounts();
+  }
+
+  async function handleAwaitingPaymentReorder(orderedItems: QueueItem[]) {
+    const ok = await queueStore.reorderQueue(orderedItems.map((item) => item.id));
+    if (!ok) {
+      toast.critical(queueStore.error ?? t("queue.reorder_failed"));
+    }
+    await fetchAwaitingPayment();
     void fetchStageCounts();
   }
 
@@ -228,13 +300,16 @@ export function useQueueActions(options: UseQueueActionsOptions = {}) {
   async function confirmCancelQueueItem() {
     if (!cancelTarget.value || !cancelReason.value.trim()) return;
     const target = cancelTarget.value;
-    const patientId = queueStore.tasks.find((task) => task.id === target.id)?.patientId;
+    const patientId =
+      queueStore.tasks.find((task) => task.id === target.id)?.patientId ??
+      awaitingPaymentTasks.value.find((task) => task.id === target.id)?.patientId;
     cancelSubmitting.value = true;
     const ok = await queueStore.cancelQueueItem(target.id, cancelReason.value.trim());
     cancelSubmitting.value = false;
     if (ok) {
       toast.success(t("queue.cancel_success", { name: target.name }));
       closeCancelDialog();
+      awaitingPaymentTasks.value = awaitingPaymentTasks.value.filter((t) => t.id !== target.id);
       void fetchStageCounts();
       if (patientId) options.onCancelled?.(patientId);
     } else {
@@ -244,14 +319,19 @@ export function useQueueActions(options: UseQueueActionsOptions = {}) {
 
   return {
     queue,
+    awaitingPaymentQueue,
     selectedStage,
     stageCounts,
     setStage,
     fetchStageCounts,
+    fetchAwaitingPayment,
+    refetchAwaitingPayment: fetchAwaitingPayment,
     isLoading,
+    isAwaitingPaymentLoading,
     error,
     handleQueueOpen,
     handleQueueReorder,
+    handleAwaitingPaymentReorder,
     refetchQueue,
     callQueueItem,
     showCancelDialog,

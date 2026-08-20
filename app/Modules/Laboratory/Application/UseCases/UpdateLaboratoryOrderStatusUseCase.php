@@ -10,6 +10,8 @@ use App\Modules\Laboratory\Domain\ValueObjects\LaboratoryOrderStatus;
 use App\Modules\Platform\Application\Services\ClinicalCatalogRecipeStockConsumptionService;
 use App\Modules\Platform\Domain\Services\TenantIsolationWriteGuardInterface;
 use App\Modules\Platform\Domain\ValueObjects\ClinicalCatalogType;
+use App\Modules\Revenue\Application\Services\PrepaidGatePolicy;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Support\ClinicalOrders\ClinicalOrderLifecycle;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -22,6 +24,7 @@ class UpdateLaboratoryOrderStatusUseCase
         private readonly TenantIsolationWriteGuardInterface $tenantIsolationWriteGuard,
         private readonly ClinicalCatalogRecipeStockConsumptionService $recipeStockConsumptionService,
         private readonly RecordLaboratoryFlowTransitionService $recordFlowTransition,
+        private readonly PrepaidGatePolicy $prepaidGate,
     ) {}
 
     /**
@@ -51,6 +54,21 @@ class UpdateLaboratoryOrderStatusUseCase
             }
 
             ClinicalOrderLifecycle::assertActiveForWorkflow($existing, 'laboratory order');
+
+            // Prepaid gate. The statuses below are this module's own
+            // declaration of what "providing the service" means; the rule
+            // itself lives in PrepaidGatePolicy.
+            $this->prepaidGate->assertAuthorized(
+                kind: ChargeSourceKind::LABORATORY_ORDER,
+                orderId: $id,
+                targetStatus: $status,
+                deliveryStatuses: [
+                    LaboratoryOrderStatus::COLLECTED->value,
+                    LaboratoryOrderStatus::IN_PROGRESS->value,
+                    LaboratoryOrderStatus::COMPLETED->value,
+                ],
+                refusalMessage: 'Laboratory order cannot be processed before payment has been verified.',
+            );
 
             $currentStatus = (string) ($existing['status'] ?? '');
             if (! LaboratoryOrderStatus::canTransitionForward($currentStatus, $status)) {

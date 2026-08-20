@@ -88,6 +88,13 @@ export interface PlacedClinicalOrder {
   createdAt: string;
   details?: string;
   price?: number;
+  paymentStatus?: "pending_payment" | "authorized" | "waived" | "emergency_override" | "not_charged" | "cancelled" | "refunded" | string;
+  isAuthorized?: boolean;
+  amountDue?: string;
+  amountPaid?: string;
+  currencyCode?: string;
+  chargeId?: string | null;
+  chargeNumber?: string | null;
   /**
    * When the result was released to the chart. Null while a report exists but
    * has not been signed off — the window in which `status` already reads
@@ -116,7 +123,9 @@ export interface PlacedClinicalOrder {
  * badge and the "Send for Diagnostics" control cannot disagree.
  */
 export type DiagnosticOrderStage =
-  /** Ordered; the patient still has to get to the bench. */
+  /** Ordered; still pending cashier payment. */
+  | "awaiting_payment"
+  /** Ordered; payment verified / authorized, patient awaiting sample collection. */
   | "awaiting_collection"
   /** Specimen taken or study underway. */
   | "in_progress"
@@ -149,6 +158,14 @@ export function diagnosticOrderStage(order: PlacedClinicalOrder): DiagnosticOrde
   }
 
   if (DIAGNOSTIC_IN_PROGRESS_STATUSES.has(order.status)) return "in_progress";
+
+  if (
+    (order.type === "lab" || order.type === "imaging") &&
+    order.isAuthorized === false &&
+    (order.paymentStatus === "pending_payment" || order.paymentStatus === "draft")
+  ) {
+    return "awaiting_payment";
+  }
 
   return "awaiting_collection";
 }
@@ -366,10 +383,18 @@ export function useClinicianOrders() {
         type: "lab",
         name: created?.testName || test.name,
         priority,
-        status: (created?.status?.toLowerCase() as any) || "pending",
+        status: (created?.status?.toLowerCase() as any) || "ordered",
         createdAt: created?.orderedAt || created?.createdAt || new Date().toISOString(),
         details: indication || test.sampleType,
-        price: test.price,
+        price: created?.price !== undefined ? Number(created.price) : test.price,
+        unitPrice: created?.unitPrice !== undefined ? Number(created.unitPrice) : test.price,
+        paymentStatus: created?.paymentStatus || "pending_payment",
+        isAuthorized: typeof created?.isAuthorized === "boolean" ? created.isAuthorized : false,
+        amountDue: created?.amountDue,
+        amountPaid: created?.amountPaid,
+        currencyCode: created?.currencyCode || "TZS",
+        chargeId: created?.chargeId ?? null,
+        chargeNumber: created?.chargeNumber ?? null,
       });
 
       toast.success(t("clinician.order_placed_lab", "Laboratory order placed successfully"));
@@ -428,10 +453,18 @@ export function useClinicianOrders() {
         type: "imaging",
         name: created?.studyDescription || exam.name,
         priority,
-        status: (created?.status?.toLowerCase() as any) || "pending",
+        status: (created?.status?.toLowerCase() as any) || "ordered",
         createdAt: created?.orderedAt || created?.createdAt || new Date().toISOString(),
         details: indication || exam.modality,
-        price: exam.price,
+        price: created?.price !== undefined ? Number(created.price) : exam.price,
+        unitPrice: created?.unitPrice !== undefined ? Number(created.unitPrice) : exam.price,
+        paymentStatus: created?.paymentStatus || "pending_payment",
+        isAuthorized: typeof created?.isAuthorized === "boolean" ? created.isAuthorized : false,
+        amountDue: created?.amountDue,
+        amountPaid: created?.amountPaid,
+        currencyCode: created?.currencyCode || "TZS",
+        chargeId: created?.chargeId ?? null,
+        chargeNumber: created?.chargeNumber ?? null,
       });
 
       toast.success(t("clinician.order_placed_imaging", "Radiology order placed successfully"));
@@ -489,6 +522,7 @@ export function useClinicianOrders() {
           }
 
           const created = (await res.json())?.data;
+          const isAuth = typeof created?.isAuthorized === "boolean" ? created.isAuthorized : false;
           return {
             id: created?.id || `med-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
             type: "medication" as const,
@@ -502,8 +536,15 @@ export function useClinicianOrders() {
             details: `${item.dosage} · ${item.route} · ${item.frequency} for ${item.durationDays} days · Qty: ${qty}`,
             quantityPrescribed: qty,
             prescribedUnit: created?.prescribedUnit ?? null,
-            unitPrice: item.unitPrice ?? null,
-            price: (item.unitPrice || 0) * qty,
+            unitPrice: created?.unitPrice !== undefined ? Number(created.unitPrice) : (item.unitPrice ?? null),
+            price: created?.price !== undefined ? Number(created.price) : ((item.unitPrice || 0) * qty),
+            paymentStatus: created?.paymentStatus || "pending_payment",
+            isAuthorized: isAuth,
+            amountDue: created?.amountDue,
+            amountPaid: created?.amountPaid,
+            currencyCode: created?.currencyCode || "TZS",
+            chargeId: created?.chargeId ?? null,
+            chargeNumber: created?.chargeNumber ?? null,
           };
         })
       );
@@ -580,16 +621,25 @@ export function useClinicianOrders() {
     // 1. Lab Orders
     if (Array.isArray(workspace.laboratoryOrders)) {
       workspace.laboratoryOrders.forEach((lab: any) => {
+        const isAuth = typeof lab.isAuthorized === "boolean" ? lab.isAuthorized : lab.paymentStatus === "authorized";
         orders.push({
           id: lab.id || `lab-${lab.orderNumber || Date.now()}`,
           type: "lab",
           name: lab.testName || lab.testCode || "Lab Test",
           priority: (lab.priority?.toLowerCase() as any) || "routine",
-          status: (lab.status?.toLowerCase() as any) || "pending",
+          status: (lab.status?.toLowerCase() as any) || "ordered",
           verifiedAt: lab.verifiedAt ?? null,
           createdAt: lab.orderedAt || lab.createdAt || new Date().toISOString(),
           details: lab.clinicalNotes || lab.specimenType || undefined,
-          price: lab.price || lab.basePrice,
+          price: lab.price !== undefined && lab.price !== null ? Number(lab.price) : lab.basePrice,
+          unitPrice: lab.unitPrice !== undefined && lab.unitPrice !== null ? Number(lab.unitPrice) : lab.price,
+          paymentStatus: lab.paymentStatus || (isAuth ? "authorized" : "pending_payment"),
+          isAuthorized: isAuth,
+          amountDue: lab.amountDue,
+          amountPaid: lab.amountPaid,
+          currencyCode: lab.currencyCode || "TZS",
+          chargeId: lab.chargeId ?? null,
+          chargeNumber: lab.chargeNumber ?? null,
         });
       });
     }
@@ -597,16 +647,25 @@ export function useClinicianOrders() {
     // 2. Radiology Orders
     if (Array.isArray(workspace.radiologyOrders)) {
       workspace.radiologyOrders.forEach((rad: any) => {
+        const isAuth = typeof rad.isAuthorized === "boolean" ? rad.isAuthorized : rad.paymentStatus === "authorized";
         orders.push({
           id: rad.id || `rad-${rad.orderNumber || Date.now()}`,
           type: "imaging",
           name: rad.studyDescription || rad.procedureCode || "Radiology Exam",
           priority: (rad.priority?.toLowerCase() as any) || "routine",
-          status: (rad.status?.toLowerCase() as any) || "pending",
+          status: (rad.status?.toLowerCase() as any) || "ordered",
           verifiedAt: rad.verifiedAt ?? null,
           createdAt: rad.orderedAt || rad.createdAt || new Date().toISOString(),
           details: rad.clinicalIndication || rad.modality || undefined,
-          price: rad.price || rad.basePrice,
+          price: rad.price !== undefined && rad.price !== null ? Number(rad.price) : rad.basePrice,
+          unitPrice: rad.unitPrice !== undefined && rad.unitPrice !== null ? Number(rad.unitPrice) : rad.price,
+          paymentStatus: rad.paymentStatus || (isAuth ? "authorized" : "pending_payment"),
+          isAuthorized: isAuth,
+          amountDue: rad.amountDue,
+          amountPaid: rad.amountPaid,
+          currencyCode: rad.currencyCode || "TZS",
+          chargeId: rad.chargeId ?? null,
+          chargeNumber: rad.chargeNumber ?? null,
         });
       });
     }
@@ -617,6 +676,7 @@ export function useClinicianOrders() {
         const dosageStr = med.doseQuantity ? `${med.doseQuantity}${med.doseUnit ? ' ' + med.doseUnit : ''}` : (med.dosageInstruction ? med.dosageInstruction.split(' ')[0] : undefined);
         const routeStr = med.route ? (med.route.charAt(0).toUpperCase() + med.route.slice(1)) : undefined;
         const freqStr = med.frequency ? med.frequency.toUpperCase() : undefined;
+        const isAuth = typeof med.isAuthorized === "boolean" ? med.isAuthorized : med.paymentStatus === "authorized";
 
         orders.push({
           id: med.id || `med-${med.orderNumber || Date.now()}`,
@@ -631,8 +691,15 @@ export function useClinicianOrders() {
           details: med.dosageInstruction || `${dosageStr ?? ""} ${routeStr ?? ""} ${freqStr ?? ""}`.trim() || undefined,
           quantityPrescribed: med.quantityPrescribed ?? null,
           prescribedUnit: med.prescribedUnit ?? null,
-          unitPrice: med.unitPrice ?? null,
-          price: med.totalPrice ?? med.price ?? undefined,
+          unitPrice: med.unitPrice !== undefined && med.unitPrice !== null ? Number(med.unitPrice) : null,
+          price: med.price !== undefined && med.price !== null ? Number(med.price) : (med.totalPrice !== undefined && med.totalPrice !== null ? Number(med.totalPrice) : undefined),
+          paymentStatus: med.paymentStatus || (isAuth ? "authorized" : "pending_payment"),
+          isAuthorized: isAuth,
+          amountDue: med.amountDue,
+          amountPaid: med.amountPaid,
+          currencyCode: med.currencyCode || "TZS",
+          chargeId: med.chargeId ?? null,
+          chargeNumber: med.chargeNumber ?? null,
         });
       });
     }
@@ -668,6 +735,7 @@ export function useClinicianOrders() {
           const dosageStr = med.doseQuantity ? `${med.doseQuantity}${med.doseUnit ? ' ' + med.doseUnit : ''}` : (med.dosageInstruction ? med.dosageInstruction.split(' ')[0] : undefined);
           const routeStr = med.route ? (med.route.charAt(0).toUpperCase() + med.route.slice(1)) : undefined;
           const freqStr = med.frequency ? med.frequency.toUpperCase() : undefined;
+          const isAuth = typeof med.isAuthorized === "boolean" ? med.isAuthorized : med.paymentStatus === "authorized";
 
           fetchedList.push({
             id: med.id || `med-${med.orderNumber || Date.now()}`,
@@ -682,8 +750,15 @@ export function useClinicianOrders() {
             details: med.dosageInstruction || `${dosageStr ?? ""} ${routeStr ?? ""} ${freqStr ?? ""}`.trim() || undefined,
             quantityPrescribed: med.quantityPrescribed ?? null,
             prescribedUnit: med.prescribedUnit ?? null,
-            unitPrice: med.unitPrice ?? null,
-            price: med.totalPrice ?? med.price ?? undefined,
+            unitPrice: med.unitPrice !== undefined && med.unitPrice !== null ? Number(med.unitPrice) : null,
+            price: med.price !== undefined && med.price !== null ? Number(med.price) : (med.totalPrice !== undefined && med.totalPrice !== null ? Number(med.totalPrice) : undefined),
+            paymentStatus: med.paymentStatus || (isAuth ? "authorized" : "pending_payment"),
+            isAuthorized: isAuth,
+            amountDue: med.amountDue,
+            amountPaid: med.amountPaid,
+            currencyCode: med.currencyCode || "TZS",
+            chargeId: med.chargeId ?? null,
+            chargeNumber: med.chargeNumber ?? null,
           });
         }
       }
@@ -692,16 +767,25 @@ export function useClinicianOrders() {
       if (labRes && labRes.ok) {
         const labBody = await labRes.json();
         for (const lab of (labBody.data ?? [])) {
+          const isAuth = typeof lab.isAuthorized === "boolean" ? lab.isAuthorized : lab.paymentStatus === "authorized";
           fetchedList.push({
             id: lab.id || `lab-${lab.orderNumber || Date.now()}`,
             type: "lab",
             name: lab.testName || lab.testCode || "Lab Test",
             priority: (lab.priority?.toLowerCase() as any) || "routine",
-            status: (lab.status?.toLowerCase() as any) || "pending",
+            status: (lab.status?.toLowerCase() as any) || "ordered",
             verifiedAt: lab.verifiedAt ?? null,
             createdAt: lab.orderedAt || lab.createdAt || new Date().toISOString(),
             details: lab.clinicalNotes || lab.specimenType || undefined,
-            price: lab.price || lab.basePrice,
+            price: lab.price !== undefined && lab.price !== null ? Number(lab.price) : lab.basePrice,
+            unitPrice: lab.unitPrice !== undefined && lab.unitPrice !== null ? Number(lab.unitPrice) : lab.price,
+            paymentStatus: lab.paymentStatus || (isAuth ? "authorized" : "pending_payment"),
+            isAuthorized: isAuth,
+            amountDue: lab.amountDue,
+            amountPaid: lab.amountPaid,
+            currencyCode: lab.currencyCode || "TZS",
+            chargeId: lab.chargeId ?? null,
+            chargeNumber: lab.chargeNumber ?? null,
           });
         }
       }
@@ -710,16 +794,25 @@ export function useClinicianOrders() {
       if (radRes && radRes.ok) {
         const radBody = await radRes.json();
         for (const rad of (radBody.data ?? [])) {
+          const isAuth = typeof rad.isAuthorized === "boolean" ? rad.isAuthorized : rad.paymentStatus === "authorized";
           fetchedList.push({
             id: rad.id || `rad-${rad.orderNumber || Date.now()}`,
             type: "imaging",
             name: rad.studyDescription || rad.procedureCode || "Radiology Exam",
             priority: (rad.priority?.toLowerCase() as any) || "routine",
-            status: (rad.status?.toLowerCase() as any) || "pending",
+            status: (rad.status?.toLowerCase() as any) || "ordered",
             verifiedAt: rad.verifiedAt ?? null,
             createdAt: rad.orderedAt || rad.createdAt || new Date().toISOString(),
             details: rad.clinicalIndication || rad.modality || undefined,
-            price: rad.price || rad.basePrice,
+            price: rad.price !== undefined && rad.price !== null ? Number(rad.price) : rad.basePrice,
+            unitPrice: rad.unitPrice !== undefined && rad.unitPrice !== null ? Number(rad.unitPrice) : rad.price,
+            paymentStatus: rad.paymentStatus || (isAuth ? "authorized" : "pending_payment"),
+            isAuthorized: isAuth,
+            amountDue: rad.amountDue,
+            amountPaid: rad.amountPaid,
+            currencyCode: rad.currencyCode || "TZS",
+            chargeId: rad.chargeId ?? null,
+            chargeNumber: rad.chargeNumber ?? null,
           });
         }
       }

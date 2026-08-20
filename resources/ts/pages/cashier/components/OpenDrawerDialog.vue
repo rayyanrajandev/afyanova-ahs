@@ -44,7 +44,7 @@ const floatMinor = computed(() => fromAmountInput(floatInput.value));
 
 <template>
   <Dialog :open="open" @update:open="emit('update:open', $event)">
-    <DialogContent class="sm:max-w-sm">
+    <DialogContent class="sm:max-w-xl">
       <DialogHeader>
         <DialogTitle>{{ t("cashier.open_drawer") }}</DialogTitle>
         <DialogDescription>{{ t("cashier.opening_float_hint") }}</DialogDescription>

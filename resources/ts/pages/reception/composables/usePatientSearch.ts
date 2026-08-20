@@ -24,6 +24,8 @@ interface PatientListRow {
   gender: string;
   phone: string;
   nationalId?: string | null;
+  /** Registration timestamp, used to build the "Recently Registered" list. */
+  registeredAt: string | null;
 }
 
 export interface UsePatientSearchOptions {
@@ -94,6 +96,7 @@ export function usePatientSearch(options: UsePatientSearchOptions = {}) {
         gender: patient.gender,
         phone: phoneObj?.value ?? "",
         nationalId: patient.nationalId ?? null,
+        registeredAt: patient.createdAt ?? null,
       };
     }),
   );
@@ -156,6 +159,47 @@ export function usePatientSearch(options: UsePatientSearchOptions = {}) {
     }
   }
 
+  // ---- Recently Registered (Volume 2.1 §4.1 / §7.2, 2026-08-20) ----
+  // The Reception quick-bar shows the patients most recently *registered*,
+  // ordered by the backend's created_at (newest first) — not the per-user
+  // localStorage "last accessed" history. This is derived from the loaded
+  // patient rows so it always reflects the live registration data and
+  // refreshes with the list.
+  const RECENT_REGISTERED_LIMIT = 8;
+
+  const recentlyRegistered = computed<PatientListRow[]>(() => {
+    const withTime = patientRows.value
+      .filter((row) => row.registeredAt)
+      .map((row) => ({ row, time: new Date(row.registeredAt as string).getTime() }))
+      .filter((entry) => !Number.isNaN(entry.time))
+      .sort((a, b) => b.time - a.time);
+    return withTime.slice(0, RECENT_REGISTERED_LIMIT).map((entry) => entry.row);
+  });
+
+  /** Open a patient from the "Recently Registered" list. */
+  function openRegisteredPatient(id: string) {
+    patientStore.setCurrentPatient(id);
+    const patient = patientStore.patients.get(id);
+    if (patient) recentStore.addRecent(patient);
+  }
+
+  /** Human-readable registration time, e.g. "just now", "12m ago", "09:30". */
+  function formatRegisteredTime(iso: string | null | undefined): string {
+    if (!iso) return "";
+    const time = new Date(iso).getTime();
+    if (Number.isNaN(time)) return "";
+    const diffMs = Date.now() - time;
+    const minutes = Math.floor(diffMs / 60_000);
+    if (minutes < 1) return t("recent.just_now", undefined, "just now");
+    if (minutes < 60) return t("recent.minutes_ago", { n: minutes }, "{n}m ago");
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return t("recent.hours_ago", { n: hours }, "{n}h ago");
+    return new Date(iso).toLocaleDateString(undefined, {
+      day: "numeric",
+      month: "short",
+    });
+  }
+
   return {
     searchQuery,
     isSearching,
@@ -171,5 +215,8 @@ export function usePatientSearch(options: UsePatientSearchOptions = {}) {
     recentItems,
     openRecentPatient,
     togglePin,
+    recentlyRegistered,
+    openRegisteredPatient,
+    formatRegisteredTime,
   };
 }

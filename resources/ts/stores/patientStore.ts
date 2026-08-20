@@ -38,6 +38,12 @@ export interface Patient {
     middleName: string | null;
     nextOfKinName: string | null;
     nextOfKinPhone: string | null;
+    // Registration timestamp (Volume 2.1 §4.1 / §7.2). The backend already
+    // sends createdAt on every patient row (PatientResponseTransformer);
+    // surfaced here so the Reception "Recently Registered" quick-list can
+    // sort/display by actual registration time instead of localStorage
+    // "last accessed" history (2026-08-20).
+    createdAt: string | null;
     meta: {
         extension: {
             age: number;
@@ -127,6 +133,7 @@ function toPatient(row: Partial<BackendPatientRow>): Patient {
         middleName: row.middleName ?? null,
         nextOfKinName: row.nextOfKinName ?? null,
         nextOfKinPhone: row.nextOfKinPhone ?? null,
+        createdAt: row.createdAt ?? null,
         meta: {
             extension: {
                 age: ageFrom(row.dateOfBirth),

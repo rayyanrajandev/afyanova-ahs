@@ -557,7 +557,11 @@
     },
     "recent": {
         "label": "Recent Patients",
-        "pinned_section": "Pinned Patients"
+        "pinned_section": "Pinned Patients",
+        "registered": "Recently Registered",
+        "just_now": "just now",
+        "minutes_ago": "{n}m ago",
+        "hours_ago": "{n}h ago"
     },
     "nursing": {
         "tasks": "Tasks",

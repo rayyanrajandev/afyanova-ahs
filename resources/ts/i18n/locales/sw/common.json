@@ -557,7 +557,11 @@
     },
     "recent": {
         "label": "Hivi Karibuni",
-        "pinned_section": "Wagonjwa Waliobandikwa"
+        "pinned_section": "Wagonjwa Waliobandikwa",
+        "registered": "Waliojisajiliwa Hivi Karibuni",
+        "just_now": "sasa hivi",
+        "minutes_ago": "dakika {n} zilizopita",
+        "hours_ago": "saa {n} zilizopita"
     },
     "nursing": {
         "tasks": "Majukumu",

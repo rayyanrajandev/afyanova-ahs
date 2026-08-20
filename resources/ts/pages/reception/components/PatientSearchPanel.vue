@@ -32,7 +32,7 @@
 
 <script setup lang="ts">
 /* eslint-disable vue/no-mutating-props -- v-model="search.searchQuery.value", see file header docblock */
-import { History, Pin, UserPlus } from "lucide-vue-next";
+import { History, UserPlus } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import DataTable from "@/components/common/DataTable.vue";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -77,19 +77,22 @@ const syncStore = useSyncStore();
     </Button>
   </div>
 
-  <!-- Recent & Pinned Patients Quick Bar (Volume 1.3 §9.1) -->
+  <!-- Recently Registered Quick Bar (Volume 2.1 §4.1/§7.2, 2026-08-20) -->
+  <!-- Shows the most recently *registered* patients (backend created_at,
+       newest first), replacing the per-user localStorage "last accessed"
+       list. Pinning stays available from the opened patient profile. -->
   <div
-    v-if="search.recentItems.value.length > 0 && !search.searchQuery.value.trim() && search.patientRows.value.length > 0"
+    v-if="search.recentlyRegistered.value.length > 0 && !search.searchQuery.value.trim()"
     class="flex items-center gap-1.5 border-b border-border px-3 py-2 overflow-x-auto no-scrollbar bg-surface/60"
-    :aria-label="t('recent.label')"
+    :aria-label="t('recent.registered')"
   >
     <div class="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0 pr-2 border-r border-border">
       <History class="size-3.5 text-muted-foreground" aria-hidden="true" />
-      <span>{{ t("recent.label") }}</span>
+      <span>{{ t("recent.registered") }}</span>
     </div>
     <div class="flex items-center gap-1.5 shrink-0">
       <div
-        v-for="item in search.recentItems.value"
+        v-for="item in search.recentlyRegistered.value"
         :key="item.id"
         class="group inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-all select-none"
         :class="
@@ -97,24 +100,18 @@ const syncStore = useSyncStore();
             ? 'bg-accent border-primary/40 font-medium text-accent-foreground shadow-xs'
             : 'bg-card border-border hover:border-primary/40 hover:bg-secondary/60 text-foreground'
         "
-        @click="search.openRecentPatient(item.id)"
+        @click="search.openRegisteredPatient(item.id)"
       >
         <Avatar class="size-4.5 shrink-0">
           <AvatarFallback class="text-[9px] font-semibold bg-primary/10 text-primary">
             {{ patientInitials(item.name) }}
           </AvatarFallback>
         </Avatar>
-        <span class="truncate max-w-[100px] text-[11.5px]">{{ item.name }}</span>
+        <span class="truncate max-w-[90px] text-[11.5px]">{{ item.name }}</span>
         <span class="text-[10px] font-mono text-muted-foreground">{{ item.mrn }}</span>
-        <button
-          type="button"
-          class="p-0.5 text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-          :class="item.pinned ? 'text-primary' : 'opacity-40 group-hover:opacity-100'"
-          @click.stop="search.togglePin(item.id)"
-          :aria-label="item.pinned ? t('patient.unpin') : t('patient.pin')"
-        >
-          <Pin class="size-3" :fill="item.pinned ? 'currentColor' : 'none'" aria-hidden="true" />
-        </button>
+        <span class="text-[10px] text-muted-foreground/70 shrink-0">
+          {{ search.formatRegisteredTime(item.registeredAt) }}
+        </span>
       </div>
     </div>
   </div>

@@ -57,11 +57,11 @@ const { t } = useI18n({ useScope: "global" });
 const authMode = ref<"credentials" | "biometric" | "breakglass">("credentials");
 
 const showPassword = ref<boolean>(false);
-const activeCadreId = ref<string>("clinician");
+
 
 const form = useForm({
-  email: "clinician@local.test",
-  password: "DevPass!2026",
+  email: "",
+  password: "",
   remember: false,
   breakglass_reason: "",
 });
@@ -70,33 +70,7 @@ const form = useForm({
 const isScanningBio = ref<boolean>(false);
 const bioScanSuccess = ref<boolean>(false);
 
-interface StagingCadre {
-  id: string;
-  name: string;
-  cadreKey: string;
-  clearance: string;
-  email: string;
-  icon: any;
-  colorClass: string;
-  bgClass: string;
-}
 
-const stagingCadres: StagingCadre[] = [
-  { id: "clinician", name: "Clinician", cadreKey: "landing.workspaces.clinician.title", clearance: "Level 4 (CPOE & Prescribing)", email: "clinician@local.test", icon: Stethoscope, colorClass: "text-teal-600 dark:text-teal-400", bgClass: "bg-teal-500/10 border-teal-500/30" },
-  { id: "nursing", name: "Nursing", cadreKey: "landing.workspaces.nursing.title", clearance: "Level 3 (e-MAR & Bedside Vitals)", email: "nurse@local.test", icon: HeartPulse, colorClass: "text-emerald-600 dark:text-emerald-400", bgClass: "bg-emerald-500/10 border-emerald-500/30" },
-  { id: "reception", name: "Reception", cadreKey: "landing.workspaces.reception.title", clearance: "Level 2 (Triage & Check-in)", email: "receptionist@local.test", icon: Users, colorClass: "text-blue-600 dark:text-blue-400", bgClass: "bg-blue-500/10 border-blue-500/30" },
-  { id: "laboratory", name: "Laboratory", cadreKey: "landing.workspaces.laboratory.title", clearance: "Level 3 (LIS Analyzers & Release)", email: "lab@local.test", icon: Microscope, colorClass: "text-amber-600 dark:text-amber-400", bgClass: "bg-amber-500/10 border-amber-500/30" },
-  { id: "radiology", name: "Radiology", cadreKey: "landing.workspaces.radiology.title", clearance: "Level 3 (DICOM PACS Worklist)", email: "radiology@local.test", icon: Scan, colorClass: "text-cyan-600 dark:text-cyan-400", bgClass: "bg-cyan-500/10 border-cyan-500/30" },
-  { id: "pharmacy", name: "Pharmacy", cadreKey: "landing.workspaces.pharmacy.title", clearance: "Level 3 (5-Rights Dispense & FEFO)", email: "pharmacy@local.test", icon: Pill, colorClass: "text-indigo-600 dark:text-indigo-400", bgClass: "bg-indigo-500/10 border-indigo-500/30" },
-  { id: "cashier", name: "Cashier", cadreKey: "landing.workspaces.cashier.title", clearance: "Level 2 (NHIF & GePG Revenue)", email: "cashier@local.test", icon: Receipt, colorClass: "text-rose-600 dark:text-rose-400", bgClass: "bg-rose-500/10 border-rose-500/30" },
-  { id: "admin", name: "Admin", cadreKey: "auth.dept_admin", clearance: "Level 5 (Full Hospital Tenancy)", email: "admin@local.test", icon: ShieldCheck, colorClass: "text-purple-600 dark:text-purple-400", bgClass: "bg-purple-500/10 border-purple-500/30" },
-];
-
-function selectCadre(cadre: StagingCadre) {
-  activeCadreId.value = cadre.id;
-  form.email = cadre.email;
-  form.password = "DevPass!2026";
-}
 
 function triggerBiometricScan() {
   isScanningBio.value = true;
@@ -147,38 +121,6 @@ function submit() {
     >
       <CheckCircle2 class="h-4 w-4 shrink-0" />
       <span>{{ props.status }}</span>
-    </div>
-
-    <!-- Quick Clinical Cadre Staging Matrix -->
-    <div class="space-y-2 rounded-2xl border border-border/80 bg-card p-3 shadow-xs">
-      <div class="flex items-center justify-between text-[11px] font-semibold text-foreground px-1">
-        <span class="flex items-center gap-1.5">
-          <Sparkles class="h-3.5 w-3.5 text-primary" />
-          <span>1-Click Role Switcher (Staging Cadres)</span>
-        </span>
-        <span class="text-[10px] text-muted-foreground font-mono">Dev Mode</span>
-      </div>
-
-      <!-- Cadre Button Row -->
-      <div class="grid grid-cols-4 gap-1.5 sm:grid-cols-4">
-        <button
-          v-for="cadre in stagingCadres"
-          :key="cadre.id"
-          type="button"
-          class="flex flex-col items-center justify-center rounded-xl border p-2 text-center transition-all cursor-pointer focus-ring"
-          :class="activeCadreId === cadre.id ? `${cadre.bgClass} shadow-xs font-bold` : 'border-border/60 bg-surface/60 hover:bg-surface text-muted-foreground'"
-          @click="selectCadre(cadre)"
-        >
-          <component :is="cadre.icon" class="h-4 w-4 shrink-0" :class="cadre.colorClass" />
-          <span class="text-[10px] truncate max-w-full pt-1" :class="activeCadreId === cadre.id ? 'text-foreground font-semibold' : ''">{{ cadre.name }}</span>
-        </button>
-      </div>
-
-      <!-- Active Cadre Clearance Strip -->
-      <div class="flex items-center justify-between rounded-lg bg-surface px-2.5 py-1.5 text-[10px] text-muted-foreground border border-border/50">
-        <span class="font-mono">Account: <strong class="text-foreground">{{ form.email }}</strong></span>
-        <span class="text-primary font-medium">Clearance: {{ stagingCadres.find(c => c.id === activeCadreId)?.clearance }}</span>
-      </div>
     </div>
 
     <!-- 3-Modality Authentication Tabs -->

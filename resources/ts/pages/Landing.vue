@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject } from "vue";
+
 import LandingLayout from "@/layouts/LandingLayout.vue";
 import LandingHero from "@/components/landing/LandingHero.vue";
 import LandingStats from "@/components/landing/LandingStats.vue";
@@ -12,17 +12,12 @@ import LandingCtaSection from "@/components/landing/LandingCtaSection.vue";
 
 defineOptions({ layout: LandingLayout });
 
-const openDemoModal = inject<() => void>("openDemoModal", () => {});
-
-function handleOpenDemo() {
-  openDemoModal();
-}
 </script>
 
 <template>
   <div class="space-y-20 sm:space-y-28 pb-20 overflow-x-clip">
     <!-- 1. Editorial Hero & Clinical Command Center Mockup -->
-    <LandingHero @open-demo="handleOpenDemo" />
+    <LandingHero />
 
     <!-- 2. Enterprise Performance & Availability KPI Grid -->
     <LandingStats />
@@ -43,6 +38,6 @@ function handleOpenDemo() {
     <LandingSecurityCompliance />
 
     <!-- 8. Conversion Closing Call to Action -->
-    <LandingCtaSection @open-demo="handleOpenDemo" />
+    <LandingCtaSection />
   </div>
 </template>

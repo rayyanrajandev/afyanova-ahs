@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Link } from "@inertiajs/vue3";
 import { useI18n } from "vue-i18n";
 import {
   Activity,
@@ -13,9 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
-const emit = defineEmits<{
-  (e: "open-demo"): void;
-}>();
+
 
 const { t } = useI18n({ useScope: "global" });
 </script>
@@ -62,14 +61,15 @@ const { t } = useI18n({ useScope: "global" });
 
         <!-- Dual CTAs -->
         <div class="flex flex-wrap items-center justify-center gap-4 pt-2">
-          <Button
-            size="lg"
-            class="h-12 gap-2 px-7 text-sm font-bold shadow-lg shadow-teal-500/20 cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90"
-            @click="emit('open-demo')"
-          >
-            <span>{{ t("landing.hero_cta_demo") }}</span>
-            <ArrowRight class="h-4 w-4" />
-          </Button>
+          <Link href="/login">
+            <Button
+              size="lg"
+              class="h-12 gap-2 px-7 text-sm font-bold shadow-lg shadow-teal-500/20 cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              <span>{{ t("auth.sign_in") }}</span>
+              <ArrowRight class="h-4 w-4" />
+            </Button>
+          </Link>
 
           <a href="#workspaces">
             <Button

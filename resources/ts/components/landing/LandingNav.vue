@@ -14,9 +14,7 @@ import { Button } from "@/components/ui/button";
 import { setLocale } from "@/i18n";
 import { useUiStore } from "@/stores/uiStore";
 
-const emit = defineEmits<{
-  (e: "open-demo"): void;
-}>();
+
 
 const { t, locale } = useI18n({ useScope: "global" });
 const uiStore = useUiStore();
@@ -187,23 +185,13 @@ function handleNavClick() {
         <!-- Sign In -->
         <Link href="/login" class="hidden sm:inline-flex shrink-0">
           <Button
-            variant="ghost"
             size="sm"
-            class="h-9 text-xs font-semibold cursor-pointer whitespace-nowrap"
+            class="h-9 gap-1.5 px-3.5 sm:px-4 text-xs font-bold shadow-sm cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90 whitespace-nowrap shrink-0"
           >
-            {{ t("landing.nav_sign_in") }}
+            <span>{{ t("landing.nav_sign_in") }}</span>
+            <ArrowRight class="h-3.5 w-3.5" />
           </Button>
         </Link>
-
-        <!-- Request Demo CTA -->
-        <Button
-          size="sm"
-          class="h-9 gap-1.5 px-3.5 sm:px-4 text-xs font-bold shadow-sm cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90 whitespace-nowrap shrink-0"
-          @click="emit('open-demo')"
-        >
-          <span>{{ t("landing.nav_request_demo") }}</span>
-          <ArrowRight class="h-3.5 w-3.5" />
-        </Button>
 
         <!-- Mobile Menu Toggle -->
         <button
@@ -262,17 +250,8 @@ function handleNavClick() {
       </nav>
 
       <div class="flex flex-col gap-2 pt-2 border-t border-border">
-        <Button
-          @click="
-            emit('open-demo');
-            isMobileMenuOpen = false;
-          "
-          class="w-full text-xs font-bold"
-        >
-          {{ t("landing.nav_request_demo") }}
-        </Button>
-        <Link href="/login" class="w-full">
-          <Button variant="outline" class="w-full text-xs font-semibold">
+        <Link href="/login" class="w-full" @click="isMobileMenuOpen = false">
+          <Button class="w-full text-xs font-bold">
             {{ t("landing.nav_sign_in") }}
           </Button>
         </Link>

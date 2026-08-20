@@ -77,12 +77,7 @@ function triggerBiometricScan() {
   bioScanSuccess.value = false;
   setTimeout(() => {
     isScanningBio.value = false;
-    bioScanSuccess.value = true;
-    form.email = "clinician@local.test";
-    form.password = "DevPass!2026";
-    setTimeout(() => {
-      submit();
-    }, 900);
+    form.errors.email = "Biometric reader hardware not detected on this terminal.";
   }, 1600);
 }
 

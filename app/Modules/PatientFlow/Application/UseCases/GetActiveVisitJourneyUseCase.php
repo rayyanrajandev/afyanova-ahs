@@ -183,7 +183,8 @@ class GetActiveVisitJourneyUseCase
 
         $allergiesByPatientId = PatientAllergyModel::query()
             ->whereIn('patient_id', $patientIds)
-            ->where('status', 'active')
+            ->where('clinical_status', 'active')
+            ->where('verification_status', '!=', 'entered_in_error')
             ->get(['patient_id', 'substance_name', 'severity'])
             ->groupBy('patient_id');
 

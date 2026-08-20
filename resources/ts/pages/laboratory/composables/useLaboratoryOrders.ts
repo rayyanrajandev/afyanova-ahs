@@ -27,6 +27,22 @@ export interface LabTestParameter {
   flag: "normal" | "abnormal" | "critical_low" | "critical_high";
   previousValue?: string | number | null;
   previousDate?: string | null;
+  /**
+   * Where this parameter belongs on a sectioned result sheet (e.g. "Dipstick"
+   * or "Microscopy"). Undefined for the flat legacy panels.
+   */
+  section?: string;
+  /**
+   * The catalog template's field type, when the parameter was derived from the
+   * backend's sectioned `resultTemplate` ("select", "number", "positive-negative",
+   * "text", "multiselect", "not-done"). Lets the result sheet render the right
+   * input instead of always a free-text box.
+   */
+  fieldType?: string;
+  /** Candidate choices for a `select`/`multiselect` field from the template. */
+  options?: string[];
+  /** Placeholder hint for `text` fields, from the template. */
+  placeholder?: string;
 }
 
 /**
@@ -301,13 +317,49 @@ export const LAB_PANEL_TEMPLATES: Record<string, LabTestParameter[]> = {
     },
   ],
   "LAB-URI-ROUTINE": [
+    // Physical Examination (2 parameters)
     {
       key: "color",
-      name: "Appearance / Color",
+      name: "Color",
       value: null,
-      unit: "visual",
-      referenceRange: "Clear / Straw",
+      unit: "",
+      referenceRange: "Pale Yellow / Yellow",
       flag: "normal",
+      section: "Physical Examination",
+      fieldType: "select",
+      options: [
+        "Pale Yellow",
+        "Yellow",
+        "Dark Yellow",
+        "Amber",
+        "Red",
+        "Brown",
+        "Colourless",
+        "Cloudy",
+      ],
+    },
+    {
+      key: "appearance",
+      name: "Appearance",
+      value: null,
+      unit: "",
+      referenceRange: "Clear",
+      flag: "normal",
+      section: "Physical Examination",
+      fieldType: "select",
+      options: ["Clear", "Slightly Cloudy", "Cloudy", "Turbid"],
+    },
+    // Dipstick / Chemical Examination (10 parameters)
+    {
+      key: "specific_gravity",
+      name: "Specific Gravity (SG)",
+      value: null,
+      unit: "",
+      referenceRange: "1.005 – 1.030",
+      flag: "normal",
+      section: "Dipstick",
+      fieldType: "text",
+      placeholder: "e.g. 1.015",
     },
     {
       key: "ph",
@@ -318,6 +370,9 @@ export const LAB_PANEL_TEMPLATES: Record<string, LabTestParameter[]> = {
       minNormal: 5.0,
       maxNormal: 7.5,
       flag: "normal",
+      section: "Dipstick",
+      fieldType: "number",
+      placeholder: "e.g. 6.0",
     },
     {
       key: "protein",
@@ -326,6 +381,9 @@ export const LAB_PANEL_TEMPLATES: Record<string, LabTestParameter[]> = {
       unit: "mg/dL",
       referenceRange: "Negative (<15)",
       flag: "normal",
+      section: "Dipstick",
+      fieldType: "select",
+      options: ["Negative", "Trace", "+", "++", "+++"],
     },
     {
       key: "glucose",
@@ -334,22 +392,53 @@ export const LAB_PANEL_TEMPLATES: Record<string, LabTestParameter[]> = {
       unit: "mmol/L",
       referenceRange: "Negative",
       flag: "normal",
+      section: "Dipstick",
+      fieldType: "select",
+      options: ["Negative", "Trace", "+", "++", "+++"],
     },
     {
-      key: "leukocytes",
-      name: "Leukocyte Esterase",
+      key: "ketones",
+      name: "Ketones",
       value: null,
-      unit: "cells/µL",
+      unit: "mmol/L",
       referenceRange: "Negative",
       flag: "normal",
+      section: "Dipstick",
+      fieldType: "select",
+      options: ["Negative", "Trace", "+", "++", "+++"],
     },
     {
-      key: "nitrite",
+      key: "bilirubin",
+      name: "Bilirubin",
+      value: null,
+      unit: "",
+      referenceRange: "Negative",
+      flag: "normal",
+      section: "Dipstick",
+      fieldType: "select",
+      options: ["Negative", "+", "++", "+++"],
+    },
+    {
+      key: "urobilinogen",
+      name: "Urobilinogen",
+      value: null,
+      unit: "",
+      referenceRange: "Normal",
+      flag: "normal",
+      section: "Dipstick",
+      fieldType: "select",
+      options: ["Normal", "+", "++", "+++"],
+    },
+    {
+      key: "nitrites",
       name: "Nitrite",
       value: null,
       unit: "result",
       referenceRange: "Negative",
       flag: "normal",
+      section: "Dipstick",
+      fieldType: "positive-negative",
+      options: ["Negative", "Positive"],
     },
     {
       key: "blood",
@@ -358,6 +447,121 @@ export const LAB_PANEL_TEMPLATES: Record<string, LabTestParameter[]> = {
       unit: "Ery/µL",
       referenceRange: "Negative",
       flag: "normal",
+      section: "Dipstick",
+      fieldType: "select",
+      options: ["Negative", "Trace", "+", "++", "+++"],
+    },
+    {
+      key: "leukocytes",
+      name: "Leukocyte Esterase",
+      value: null,
+      unit: "cells/µL",
+      referenceRange: "Negative",
+      flag: "normal",
+      section: "Dipstick",
+      fieldType: "select",
+      options: ["Negative", "Trace", "+", "++", "+++"],
+    },
+    // Microscopy (Core 7 parameters)
+    {
+      key: "wbc",
+      name: "White Blood Cells (WBC)",
+      value: null,
+      unit: "",
+      referenceRange: "0 – 5/HPF",
+      flag: "normal",
+      section: "Microscopy",
+      fieldType: "text",
+      placeholder: "e.g. 0–5/HPF",
+    },
+    {
+      key: "rbc",
+      name: "Red Blood Cells (RBC)",
+      value: null,
+      unit: "",
+      referenceRange: "0 – 3/HPF",
+      flag: "normal",
+      section: "Microscopy",
+      fieldType: "text",
+      placeholder: "e.g. 0–3/HPF",
+    },
+    {
+      key: "epithelial_cells",
+      name: "Epithelial Cells",
+      value: null,
+      unit: "",
+      referenceRange: "Few / Moderate / Many",
+      flag: "normal",
+      section: "Microscopy",
+      fieldType: "text",
+      placeholder: "e.g. Few, Moderate, Many",
+    },
+    {
+      key: "casts",
+      name: "Casts",
+      value: null,
+      unit: "",
+      referenceRange: "None Seen",
+      flag: "normal",
+      section: "Microscopy",
+      fieldType: "select",
+      options: ["None Seen", "Hyaline", "Granular", "Cellular", "Waxy"],
+    },
+    {
+      key: "crystals",
+      name: "Crystals",
+      value: null,
+      unit: "",
+      referenceRange: "None Seen",
+      flag: "normal",
+      section: "Microscopy",
+      fieldType: "select",
+      options: [
+        "None Seen",
+        "Calcium Oxalate",
+        "Uric Acid",
+        "Triple Phosphate",
+        "Amorphous",
+      ],
+    },
+    {
+      key: "bacteria",
+      name: "Bacteria",
+      value: null,
+      unit: "",
+      referenceRange: "None Seen",
+      flag: "normal",
+      section: "Microscopy",
+      fieldType: "select",
+      options: ["None Seen", "Few", "Moderate", "Many"],
+    },
+    {
+      key: "yeast",
+      name: "Yeast Cells",
+      value: null,
+      unit: "",
+      referenceRange: "None Seen",
+      flag: "normal",
+      section: "Microscopy",
+      fieldType: "select",
+      options: ["None Seen", "Few", "Moderate"],
+    },
+    // Tanzania MoH Parasites in urine (e.g. Schistosoma haematobium)
+    {
+      key: "parasites",
+      name: "Parasites (e.g. S. haematobium)",
+      value: null,
+      unit: "",
+      referenceRange: "None Seen",
+      flag: "normal",
+      section: "Microscopy",
+      fieldType: "select",
+      options: [
+        "None Seen",
+        "Schistosoma haematobium ova seen",
+        "Trichomonas vaginalis seen",
+        "Other",
+      ],
     },
   ],
   "LAB-BIO-LIPID-CHO": [
@@ -475,6 +679,63 @@ export const LAB_PANEL_TEMPLATES: Record<string, LabTestParameter[]> = {
     },
   ],
 };
+
+/**
+ * Build the result-entry parameter list from the backend's sectioned catalog
+ * template (`metadata.resultTemplate`), flattened into a single sheet of rows.
+ *
+ * The catalog is the single source of truth for which parameters a test has —
+ * e.g. Urinalysis (LAB-URI-ROUTINE) defines Physical Examination, Dipstick and
+ * Microscopy sections. Only flattening these fields surfaces the Microscopy
+ * parameters; the legacy client-side `LAB_PANEL_TEMPLATES` map predates the
+ * sectioned templates and omits them.
+ */
+function parametersFromResultTemplate(
+  resultTemplate: any,
+  persistedResults: any[] | null,
+): LabTestParameter[] | null {
+  const sections = resultTemplate?.sections;
+  if (!Array.isArray(sections) || sections.length === 0) return null;
+
+  // Map a previously saved value onto the right template field by code, so a
+  // reopened order shows what was entered rather than blank rows.
+  const savedByCode = new Map<string, any>();
+  if (Array.isArray(persistedResults)) {
+    for (const rp of persistedResults) {
+      savedByCode.set(rp.code ?? rp.key, rp);
+    }
+  }
+
+  const params: LabTestParameter[] = [];
+  for (const section of sections) {
+    const fields = section?.fields;
+    if (!Array.isArray(fields)) continue;
+    for (const field of fields) {
+      const code = field?.code || field?.key;
+      if (!code) continue;
+      const saved = savedByCode.get(code);
+      params.push({
+        key: code,
+        name: field?.label || code,
+        value: saved?.value ?? null,
+        unit: saved?.unit || "",
+        referenceRange: saved?.referenceRange || "Normal",
+        flag:
+          saved?.flag === "critical"
+            ? "critical_high"
+            : saved?.flag === "abnormal"
+              ? "abnormal"
+              : "normal",
+        section: section?.label,
+        fieldType: field?.type,
+        options: Array.isArray(field?.options) ? field.options : undefined,
+        placeholder: field?.placeholder,
+      });
+    }
+  }
+
+  return params.length > 0 ? params : null;
+}
 
 export function inferLaboratoryDepartment(
   testCode?: string,
@@ -719,7 +980,7 @@ export function useLaboratoryOrders() {
     }
   }
 
-  // Auto-evaluate parameter flag based on CLSI thresholds
+  // Auto-evaluate parameter flag based on CLSI thresholds & qualitative findings
   function evaluateParameterFlag(
     param: LabTestParameter,
   ): LabTestParameter["flag"] {
@@ -729,16 +990,36 @@ export function useLaboratoryOrders() {
         : parseFloat(String(param.value || ""));
     if (isNaN(num)) {
       if (typeof param.value === "string") {
-        const lower = param.value.toLowerCase();
+        const val = param.value.trim().toLowerCase();
+        const ref = (param.referenceRange || "").toLowerCase();
+
+        // Obvious abnormal qualitative indicators
         if (
-          lower.includes("positive") ||
-          lower.includes("reactive") ||
-          lower.includes("detected")
+          val.includes("positive") ||
+          val.includes("reactive") ||
+          val.includes("detected") ||
+          val.includes("ova seen") ||
+          val.includes("schistosoma") ||
+          val.includes("trichomonas") ||
+          val.includes("turbid") ||
+          val.includes("cloudy") ||
+          val.includes("many") ||
+          val.includes("moderate") ||
+          val === "+" ||
+          val === "++" ||
+          val === "+++" ||
+          val === "++++" ||
+          val.includes("trace")
         ) {
-          return param.referenceRange.toLowerCase().includes("negative") ||
-            param.referenceRange.toLowerCase().includes("non-reactive")
-            ? "abnormal"
-            : "normal";
+          if (
+            ref.includes("negative") ||
+            ref.includes("non-reactive") ||
+            ref.includes("none seen") ||
+            ref.includes("clear") ||
+            ref.includes("normal")
+          ) {
+            return "abnormal";
+          }
         }
       }
       return "normal";
@@ -839,12 +1120,24 @@ export function useLaboratoryOrders() {
 
         const status = (raw.status || "ordered") as LaboratoryOrderStatus;
 
-        let parameters = defaultParams;
-        if (
-          Array.isArray(raw.resultParameters) &&
-          raw.resultParameters.length > 0
-        ) {
-          parameters = raw.resultParameters.map((rp: any) => ({
+        const persistedResults = Array.isArray(raw.resultParameters)
+          ? raw.resultParameters
+          : null;
+
+        // The catalog's sectioned template is the source of truth for which
+        // parameters a test carries (it includes sections such as Microscopy
+        // that the legacy flat map below omits). It is merged with any already
+        // saved values so reopened orders keep their entered results.
+        const templateParams = parametersFromResultTemplate(
+          raw.catalogResultTemplate,
+          persistedResults,
+        );
+
+        let parameters: LabTestParameter[];
+        if (templateParams) {
+          parameters = templateParams;
+        } else if (persistedResults && persistedResults.length > 0) {
+          parameters = persistedResults.map((rp: any) => ({
             key: rp.code || rp.key || "res",
             name: rp.name || "Parameter",
             value: rp.value ?? null,
@@ -857,6 +1150,8 @@ export function useLaboratoryOrders() {
                   ? "abnormal"
                   : "normal",
           }));
+        } else {
+          parameters = defaultParams;
         }
 
         return {
@@ -1202,12 +1497,36 @@ export function useLaboratoryOrders() {
     if (!order) return;
 
     for (const p of order.parameters) {
-      if (
+      const key = (p.key || "").toLowerCase();
+      if (key === "color") {
+        p.value = p.options?.includes("Yellow") ? "Yellow" : "Pale Yellow";
+      } else if (key === "appearance") {
+        p.value = "Clear";
+      } else if (key === "specific_gravity" || key === "sg") {
+        p.value = "1.015";
+      } else if (key === "ph") {
+        p.value = p.fieldType === "number" ? 6.0 : "6.0";
+      } else if (key === "wbc" || key === "pus_cells") {
+        p.value = "0–2/HPF";
+      } else if (key === "rbc") {
+        p.value = "0–1/HPF";
+      } else if (key === "epithelial_cells") {
+        p.value = "Few";
+      } else if (p.options?.includes("None Seen")) {
+        p.value = "None Seen";
+      } else if (p.options?.includes("Negative")) {
+        p.value = "Negative";
+      } else if (p.options?.includes("Non-Reactive")) {
+        p.value = "Non-Reactive";
+      } else if (p.options?.includes("Normal")) {
+        p.value = "Normal";
+      } else if (
         p.unit === "result" ||
-        p.referenceRange.includes("Negative") ||
-        p.referenceRange.includes("Non-Reactive")
+        p.fieldType === "positive-negative" ||
+        p.referenceRange?.includes("Negative") ||
+        p.referenceRange?.includes("Non-Reactive")
       ) {
-        p.value = p.referenceRange.includes("Non-Reactive")
+        p.value = p.referenceRange?.includes("Non-Reactive")
           ? "Non-Reactive"
           : "Negative";
       } else if (p.minNormal !== undefined && p.maxNormal !== undefined) {

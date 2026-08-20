@@ -3,29 +3,23 @@
 namespace App\Modules\Laboratory\Infrastructure\Services;
 
 use App\Modules\Laboratory\Domain\Services\LabTestCatalogLookupServiceInterface;
-use App\Modules\Platform\Domain\Services\FeatureFlagResolverInterface;
+use App\Modules\Platform\Domain\Services\CurrentPlatformScopeContextInterface;
 use App\Modules\Platform\Domain\ValueObjects\ClinicalCatalogItemStatus;
 use App\Modules\Platform\Domain\ValueObjects\ClinicalCatalogType;
 use App\Modules\Platform\Infrastructure\Models\ClinicalCatalogItemModel;
-use App\Modules\Platform\Infrastructure\Support\PlatformScopeQueryApplier;
 use Illuminate\Database\Eloquent\Builder;
 
 class LabTestCatalogLookupService implements LabTestCatalogLookupServiceInterface
 {
     public function __construct(
-        private readonly PlatformScopeQueryApplier $platformScopeQueryApplier,
-        private readonly FeatureFlagResolverInterface $featureFlagResolver,
+        private readonly CurrentPlatformScopeContextInterface $scopeContext,
     ) {}
 
     public function findActiveById(string $id): ?array
     {
-        $query = ClinicalCatalogItemModel::query()
-            ->where('id', $id);
+        $query = $this->baseQuery()->where('id', $id);
 
-        $this->applyCommonFilters($query);
-        $item = $query->first();
-
-        return $item?->toArray();
+        return $this->resolveScoped($query)?->toArray();
     }
 
     public function findActiveByCode(string $code): ?array
@@ -35,31 +29,39 @@ class LabTestCatalogLookupService implements LabTestCatalogLookupServiceInterfac
             return null;
         }
 
-        $query = ClinicalCatalogItemModel::query()
-            ->whereRaw('UPPER(code) = ?', [$normalizedCode]);
+        $query = $this->baseQuery()->whereRaw('UPPER(code) = ?', [$normalizedCode]);
 
-        $this->applyCommonFilters($query);
-        $item = $query->first();
-
-        return $item?->toArray();
+        return $this->resolveScoped($query)?->toArray();
     }
 
-    private function applyCommonFilters(Builder $query): void
+    /**
+     * Facility-specific catalog rows take precedence, but a facility may still
+     * use the shared global row (facility_id null) as a fallback. This lets one
+     * facility offer "Urinalysis Dipstick only" while another offers
+     * "Dipstick + Microscopy" under the same code — without duplicating the
+     * investigation and without breaking tenants that run a single global
+     * catalog.
+     */
+    private function resolveScoped(Builder $query): ?ClinicalCatalogItemModel
     {
-        $query
-            ->where('catalog_type', ClinicalCatalogType::LAB_TEST->value)
-            ->where('status', ClinicalCatalogItemStatus::ACTIVE->value);
+        $facilityId = $this->scopeContext->facilityId();
 
-        if (! $this->isPlatformScopingEnabled()) {
-            return;
+        if ($facilityId !== null) {
+            $item = (clone $query)->where('facility_id', $facilityId)->first();
+            if ($item) {
+                return $item;
+            }
+
+            $query->whereNull('facility_id');
         }
 
-        $this->platformScopeQueryApplier->apply($query);
+        return $query->first();
     }
 
-    private function isPlatformScopingEnabled(): bool
+    private function baseQuery(): Builder
     {
-        return $this->featureFlagResolver->isEnabled('platform.multi_facility_scoping')
-            || $this->featureFlagResolver->isEnabled('platform.multi_tenant_isolation');
+        return ClinicalCatalogItemModel::query()
+            ->where('catalog_type', ClinicalCatalogType::LAB_TEST->value)
+            ->where('status', ClinicalCatalogItemStatus::ACTIVE->value);
     }
 }

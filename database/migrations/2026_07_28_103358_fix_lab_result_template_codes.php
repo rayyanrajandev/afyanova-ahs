@@ -8,7 +8,7 @@ return new class extends Migration
     private static function resultTemplates(): array
     {
         return [
-            'LAB-URINE-001' => [
+            'LAB-URI-ROUTINE' => [
                 'sections' => [
                     [
                         'label' => 'Physical Examination',

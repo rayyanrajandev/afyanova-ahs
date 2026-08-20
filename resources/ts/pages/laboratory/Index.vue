@@ -39,7 +39,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LabAuditTab from "./components/LabAuditTab.vue";
 import LabOrderHeader from "./components/LabOrderHeader.vue";
 import LabQueuePanel from "./components/LabQueuePanel.vue";
-import LabStageBar from "./components/LabStageBar.vue";
 import ResultEntryTab from "./components/ResultEntryTab.vue";
 import SpecimenAccessioningTab from "./components/SpecimenAccessioningTab.vue";
 import VerificationTab from "./components/VerificationTab.vue";
@@ -244,9 +243,6 @@ watch(
                 :patient-orders="laboratoryManager.selectedPatientOrders.value"
                 :on-select-order="laboratoryManager.selectOrder"
               />
-
-              <!-- Which of the four bench steps this order is on, and what to do next -->
-              <LabStageBar :order="laboratoryManager.selectedOrder.value" />
 
               <!-- Station Navigation Tabs -->
               <Tabs

@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             DskDepartmentsSeeder::class,
             DskLabClinicalCatalogSeeder::class,
+            FacilityLabCapabilitiesSeeder::class,
             DskRadiologyClinicalCatalogSeeder::class,
             DskFormularyClinicalCatalogSeeder::class,
             DskFormularyPackagingTemplateSeeder::class,

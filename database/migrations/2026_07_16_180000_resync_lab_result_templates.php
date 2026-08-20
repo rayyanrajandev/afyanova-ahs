@@ -11,7 +11,7 @@ return new class extends Migration
     private static function resultTemplates(): array
     {
         return [
-            'LAB-UA-001' => [
+            'LAB-URI-ROUTINE' => [
                 'sections' => [
                     [
                         'label' => 'Physical Examination',

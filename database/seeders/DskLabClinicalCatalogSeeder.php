@@ -204,6 +204,7 @@ class DskLabClinicalCatalogSeeder extends Seeder
                     ['code' => 'crystals', 'label' => 'Crystals', 'type' => 'select', 'options' => ['None Seen', 'Calcium Oxalate', 'Uric Acid', 'Triple Phosphate', 'Amorphous']],
                     ['code' => 'bacteria', 'label' => 'Bacteria', 'type' => 'select', 'options' => ['None Seen', 'Few', 'Moderate', 'Many']],
                     ['code' => 'yeast', 'label' => 'Yeast Cells', 'type' => 'select', 'options' => ['None Seen', 'Few', 'Moderate']],
+                    ['code' => 'parasites', 'label' => 'Parasites (e.g. S. haematobium)', 'type' => 'select', 'options' => ['None Seen', 'Schistosoma haematobium ova seen', 'Trichomonas vaginalis seen', 'Other']],
                 ]],
             ]],
             'LAB-PAR-STOOL-ROUTINE' => ['sections' => [

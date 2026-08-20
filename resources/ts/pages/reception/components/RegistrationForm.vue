@@ -187,7 +187,7 @@ onBeforeUnmount(() => {
           @click="triggerSave('saveAndCheckIn')"
         >
           <Zap class="size-4 fill-current" aria-hidden="true" />
-          <span>⚡ {{ t("registration.save_and_checkin") }}</span>
+          <span>{{ t("registration.save_and_checkin") }}</span>
         </Button>
 
         <DropdownMenuRoot>

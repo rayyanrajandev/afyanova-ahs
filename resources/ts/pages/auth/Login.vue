@@ -13,29 +13,10 @@ import { Link, useForm } from "@inertiajs/vue3";
 import { useI18n } from "vue-i18n";
 import {
   AlertCircle,
-  AlertTriangle,
   ArrowRight,
-  BadgeCheck,
   CheckCircle2,
-  Cpu,
   Eye,
   EyeOff,
-  Fingerprint,
-  HeartPulse,
-  Info,
-  KeyRound,
-  Lock,
-  Microscope,
-  Pill,
-  Radio,
-  Receipt,
-  Scan,
-  ShieldAlert,
-  ShieldCheck,
-  Smartphone,
-  Sparkles,
-  Stethoscope,
-  Users,
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -53,33 +34,13 @@ const props = defineProps<{
 
 const { t } = useI18n({ useScope: "global" });
 
-// Auth Mode Tabs: 'credentials' | 'biometric' | 'breakglass'
-const authMode = ref<"credentials" | "biometric" | "breakglass">("credentials");
-
 const showPassword = ref<boolean>(false);
-
 
 const form = useForm({
   email: "",
   password: "",
   remember: false,
-  breakglass_reason: "",
 });
-
-// Biometric Simulation State
-const isScanningBio = ref<boolean>(false);
-const bioScanSuccess = ref<boolean>(false);
-
-
-
-function triggerBiometricScan() {
-  isScanningBio.value = true;
-  bioScanSuccess.value = false;
-  setTimeout(() => {
-    isScanningBio.value = false;
-    form.errors.email = "Biometric reader hardware not detected on this terminal.";
-  }, 1600);
-}
 
 function submit() {
   form.post("/login", {
@@ -90,16 +51,8 @@ function submit() {
 
 <template>
   <div class="space-y-6">
-    <!-- Header & Terminal Telemetry Pill -->
+    <!-- Header -->
     <div class="space-y-2 text-left">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <div class="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
-          <Cpu class="h-3 w-3" />
-          <span>{{ t('auth.terminal_info') }}</span>
-        </div>
-        <span class="text-[10px] font-mono text-muted-foreground">Session TTL: 15m</span>
-      </div>
-
       <h1 class="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
         {{ t('auth.sign_in') }}
       </h1>
@@ -118,44 +71,8 @@ function submit() {
       <span>{{ props.status }}</span>
     </div>
 
-    <!-- 3-Modality Authentication Tabs -->
-    <div class="flex items-center rounded-xl border border-border bg-surface p-1 shadow-xs text-xs font-semibold" role="tablist">
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="authMode === 'credentials'"
-        class="flex-1 rounded-lg py-1.5 text-center transition-all cursor-pointer"
-        :class="authMode === 'credentials' ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
-        @click="authMode = 'credentials'"
-      >
-        {{ t('auth.auth_tab_credentials') }}
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="authMode === 'biometric'"
-        class="flex-1 rounded-lg py-1.5 text-center transition-all cursor-pointer flex items-center justify-center gap-1.5"
-        :class="authMode === 'biometric' ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'"
-        @click="authMode = 'biometric'"
-      >
-        <Fingerprint class="h-3.5 w-3.5 text-primary" />
-        <span>{{ t('auth.auth_tab_biometric') }}</span>
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="authMode === 'breakglass'"
-        class="flex-1 rounded-lg py-1.5 text-center transition-all cursor-pointer flex items-center justify-center gap-1.5"
-        :class="authMode === 'breakglass' ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold shadow-xs' : 'text-muted-foreground hover:text-foreground'"
-        @click="authMode = 'breakglass'"
-      >
-        <ShieldAlert class="h-3.5 w-3.5 text-rose-500" />
-        <span>STAT</span>
-      </button>
-    </div>
-
-    <!-- ==================== MODE 1: STAFF CREDENTIALS ==================== -->
-    <form v-if="authMode === 'credentials'" class="space-y-4" @submit.prevent="submit">
+    <!-- Form -->
+    <form class="space-y-4" @submit.prevent="submit">
       <!-- Work Email / Staff ID -->
       <div class="space-y-1.5">
         <Label for="email" class="text-xs font-semibold text-foreground">
@@ -240,85 +157,6 @@ function submit() {
         <span v-else class="flex items-center gap-2">
           <span>{{ t('auth.sign_in') }}</span>
           <ArrowRight class="h-4 w-4" />
-        </span>
-      </Button>
-    </form>
-
-    <!-- ==================== MODE 2: BIOMETRIC / SMARTCARD (TAP & GO) ==================== -->
-    <div v-else-if="authMode === 'biometric'" class="space-y-4 rounded-2xl border border-primary/20 bg-card p-6 text-center shadow-xs">
-      <div class="relative mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 border border-primary/30">
-        <Fingerprint class="h-10 w-10 text-primary" :class="{ 'animate-pulse text-cyan-400': isScanningBio }" />
-        <span v-if="isScanningBio" class="absolute inset-0 rounded-full border-2 border-primary animate-ping" />
-      </div>
-
-      <div class="space-y-1">
-        <h3 class="text-base font-bold text-foreground">{{ t('auth.biometric_prompt_title') }}</h3>
-        <p class="text-xs text-muted-foreground leading-relaxed">{{ t('auth.biometric_prompt_desc') }}</p>
-      </div>
-
-      <div v-if="bioScanSuccess" class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-2">
-        <CheckCircle2 class="h-4 w-4" />
-        <span>{{ t('auth.biometric_success') }}</span>
-      </div>
-
-      <Button
-        type="button"
-        size="lg"
-        class="h-11 w-full text-sm font-semibold shadow-md shadow-primary/20 cursor-pointer"
-        :disabled="isScanningBio"
-        @click="triggerBiometricScan"
-      >
-        <span v-if="isScanningBio" class="flex items-center gap-2">
-          <span class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-          <span>{{ t('auth.biometric_reading') }}</span>
-        </span>
-        <span v-else class="flex items-center gap-2">
-          <Fingerprint class="h-4 w-4" />
-          <span>{{ t('auth.biometric_scan_btn') }}</span>
-        </span>
-      </Button>
-    </div>
-
-    <!-- ==================== MODE 3: EMERGENCY BREAK-GLASS (STAT) ==================== -->
-    <form v-else class="space-y-4 rounded-2xl border border-rose-500/30 bg-rose-500/5 p-5 shadow-xs" @submit.prevent="submit">
-      <div class="flex items-start gap-3">
-        <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-400 shrink-0">
-          <AlertTriangle class="h-5 w-5" />
-        </div>
-        <div class="space-y-1 text-left">
-          <h3 class="text-sm font-bold text-rose-700 dark:text-rose-400">{{ t('auth.breakglass_title') }}</h3>
-          <p class="text-[11px] text-muted-foreground leading-relaxed">{{ t('auth.breakglass_desc') }}</p>
-        </div>
-      </div>
-
-      <div class="space-y-1.5 text-left">
-        <Label for="breakglass-reason" class="text-xs font-semibold text-foreground">
-          {{ t('auth.breakglass_reason') }}
-        </Label>
-        <Input
-          id="breakglass-reason"
-          v-model="form.breakglass_reason"
-          type="text"
-          required
-          autofocus
-          :placeholder="t('auth.breakglass_reason_placeholder')"
-          class="h-10 border-rose-500/40 bg-card transition-colors focus-visible:ring-rose-500"
-        />
-      </div>
-
-      <Button
-        type="submit"
-        variant="destructive"
-        class="h-11 w-full text-sm font-bold shadow-lg shadow-rose-500/20 cursor-pointer"
-        :disabled="form.processing"
-      >
-        <span v-if="form.processing" class="flex items-center gap-2">
-          <span class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-          <span>Authorizing STAT Emergency Access...</span>
-        </span>
-        <span v-else class="flex items-center gap-2">
-          <ShieldAlert class="h-4 w-4" />
-          <span>{{ t('auth.breakglass_btn') }}</span>
         </span>
       </Button>
     </form>

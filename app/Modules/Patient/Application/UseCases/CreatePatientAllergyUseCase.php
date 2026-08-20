@@ -28,7 +28,8 @@ class CreatePatientAllergyUseCase
 
         $payload['patient_id'] = $patientId;
         $payload['tenant_id'] = $this->platformScopeContext->tenantId();
-        $payload['status'] = trim((string) ($payload['status'] ?? 'active')) ?: 'active';
+        $payload['clinical_status'] = trim((string) ($payload['clinical_status'] ?? 'active')) ?: 'active';
+        $payload['verification_status'] = trim((string) ($payload['verification_status'] ?? 'unconfirmed')) ?: 'unconfirmed';
 
         $created = $this->patientAllergyRepository->create($payload);
 
@@ -50,11 +51,16 @@ class CreatePatientAllergyUseCase
             'substance_code',
             'substance_name',
             'reaction',
+            'reaction_code',
             'severity',
-            'status',
+            'clinical_status',
+            'verification_status',
+            'type',
+            'category',
             'noted_at',
             'last_reaction_at',
             'notes',
+            'source',
         ];
 
         $result = [];

@@ -32,6 +32,8 @@ final class EffectivePermissionNameResolver
         'imaging.result.verify',
         'patient.demographics.update',
         'patient.allergies.manage',
+        'patient.allergies.record',
+        'patient.allergies.verify',
         'patient.medications.manage',
         'patient.vitals.record',
         'appointment.reschedule',

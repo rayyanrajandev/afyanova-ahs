@@ -27,11 +27,11 @@ class DskStaffSeeder extends Seeder
         $staff = [
             ['name' => 'Administrator', 'tag' => 'admin', 'job_title' => 'Facility Administrator', 'department_code' => 'ADM', 'facility_role' => 'super_admin', 'role_code' => 'ADMIN.FACILITY', 'is_primary' => true],
             ['name' => 'Colini Kenedy', 'tag' => 'colini', 'job_title' => 'Laboratory Technician', 'department_code' => 'LAB', 'facility_role' => 'lab_technician', 'role_code' => 'LAB.STAFF'],
-            ['name' => 'Devotha Peter', 'tag' => 'devotha', 'job_title' => 'Nurse & Receptionist', 'department_code' => 'NRS', 'facility_role' => 'nurse', 'role_code' => 'CLINICAL.NURSE', 'additional_role_code' => 'ADMIN.REGISTRATION'],
+            ['name' => 'Devotha Peter', 'tag' => 'devotha', 'job_title' => 'Nurse & Receptionist', 'department_code' => 'NRS', 'facility_role' => 'nurse', 'role_code' => 'CLINICAL.NURSE', 'additional_role_codes' => ['ADMIN.REGISTRATION']],
             ['name' => 'Dr. Emmily Rwamuhuru', 'tag' => 'emmily', 'job_title' => 'Clinical Officer', 'department_code' => 'OPD', 'facility_role' => 'clinical_officer', 'role_code' => 'CLINICAL.GENERAL'],
             ['name' => 'Dr. Ruben', 'tag' => 'ruben', 'job_title' => 'Clinical Officer', 'department_code' => 'OPD', 'facility_role' => 'clinical_officer', 'role_code' => 'CLINICAL.GENERAL'],
             ['name' => 'Dr. Samwel Justin', 'tag' => 'samwel', 'job_title' => 'Clinical Officer', 'department_code' => 'OPD', 'facility_role' => 'clinical_officer', 'role_code' => 'CLINICAL.GENERAL'],
-            ['name' => 'Given Aidan', 'tag' => 'given', 'job_title' => 'Nurse & Receptionist', 'department_code' => 'NRS', 'facility_role' => 'nurse', 'role_code' => 'CLINICAL.NURSE', 'additional_role_code' => 'ADMIN.REGISTRATION'],
+            ['name' => 'Given Aidan', 'tag' => 'given', 'job_title' => 'Nurse & Receptionist', 'department_code' => 'NRS', 'facility_role' => 'nurse', 'role_code' => 'CLINICAL.NURSE', 'additional_role_codes' => ['ADMIN.REGISTRATION']],
             ['name' => 'Iddi Kimweri', 'tag' => 'financial', 'job_title' => 'Accountant', 'department_code' => 'FIN', 'facility_role' => 'accountant', 'role_code' => 'FINANCE.OFFICER'],
             ['name' => 'Joyce Jonathan', 'tag' => 'joyce', 'job_title' => 'Laboratory Technician', 'department_code' => 'LAB', 'facility_role' => 'lab_technician', 'role_code' => 'LAB.STAFF'],
             ['name' => 'Rajani Diwani', 'tag' => 'kibaso', 'job_title' => 'Cashier', 'department_code' => 'FIN', 'facility_role' => 'cashier', 'role_code' => 'FINANCE.CASHIER'],
@@ -74,8 +74,11 @@ class DskStaffSeeder extends Seeder
                 }
             }
 
-            if (!empty($person['additional_role_code'])) {
-                $addRole = RoleModel::where('code', $person['additional_role_code'])->first();
+            // Attach any additional RBAC roles (array, or legacy single value)
+            $additionalRoleCodes = $person['additional_role_codes']
+                ?? (isset($person['additional_role_code']) ? [$person['additional_role_code']] : []);
+            foreach ($additionalRoleCodes as $additionalRoleCode) {
+                $addRole = RoleModel::where('code', $additionalRoleCode)->first();
                 if ($addRole) {
                     $user->roles()->syncWithoutDetaching([$addRole->id]);
                 }

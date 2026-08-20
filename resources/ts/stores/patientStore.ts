@@ -307,13 +307,7 @@ export const usePatientStore = defineStore('patient', () => {
             const res = await fetch(url, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
             });
-            if (!res.ok) {
-                if (res.status === 404 || res.status === 204) {
-                    searchResults.value = [];
-                    return [];
-                }
-                throw new Error('Failed to fetch patients');
-            }
+            if (!res.ok) throw new Error('Failed to fetch patients');
             const body = (await res.json()) as {
                 data?: BackendPatientRow[];
                 meta?: { total?: number };
@@ -361,13 +355,7 @@ export const usePatientStore = defineStore('patient', () => {
             const res = await fetch(url, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
             });
-            if (!res.ok) {
-                if (res.status === 404 || res.status === 204) {
-                    nursingPatients.value = [];
-                    return [];
-                }
-                throw new Error('Failed to fetch nursing patients');
-            }
+            if (!res.ok) throw new Error('Failed to fetch nursing patients');
             const body = (await res.json()) as { data?: BackendPatientRow[] };
             const list = (body.data ?? []).map(toPatient);
             list.forEach(cachePatient);
@@ -392,13 +380,7 @@ export const usePatientStore = defineStore('patient', () => {
             const res = await fetch(url, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
             });
-            if (!res.ok) {
-                if (res.status === 404 || res.status === 204) {
-                    searchResults.value = [];
-                    return [];
-                }
-                throw new Error('Failed to fetch clinician patients');
-            }
+            if (!res.ok) throw new Error('Failed to fetch clinician patients');
             const body = (await res.json()) as { data?: BackendPatientRow[]; meta?: { total?: number } };
             const list = (body.data ?? []).map(toPatient);
             list.forEach(cachePatient);

@@ -25,6 +25,12 @@ export interface SafetyConflict {
   id?: string;
   code?: string;
   name?: string;
+  substanceCode?: string;
+  substanceName?: string;
+  reaction?: string;
+  reactionCode?: string;
+  clinicalStatus?: string;
+  verificationStatus?: string;
   severity: "low" | "medium" | "high" | "critical";
   description?: string;
   clinicalEffect?: string;

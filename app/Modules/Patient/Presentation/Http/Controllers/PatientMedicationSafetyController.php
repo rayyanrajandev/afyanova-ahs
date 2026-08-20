@@ -276,11 +276,16 @@ class PatientMedicationSafetyController extends Controller
             'substanceCode' => 'substance_code',
             'substanceName' => 'substance_name',
             'reaction' => 'reaction',
+            'reactionCode' => 'reaction_code',
             'severity' => 'severity',
-            'status' => 'status',
+            'clinicalStatus' => 'clinical_status',
+            'verificationStatus' => 'verification_status',
+            'type' => 'type',
+            'category' => 'category',
             'notedAt' => 'noted_at',
             'lastReactionAt' => 'last_reaction_at',
             'notes' => 'notes',
+            'source' => 'source',
         ];
 
         $payload = [];

@@ -22,6 +22,10 @@ import {
 import { useI18n } from "vue-i18n";
 import StatusBadge from "@/components/common/StatusBadge.vue";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Plus, Pencil } from "lucide-vue-next";
+import AllergyFormDialog from "@/components/AllergyFormDialog.vue";
+import { useAllergyForm } from "@/composables/useAllergyForm";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { usePatientProfile } from "@/pages/reception/composables/usePatientProfile";
 import type { Patient } from "@/stores/patientStore";
@@ -32,6 +36,14 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+
+const allergyForm = useAllergyForm({
+  workspace: "nursing",
+  onSaved: (patientId) => {
+    // Refresh only the profile summary (allergy card) instead of reloading the page.
+    props.profile.refreshSummary(patientId);
+  },
+});
 
 function formatClinicalDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
@@ -122,65 +134,78 @@ function formatClinicalDate(dateStr: string | null | undefined): string {
       </div>
     </div>
 
-    <!-- 3. Allergies & Clinical Risk Section -->
-    <div class="rounded-lg border border-border/70 bg-card/60 p-3 space-y-2">
-      <div class="flex items-center justify-between pb-1.5 border-b border-border/50">
-        <span class="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-          <TriangleAlert class="size-3.5 text-amber-500" />
-          <span>{{ t("patient.allergies") }}</span>
-        </span>
-      </div>
-      <div>
-        <div v-if="profile.isSummaryLoading.value" class="h-6 w-32 rounded bg-secondary/60 animate-pulse" />
-        <div v-else-if="(profile.profileSummary.value?.alerts.length ?? 0) > 0" class="flex flex-wrap gap-1.5">
-          <Badge
-            v-for="allergy in profile.profileSummary.value?.alerts"
-            :key="allergy.id"
-            :variant="allergy.severity === 'severe' ? 'critical' : 'warning'"
-            class="inline-flex items-center gap-1 text-xs"
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+      <!-- 3. Allergies & Clinical Risk Section -->
+      <div class="rounded-lg border border-border/70 bg-card/60 p-3 space-y-2">
+        <div class="flex items-center justify-between pb-1.5 border-b border-border/50">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+            <TriangleAlert class="size-3.5 text-amber-500" />
+            <span>{{ t("patient.allergies") }}</span>
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-6 px-2 text-xs gap-1 text-primary cursor-pointer"
+            @click="allergyForm.openAllergyForm(patient.id, null)"
           >
-            <TriangleAlert class="size-3" aria-hidden="true" />
-            {{ allergy.substanceName }} ({{ allergy.severity }})
-          </Badge>
+            <Plus class="size-3" />
+            {{ t("common.add", "Add") }}
+          </Button>
         </div>
-        <div v-else class="flex items-center gap-1.5 py-1">
-          <Badge variant="success" class="inline-flex items-center gap-1 text-xs">
-            <CircleCheck class="size-3" aria-hidden="true" />
-            {{ t("patient.no_allergies") }}
-          </Badge>
-        </div>
-      </div>
-    </div>
-
-    <!-- 4. Previous Encounters & Visit History Section -->
-    <div class="rounded-lg border border-border/70 bg-card/60 p-3 space-y-2">
-      <div class="flex items-center justify-between pb-1.5 border-b border-border/50">
-        <span class="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-          <History class="size-3.5 text-muted-foreground" />
-          <span>{{ t("patient.recent_visits") }}</span>
-        </span>
-      </div>
-      <div>
-        <div v-if="profile.isSummaryLoading.value" class="space-y-2 animate-pulse">
-          <div class="h-10 w-full rounded bg-secondary/60" />
-        </div>
-        <p v-else-if="!profile.profileSummary.value?.latestEncounter" class="text-xs text-muted-foreground/70 py-2">
-          {{ t("patient.no_visits") }}
-        </p>
-        <div v-else class="p-2.5 rounded-md border border-border/60 bg-surface/50 flex items-center justify-between text-xs">
-          <div>
-            <p class="font-semibold text-foreground text-xs">
-              {{ formatClinicalDate(profile.profileSummary.value!.latestEncounter!.openedAt) }}
-            </p>
-            <p v-if="profile.profileSummary.value!.latestEncounter!.primaryClinicianName" class="text-xs text-muted-foreground">
-              {{ t("appointment.attending") }}: {{ profile.profileSummary.value!.latestEncounter!.primaryClinicianName }}
-            </p>
+        <div>
+          <div v-if="profile.isSummaryLoading.value" class="h-6 w-32 rounded bg-secondary/60 animate-pulse" />
+          <div v-else-if="(profile.profileSummary.value?.alerts.length ?? 0) > 0" class="flex flex-wrap gap-1.5">
+            <Badge
+              v-for="allergy in profile.profileSummary.value?.alerts"
+              :key="allergy.id"
+              :variant="allergy.severity === 'severe' ? 'critical' : 'warning'"
+              class="inline-flex items-center gap-1 text-xs"
+            >
+              <TriangleAlert class="size-3" aria-hidden="true" />
+              {{ allergy.substanceName }} ({{ allergy.severity }})
+            </Badge>
           </div>
-          <Badge variant="secondary" class="text-xs">
-            {{ profile.profileSummary.value!.latestEncounter!.status || 'Encounter' }}
-          </Badge>
+          <div v-else class="flex items-center gap-1.5 py-1">
+            <Badge variant="success" class="inline-flex items-center gap-1 text-xs">
+              <CircleCheck class="size-3" aria-hidden="true" />
+              {{ t("patient.no_allergies") }}
+            </Badge>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Previous Encounters & Visit History Section -->
+      <div class="rounded-lg border border-border/70 bg-card/60 p-3 space-y-2">
+        <div class="flex items-center justify-between pb-1.5 border-b border-border/50">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+            <History class="size-3.5 text-muted-foreground" />
+            <span>{{ t("patient.recent_visits") }}</span>
+          </span>
+        </div>
+        <div>
+          <div v-if="profile.isSummaryLoading.value" class="space-y-2 animate-pulse">
+            <div class="h-10 w-full rounded bg-secondary/60" />
+          </div>
+          <p v-else-if="!profile.profileSummary.value?.latestEncounter" class="text-xs text-muted-foreground/70 py-2">
+            {{ t("patient.no_visits") }}
+          </p>
+          <div v-else class="p-2.5 rounded-md border border-border/60 bg-surface/50 flex items-center justify-between text-xs">
+            <div>
+              <p class="font-semibold text-foreground text-xs">
+                {{ formatClinicalDate(profile.profileSummary.value!.latestEncounter!.openedAt) }}
+              </p>
+              <p v-if="profile.profileSummary.value!.latestEncounter!.primaryClinicianName" class="text-xs text-muted-foreground">
+                {{ t("appointment.attending") }}: {{ profile.profileSummary.value!.latestEncounter!.primaryClinicianName }}
+              </p>
+            </div>
+            <Badge variant="secondary" class="text-xs">
+              {{ profile.profileSummary.value!.latestEncounter!.status || 'Encounter' }}
+            </Badge>
+          </div>
         </div>
       </div>
     </div>
+    
+    <AllergyFormDialog :allergy-form="allergyForm" />
   </div>
 </template>

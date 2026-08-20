@@ -14,6 +14,7 @@ use App\Modules\Pharmacy\Application\Support\MedicationDoseSafetyKnowledgeBase;
 use App\Modules\Pharmacy\Application\Support\MedicationInteractionKnowledgeBase;
 use App\Modules\Pharmacy\Application\Support\MedicationLaboratorySafetyKnowledgeBase;
 use App\Modules\Pharmacy\Application\Support\MedicationPatientContextResolver;
+use App\Modules\Pharmacy\Application\Support\MedicationAllergySafetyKnowledgeBase;
 use App\Modules\Pharmacy\Application\Support\MedicationSafetyRuleCatalog;
 use App\Modules\Pharmacy\Domain\Repositories\PharmacyOrderRepositoryInterface;
 use App\Modules\Pharmacy\Domain\Services\ApprovedMedicineCatalogLookupServiceInterface;
@@ -93,14 +94,11 @@ class GetPharmacyOrderSafetyReviewUseCase
             (string) ($order['medication_code'] ?? ''),
         );
 
-        $allergyConflicts = array_values(array_filter(
-            $this->patientAllergyRepository->listActiveByPatientId((string) ($order['patient_id'] ?? '')),
-            fn (array $allergy): bool => $this->allergyMatchesMedication(
-                $allergy,
-                $this->dispenseTargetMedicationCode($order),
-                $this->dispenseTargetMedicationName($order),
-            ),
-        ));
+        $allergyConflicts = MedicationAllergySafetyKnowledgeBase::detectConflicts(
+            activeAllergies: $this->patientAllergyRepository->listActiveByPatientId((string) ($order['patient_id'] ?? '')),
+            medicationCode: $this->dispenseTargetMedicationCode($order),
+            medicationName: $this->dispenseTargetMedicationName($order)
+        );
         $activeMedicationProfile = $this->patientMedicationProfileRepository->listActiveByPatientId(
             (string) ($order['patient_id'] ?? ''),
         );
@@ -472,31 +470,6 @@ class GetPharmacyOrderSafetyReviewUseCase
         return $name !== '' ? $name : null;
     }
 
-    private function allergyMatchesMedication(
-        array $allergy,
-        ?string $medicationCode,
-        ?string $medicationName
-    ): bool {
-        $normalizedAllergyCode = mb_strtolower(trim((string) ($allergy['substance_code'] ?? '')));
-        $normalizedAllergyName = mb_strtolower(trim((string) ($allergy['substance_name'] ?? '')));
-        $normalizedMedicationCode = mb_strtolower(trim((string) ($medicationCode ?? '')));
-        $normalizedMedicationName = mb_strtolower(trim((string) ($medicationName ?? '')));
-
-        if (
-            $normalizedAllergyCode !== ''
-            && $normalizedMedicationCode !== ''
-            && $normalizedAllergyCode === $normalizedMedicationCode
-        ) {
-            return true;
-        }
-
-        if ($normalizedAllergyName === '' || $normalizedMedicationName === '') {
-            return false;
-        }
-
-        return str_contains($normalizedMedicationName, $normalizedAllergyName)
-            || str_contains($normalizedAllergyName, $normalizedMedicationName);
-    }
 
     private function resolveApprovedMedicineCatalogItem(string $catalogItemId, string $medicationCode): ?array
     {

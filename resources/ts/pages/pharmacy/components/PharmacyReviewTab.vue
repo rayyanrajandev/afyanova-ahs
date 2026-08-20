@@ -223,15 +223,15 @@ const isStockAvailable = computed(() => {
         </div>
         <div
           v-for="allergy in safety.allergyConflicts"
-          :key="allergy.name || allergy.code"
+          :key="allergy.substanceName || allergy.substanceCode"
           class="p-2.5 rounded-md bg-destructive/10 border border-destructive/20 text-xs space-y-0.5"
         >
           <div class="font-bold text-destructive">
-            {{ allergy.name || allergy.code }} (Severity:
+            {{ allergy.substanceName || allergy.substanceCode }} (Severity:
             {{ allergy.severity }})
           </div>
           <div class="text-muted-foreground">
-            {{ allergy.description || allergy.clinicalEffect }}
+            {{ allergy.reaction || allergy.reactionCode || "No documented reaction details" }}
           </div>
         </div>
       </div>

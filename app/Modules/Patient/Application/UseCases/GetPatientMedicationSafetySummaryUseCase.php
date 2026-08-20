@@ -12,6 +12,7 @@ use App\Modules\Pharmacy\Application\Support\MedicationDoseSafetyKnowledgeBase;
 use App\Modules\Pharmacy\Application\Support\MedicationInteractionKnowledgeBase;
 use App\Modules\Pharmacy\Application\Support\MedicationLaboratorySafetyKnowledgeBase;
 use App\Modules\Pharmacy\Application\Support\MedicationPatientContextResolver;
+use App\Modules\Pharmacy\Application\Support\MedicationAllergySafetyKnowledgeBase;
 use App\Modules\Pharmacy\Application\Support\MedicationSafetyRuleCatalog;
 use App\Modules\Pharmacy\Application\UseCases\CheckPharmacyOrderDuplicatesUseCase;
 use App\Modules\Pharmacy\Domain\Repositories\PharmacyOrderRepositoryInterface;
@@ -60,14 +61,11 @@ class GetPatientMedicationSafetySummaryUseCase
             $approvedMedicineCatalogItemId,
             $medicationCode,
         );
-        $allergyConflicts = array_values(array_filter(
-            $activeAllergies,
-            fn (array $allergy): bool => $this->allergyMatchesMedication(
-                $allergy,
-                $medicationCode,
-                $medicationName,
-            ),
-        ));
+        $allergyConflicts = MedicationAllergySafetyKnowledgeBase::detectConflicts(
+            activeAllergies: $activeAllergies,
+            medicationCode: $medicationCode,
+            medicationName: $medicationName
+        );
 
         $activeMedicationProfile = $this->patientMedicationProfileRepository->listActiveByPatientId($patientId);
         $activeMedicationOrders = $this->pharmacyOrderRepository->activeMedicationOrdersForPatient(
@@ -349,25 +347,6 @@ class GetPatientMedicationSafetySummaryUseCase
         ];
     }
 
-    private function allergyMatchesMedication(
-        array $allergy,
-        string $medicationCode,
-        string $medicationName
-    ): bool {
-        $allergyCode = $this->normalizeText($allergy['substance_code'] ?? null);
-        $allergyName = $this->normalizeText($allergy['substance_name'] ?? null);
-
-        if ($allergyCode !== '' && $medicationCode !== '' && $allergyCode === $medicationCode) {
-            return true;
-        }
-
-        if ($allergyName === '' || $medicationName === '') {
-            return false;
-        }
-
-        return str_contains($medicationName, $allergyName)
-            || str_contains($allergyName, $medicationName);
-    }
 
     private function normalizeText(mixed $value): string
     {

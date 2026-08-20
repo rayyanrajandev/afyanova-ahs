@@ -59,8 +59,8 @@ class EloquentPatientAllergyRepository implements PatientAllergyRepositoryInterf
 
         $paginator = $query
             ->where('patient_id', $patientId)
-            ->when($status, fn (Builder $builder, string $value) => $builder->where('status', $value))
-            ->orderByRaw('CASE WHEN status = ? THEN 0 ELSE 1 END', ['active'])
+            ->when($status, fn (Builder $builder, string $value) => $builder->where('clinical_status', $value))
+            ->orderByRaw('CASE WHEN clinical_status = ? THEN 0 ELSE 1 END', ['active'])
             ->orderByDesc('noted_at')
             ->orderByDesc('updated_at')
             ->paginate(
@@ -80,7 +80,8 @@ class EloquentPatientAllergyRepository implements PatientAllergyRepositoryInterf
 
         return $query
             ->where('patient_id', $patientId)
-            ->where('status', 'active')
+            ->where('clinical_status', 'active')
+            ->where('verification_status', '!=', 'entered_in_error')
             ->orderByDesc('severity')
             ->orderBy('substance_name')
             ->get()

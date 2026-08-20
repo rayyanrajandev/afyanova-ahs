@@ -57,11 +57,16 @@ class UpdatePatientAllergyUseCase
             'substance_code',
             'substance_name',
             'reaction',
+            'reaction_code',
             'severity',
-            'status',
+            'clinical_status',
+            'verification_status',
+            'type',
+            'category',
             'noted_at',
             'last_reaction_at',
             'notes',
+            'source',
         ];
 
         $changes = [];

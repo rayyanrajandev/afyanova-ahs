@@ -9,6 +9,7 @@ use App\Modules\Encounter\Presentation\Http\Controllers\EncounterDiagnosisContro
 use App\Modules\Laboratory\Presentation\Http\Controllers\LaboratoryOrderController;
 use App\Modules\MedicalRecord\Presentation\Http\Controllers\MedicalRecordController;
 use App\Modules\Patient\Presentation\Http\Controllers\PatientController;
+use App\Modules\Patient\Presentation\Http\Controllers\PatientMedicationSafetyController;
 use App\Modules\PatientFlow\Presentation\Http\Controllers\PatientFlowController;
 use App\Modules\PatientVitals\Presentation\Http\Controllers\PatientVitalSetController;
 use App\Modules\Payer\Presentation\Http\Controllers\PatientInsuranceController;
@@ -123,6 +124,13 @@ Route::middleware('api.platform')
         Route::patch('reception/patients/{id}/insurance/{recordId}/verify', [PatientInsuranceController::class, 'verify'])
             ->middleware(['can:patients.insurance.verify', 'facility.entitlement:patients.demographics'])
             ->name('reception.patients.insurance.verify');
+
+        Route::post('reception/patients/{id}/allergies', [PatientMedicationSafetyController::class, 'storeAllergy'])
+            ->middleware(['can:patients.read'])
+            ->name('reception.patients.allergies.store');
+        Route::patch('reception/patients/{id}/allergies/{recordId}', [PatientMedicationSafetyController::class, 'updateAllergy'])
+            ->middleware(['can:patients.read'])
+            ->name('reception.patients.allergies.update');
         // Added (2026-08-10, Volume 3.7 audit): reception-scoped list, reusing
         // ListAppointmentsUseCase + AppointmentResponseTransformer internally
         // (no logic duplication) — the frontend previously called the generic
@@ -226,6 +234,13 @@ Route::middleware('api.platform')
         Route::get('clinician/patients/{id}/summary', [PatientController::class, 'summary'])
             ->middleware('can:patients.read')
             ->name('clinician.patients.summary');
+
+        Route::post('clinician/patients/{id}/allergies', [PatientMedicationSafetyController::class, 'storeAllergy'])
+            ->middleware(['can:patients.read'])
+            ->name('clinician.patients.allergies.store');
+        Route::patch('clinician/patients/{id}/allergies/{recordId}', [PatientMedicationSafetyController::class, 'updateAllergy'])
+            ->middleware(['can:patients.read'])
+            ->name('clinician.patients.allergies.update');
         Route::get('clinician/encounters', [EncounterController::class, 'index'])
             ->middleware('can:medical.records.read')
             ->name('clinician.encounters');
@@ -368,6 +383,15 @@ Route::middleware('api.platform')
         Route::get('nursing/patients', [PatientController::class, 'index'])
             ->middleware('can:patients.read')
             ->name('nursing.patients');
+        Route::get('nursing/patients/{id}/summary', [PatientController::class, 'summary'])
+            ->middleware('can:patients.read')
+            ->name('nursing.patients.summary');
+        Route::post('nursing/patients/{id}/allergies', [PatientMedicationSafetyController::class, 'storeAllergy'])
+            ->middleware(['can:patients.read'])
+            ->name('nursing.patients.allergies.store');
+        Route::patch('nursing/patients/{id}/allergies/{recordId}', [PatientMedicationSafetyController::class, 'updateAllergy'])
+            ->middleware(['can:patients.read'])
+            ->name('nursing.patients.allergies.update');
         Route::post('nursing/vitals', [PatientVitalSetController::class, 'store'])
             ->middleware('can:patient.vitals.record')
             ->name('nursing.vitals.store');

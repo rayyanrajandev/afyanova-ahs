@@ -63,6 +63,8 @@ import { useRecentStore } from "@/stores/recentStore";
 import type { useAppointmentScheduling } from "../composables/useAppointmentScheduling";
 import type { useArrivalIntake } from "../composables/useArrivalIntake";
 import type { useInsuranceForm } from "../composables/useInsuranceForm";
+import AllergyFormDialog from "@/components/AllergyFormDialog.vue";
+import { useAllergyForm } from "@/composables/useAllergyForm";
 import type { usePatientProfile } from "../composables/usePatientProfile";
 import {
   formatClinicalDate,
@@ -79,6 +81,14 @@ const props = defineProps<{
   openEditDemographics: () => void;
   printSelectedLabel: () => void;
 }>();
+
+const allergyForm = useAllergyForm({
+  workspace: "reception",
+  onSaved: (patientId) => {
+    // Refresh only the profile summary (allergy card) instead of reloading the page.
+    props.profile.refreshSummary(patientId);
+  },
+});
 
 const emit = defineEmits<{
   "view-in-queue": [];
@@ -750,6 +760,15 @@ const primaryAction = computed<{
                 <TriangleAlert class="size-3.5 text-amber-500" />
                 <span>{{ t("patient.allergies") }}</span>
               </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-6 px-2 text-xs gap-1 text-primary cursor-pointer"
+                @click="allergyForm.openAllergyForm(patient.id, null)"
+              >
+                <Plus class="size-3" />
+                {{ t("common.add", "Add") }}
+              </Button>
             </div>
             <div>
               <div v-if="profile.isSummaryLoading.value" class="h-6 w-32 rounded bg-secondary/60 animate-pulse" />
@@ -1035,5 +1054,7 @@ const primaryAction = computed<{
       :initial-notes="currentVisitNotes"
       @saved="onNotesUpdated"
     />
+    
+    <AllergyFormDialog :allergy-form="allergyForm" />
   </div>
 </template>

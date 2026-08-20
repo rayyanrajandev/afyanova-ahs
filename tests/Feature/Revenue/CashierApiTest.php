@@ -10,44 +10,50 @@ use Tests\Feature\Revenue\RevenueTestSupport;
 /**
  * The counter over HTTP, as the workspace will drive it.
  */
-function cashierUser(): User
-{
-    $roles = (array) config('roles');
+if (! function_exists('cashierUser')) {
+    function cashierUser(): User
+    {
+        $roles = (array) config('roles');
 
-    return makeUserWithRole((array) $roles['cashier']['permissions'], 'FINANCE.CASHIER');
+        return makeUserWithRole((array) $roles['cashier']['permissions'], 'FINANCE.CASHIER');
+    }
 }
 
-function supervisorUser(): User
-{
-    $roles = (array) config('roles');
+if (! function_exists('supervisorUser')) {
+    function supervisorUser(): User
+    {
+        $roles = (array) config('roles');
 
-    return makeUserWithRole((array) $roles['finance-manager']['permissions'], 'FINANCE.CONTROLLER');
+        return makeUserWithRole((array) $roles['finance-manager']['permissions'], 'FINANCE.CONTROLLER');
+    }
 }
 
-function seedPayablePatient(string $price = '15000.00'): array
-{
-    $patientId = (string) Str::uuid();
+if (! function_exists('seedPayablePatient')) {
+    function seedPayablePatient(string $price = '15000.00'): array
+    {
+        $patientId = (string) Str::uuid();
 
-    DB::table('patients')->insert([
-        'id' => $patientId,
-        'patient_number' => 'PT-'.Str::upper(Str::random(8)),
-        'first_name' => 'Asha', 'last_name' => 'Mwinyi',
-        'gender' => 'female', 'date_of_birth' => '1988-04-02',
-        'country_code' => 'TZ', 'status' => 'active',
-        'created_at' => now(), 'updated_at' => now(),
-    ]);
+        DB::table('patients')->insert([
+            'id' => $patientId,
+            'patient_number' => 'PT-'.Str::upper(Str::random(8)),
+            'first_name' => 'Asha', 'last_name' => 'Mwinyi',
+            'gender' => 'female', 'date_of_birth' => '1988-04-02',
+            'country_code' => 'TZ', 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
 
-    $item = RevenueTestSupport::pricedItem('CONSULT-API-'.Str::upper(Str::random(5)), $price);
+        $item = RevenueTestSupport::pricedItem('CONSULT-API-'.Str::upper(Str::random(5)), $price);
 
-    $charge = app(RaiseServiceChargeUseCase::class)->execute(
-        patientId: $patientId,
-        sourceKind: ChargeSourceKind::MANUAL,
-        sourceId: null,
-        chargeableItemId: $item['chargeableItemId'],
-        description: 'General outpatient consultation',
-    );
+        $charge = app(RaiseServiceChargeUseCase::class)->execute(
+            patientId: $patientId,
+            sourceKind: ChargeSourceKind::MANUAL,
+            sourceId: null,
+            chargeableItemId: $item['chargeableItemId'],
+            description: 'General outpatient consultation',
+        );
 
-    return [$patientId, (string) $charge->id];
+        return [$patientId, (string) $charge->id];
+    }
 }
 
 it('serves the queue, takes payment and issues a receipt over HTTP', function (): void {

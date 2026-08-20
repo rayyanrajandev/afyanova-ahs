@@ -1,9 +1,51 @@
 <?php
 
+use App\Models\User;
 use App\Modules\Revenue\Application\UseCases\OpenCashierSessionUseCase;
+use App\Modules\Revenue\Application\UseCases\RaiseServiceChargeUseCase;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Modules\Revenue\Domain\ValueObjects\PaymentMethod;
 use App\Modules\Revenue\Infrastructure\Models\PaymentModel;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Feature\Revenue\RevenueTestSupport;
+
+if (! function_exists('cashierUser')) {
+    function cashierUser(): User
+    {
+        $roles = (array) config('roles');
+
+        return makeUserWithRole((array) $roles['cashier']['permissions'], 'FINANCE.CASHIER');
+    }
+}
+
+if (! function_exists('seedPayablePatient')) {
+    function seedPayablePatient(string $price = '15000.00'): array
+    {
+        $patientId = (string) Str::uuid();
+
+        DB::table('patients')->insert([
+            'id' => $patientId,
+            'patient_number' => 'PT-'.Str::upper(Str::random(8)),
+            'first_name' => 'Asha', 'last_name' => 'Mwinyi',
+            'gender' => 'female', 'date_of_birth' => '1988-04-02',
+            'country_code' => 'TZ', 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $item = RevenueTestSupport::pricedItem('CONSULT-API-'.Str::upper(Str::random(5)), $price);
+
+        $charge = app(RaiseServiceChargeUseCase::class)->execute(
+            patientId: $patientId,
+            sourceKind: ChargeSourceKind::MANUAL,
+            sourceId: null,
+            chargeableItemId: $item['chargeableItemId'],
+            description: 'Consultation',
+        );
+
+        return [$patientId, (string) $charge->id];
+    }
+}
 
 it('settles a charge using mobile money tender (Lipa Namba)', function (): void {
     $cashier = cashierUser();

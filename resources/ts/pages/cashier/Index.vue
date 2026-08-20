@@ -324,7 +324,7 @@ function dismissCloseDialog(open: boolean): void {
   <!-- AppShell's <main> is a flex row, so the page has to claim its width
        explicitly; without flex-1 it sizes to its content and leaves the
        right of the screen empty. -->
-  <div class="flex h-full min-h-0 w-full flex-1 flex-col">
+  <div class="flex h-full min-h-0 w-full flex-1 flex-col gap-1">
     <CashierSessionBar
       :session="drawer.session.value"
       :is-loading="drawer.isLoading.value"

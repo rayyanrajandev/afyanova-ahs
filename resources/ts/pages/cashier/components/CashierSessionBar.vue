@@ -43,7 +43,7 @@ const isOpen = computed(() => props.session?.status === "open");
 
 <template>
   <div
-    class="flex shrink-0 items-center gap-3 border-b border-border/80 bg-surface px-4 py-2"
+    class="flex shrink-0 items-center gap-3 rounded-lg border border-border bg-surface px-4 py-2 shadow-2xs"
   >
     <div class="flex items-center gap-2">
       <Wallet
@@ -108,7 +108,7 @@ const isOpen = computed(() => props.session?.status === "open");
         @click="emit('my-shift')"
       >
         <Wallet class="mr-1.5 size-3.5" aria-hidden="true" />
-        My Shift
+        {{ t("cashier.my_shift") }}
       </Button>
 
       <Button

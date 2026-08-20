@@ -4,6 +4,7 @@ use App\Modules\Revenue\Application\UseCases\ApproveCashierSessionVarianceUseCas
 use App\Modules\Revenue\Application\UseCases\ApproveRefundUseCase;
 use App\Modules\Revenue\Application\UseCases\CloseCashierSessionUseCase;
 use App\Modules\Revenue\Application\UseCases\OpenCashierSessionUseCase;
+use App\Modules\Revenue\Application\UseCases\RaiseServiceChargeUseCase;
 use App\Modules\Revenue\Application\UseCases\RecordCashMovementUseCase;
 use App\Modules\Revenue\Application\UseCases\RecordCashPaymentUseCase;
 use App\Modules\Revenue\Application\UseCases\RequestRefundUseCase;
@@ -13,10 +14,26 @@ use App\Modules\Revenue\Domain\Exceptions\CashierSessionAlreadyOpenException;
 use App\Modules\Revenue\Domain\ValueObjects\AuthorizationBasis;
 use App\Modules\Revenue\Domain\ValueObjects\CashierSessionStatus;
 use App\Modules\Revenue\Domain\ValueObjects\CashMovementReason;
+use App\Modules\Revenue\Domain\ValueObjects\ChargeSourceKind;
 use App\Modules\Revenue\Domain\ValueObjects\RefundStatus;
 use App\Modules\Revenue\Domain\ValueObjects\ServiceChargeStatus;
 use Illuminate\Support\Str;
 use Tests\Feature\Revenue\RevenueTestSupport;
+
+if (! function_exists('chargeFor')) {
+    function chargeFor(string $patientId, string $price = '15000.00', ?string $code = null)
+    {
+        $item = RevenueTestSupport::pricedItem($code ?? 'CONSULT-'.Str::upper(Str::random(6)), $price);
+
+        return app(RaiseServiceChargeUseCase::class)->execute(
+            patientId: $patientId,
+            sourceKind: ChargeSourceKind::MANUAL,
+            sourceId: null,
+            chargeableItemId: $item['chargeableItemId'],
+            description: 'Consultation',
+        );
+    }
+}
 
 it('allows one open drawer per cashier', function (): void {
     app(OpenCashierSessionUseCase::class)->execute(601, 5000000);
